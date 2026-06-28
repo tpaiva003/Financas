@@ -29,6 +29,7 @@ create or replace function current_app_user_id()
 returns text
 language sql
 stable
+set search_path = public, pg_catalog
 as $$
   select u.id
   from app_users u
@@ -40,6 +41,7 @@ create or replace function is_app_user()
 returns boolean
 language sql
 stable
+set search_path = public, pg_catalog
 as $$
   select current_app_user_id() is not null
 $$;
@@ -194,6 +196,7 @@ create table if not exists waitlist (
 create or replace function set_updated_at()
 returns trigger
 language plpgsql
+set search_path = public, pg_catalog
 as $$
 begin
   new.updated_at = now();
