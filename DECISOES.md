@@ -49,8 +49,11 @@ forma significativa ficam assinaladas para confirmação.
 ### Autenticação e allow-list
 - Allow-list via `ALLOWED_EMAILS`. O `signIn` callback recusa qualquer email fora
   da lista, mesmo com SSO válido (REQ-AUTH-2).
-- Ids de utilizador do domínio são *slugs* derivados do email (parte antes do `@`):
-  `tiago`, `clara`. Simples e estável para 2 utilizadores.
+- Ids de utilizador do domínio são **fixos** (`tiago`, `clara`) e são a fonte de
+  verdade usada no domínio e na BD (`app_users.id`, `expenses.payer_id`, …). Os
+  **emails** vêm do `ALLOWED_EMAILS` por ordem (1.º = Tiago, 2.º = Clara), por isso
+  trocar os emails reais não parte a ligação às linhas existentes. (Antes os ids
+  eram derivados do email por slug — mudou-se ao ligar os emails reais.)
 - **Login de desenvolvimento** (`AUTH_DEV_LOGIN=true`): provider de credenciais que
   permite entrar como um dos emails da allow-list **sem SSO real**, para a app ser
   navegável localmente sem configurar OAuth. **NUNCA ligar em produção.**

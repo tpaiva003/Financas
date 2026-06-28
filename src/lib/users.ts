@@ -13,21 +13,25 @@ export interface HouseholdUser {
   email: string;
 }
 
-/** Deriva um id estável a partir do email (parte antes do @). */
-function slugFromEmail(email: string): string {
-  return email.split("@")[0]!.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-}
-
 /**
- * Os dois utilizadores, derivados da allow-list. O primeiro email é o "user A",
- * o segundo o "user B". Nomes capitalizados a partir do slug por defeito.
+ * Perfis fixos dos dois utilizadores. Os ids (`tiago`/`clara`) são estáveis e
+ * são a fonte de verdade usada em todo o domínio E na base de dados
+ * (`app_users.id`, `expenses.payer_id`, etc.). Os EMAILS vêm da allow-list
+ * (`ALLOWED_EMAILS`), por ordem: o 1.º email é o do Tiago, o 2.º o da Clara.
+ * Assim, mudar os emails reais não parte a ligação às linhas já existentes.
  */
+const PROFILES: { id: string; name: string }[] = [
+  { id: "tiago", name: "Tiago" },
+  { id: "clara", name: "Clara" },
+];
+
 export function householdUsers(): HouseholdUser[] {
-  return allowedEmails().map((email) => {
-    const id = slugFromEmail(email);
-    const name = id.charAt(0).toUpperCase() + id.slice(1);
-    return { id, name, email };
-  });
+  const emails = allowedEmails();
+  return PROFILES.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    email: emails[i] ?? `${p.id}@example.com`,
+  }));
 }
 
 export function userByEmail(email: string | null | undefined): HouseholdUser | undefined {
