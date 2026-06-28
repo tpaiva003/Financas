@@ -82,7 +82,7 @@ function mkExpense(e: {
 
 export function seedExpenses(): Expense[] {
   return [
-    mkExpense({ id: "seed-1", description: "Continente — compras semana", amountCents: 8732, date: "2026-06-02", payerId: TIAGO, kind: "shared", categoryId: "supermercado" }),
+    mkExpense({ id: "seed-1", description: "Continente, compras da semana", amountCents: 8732, date: "2026-06-02", payerId: TIAGO, kind: "shared", categoryId: "supermercado" }),
     mkExpense({ id: "seed-2", description: "Jantar restaurante Cais", amountCents: 5400, date: "2026-06-05", payerId: CLARA, kind: "shared", categoryId: "restauracao" }),
     mkExpense({ id: "seed-3", description: "Galp combustível", amountCents: 6210, date: "2026-06-07", payerId: TIAGO, kind: "shared", categoryId: "combustivel" }),
     mkExpense({ id: "seed-4", description: "EDP eletricidade", amountCents: 7345, date: "2026-06-10", payerId: CLARA, kind: "shared", categoryId: "casa", split: percentSplit({ [TIAGO]: 50, [CLARA]: 50 }) }),
@@ -91,7 +91,7 @@ export function seedExpenses(): Expense[] {
     mkExpense({ id: "seed-7", description: "Farmácia", amountCents: 2380, date: "2026-06-15", payerId: TIAGO, kind: "personal", categoryId: "saude", ownerId: TIAGO, visibleToPartner: true }),
     mkExpense({ id: "seed-8", description: "Comboios CP fim de semana", amountCents: 3120, date: "2026-06-18", payerId: CLARA, kind: "shared", categoryId: "transportes" }),
     mkExpense({ id: "seed-9", description: "Estorno devolução loja", amountCents: -1500, date: "2026-06-20", payerId: TIAGO, kind: "shared", categoryId: "outros" }),
-    mkExpense({ id: "seed-10", description: "Água — recorrente (por confirmar)", amountCents: 2800, date: "2026-06-25", payerId: TIAGO, kind: "shared", categoryId: "casa", origin: "recurring", status: "pending" }),
+    mkExpense({ id: "seed-10", description: "Água, recorrente (por confirmar)", amountCents: 2800, date: "2026-06-25", payerId: TIAGO, kind: "shared", categoryId: "casa", origin: "recurring", status: "pending" }),
   ];
 }
 

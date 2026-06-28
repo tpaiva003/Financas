@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
+import { isAdmin } from "@/lib/users";
 import { AppNav } from "@/components/AppNav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  const admin = isAdmin(user.id);
 
   return (
     <div className="min-h-[100dvh]">
@@ -15,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           >
             Finanças
           </Link>
-          <AppNav userName={user.name} />
+          <AppNav userName={user.name} isAdmin={admin} />
         </div>
       </header>
 

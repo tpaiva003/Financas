@@ -12,42 +12,75 @@ export function LoginForm({
   devUsers: HouseholdUser[];
 }) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const start = (provider: string, options?: Record<string, unknown>) => {
     setLoading(provider);
     void signIn(provider, { callbackUrl, ...options });
   };
 
-  return (
-    <div className="space-y-3">
-      <button
-        type="button"
-        className="btn-secondary w-full justify-between"
-        disabled={loading !== null}
-        onClick={() => start("google")}
-      >
-        <span className="flex items-center gap-3">
-          <GoogleIcon />
-          Continuar com Google
-        </span>
-        <Arrow />
-      </button>
+  const submitPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    start("password", { email, password });
+  };
 
-      <button
-        type="button"
-        className="btn-secondary w-full justify-between"
-        disabled={loading !== null}
-        onClick={() => start("microsoft-entra-id")}
-      >
-        <span className="flex items-center gap-3">
-          <MicrosoftIcon />
-          Continuar com Microsoft
-        </span>
-        <Arrow />
-      </button>
+  return (
+    <div className="space-y-5">
+      {/* Palavra-chave (método interim enquanto o SSO não está ligado) */}
+      <form onSubmit={submitPassword} className="space-y-3">
+        <div>
+          <label className="label" htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="username"
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+            placeholder="tu@exemplo.pt"
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="password">Palavra-chave</label>
+          <input
+            id="password"
+            type="password"
+            required
+            minLength={6}
+            autoComplete="current-password"
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+            placeholder="••••••••"
+            className="input"
+          />
+        </div>
+        <button type="submit" disabled={loading !== null} className="btn-primary w-full">
+          {loading === "password" ? "A entrar…" : "Entrar"}
+        </button>
+        <p className="font-mono text-[11px] uppercase tracking-[0.06em] text-fg-faint">
+          Primeira vez? A palavra-chave que escreveres fica a ser a tua.
+        </p>
+      </form>
+
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-hair" />
+        <span className="eyebrow">ou</span>
+        <span className="h-px flex-1 bg-hair" />
+      </div>
+
+      <div className="space-y-3">
+        <button type="button" className="btn-secondary w-full justify-center gap-3" disabled={loading !== null} onClick={() => start("google")}>
+          <GoogleIcon /> Continuar com Google
+        </button>
+        <button type="button" className="btn-secondary w-full justify-center gap-3" disabled={loading !== null} onClick={() => start("microsoft-entra-id")}>
+          <MicrosoftIcon /> Continuar com Microsoft
+        </button>
+      </div>
 
       {devUsers.length > 0 ? (
-        <div className="!mt-6 space-y-2">
+        <div className="space-y-2 pt-1">
           <div className="flex items-center gap-3">
             <span className="h-px flex-1 bg-hair" />
             <span className="eyebrow">Modo de desenvolvimento</span>
@@ -67,14 +100,6 @@ export function LoginForm({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Arrow() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="M5 12h14M13 6l6 6-6 6" />
-    </svg>
   );
 }
 

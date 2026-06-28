@@ -85,3 +85,30 @@ Ainda por fazer no MVP (próximos passos): import de ficheiros Tier 1 (Excel
 Activo/Bankinter) com pré-visualização e dedup ligados à UI; editor visual de
 regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 (precisa de credenciais). Fases 2/3 conforme o REQUISITOS.md.
+
+## Pós-MVP — design, landing e auth interim
+
+### Design
+- Redesenho para tema **escuro editorial premium**: tipografia *Space Grotesk*
+  (títulos) + *JetBrains Mono* (números) + *Inter* (corpo); hairlines, muito
+  espaço, micro-animações. Tokens em `tailwind.config.ts` + `globals.css`.
+- **Sem travessões (—)** no texto visível (decisão de estilo do produto).
+
+### Login por palavra-chave (interim)
+- Enquanto o SSO real não está ligado, há um provider de credenciais
+  **`password`**: na 1.ª entrada de cada utilizador, a palavra-chave escrita
+  fica definida (hash **PBKDF2** via Web Crypto, em `password.ts`), e nas
+  seguintes é validada. Substitui o "Modo de desenvolvimento" quando este for
+  desligado (`AUTH_DEV_LOGIN`).
+- Config de auth **dividida**: `auth.config.ts` (edge-safe, usada pelo
+  middleware) e `auth.ts` (Node, com os providers que tocam DB/crypto). Evita
+  partir o bundling do middleware.
+
+### Landing pública (REQ-LAND)
+- `/` passou a ser a **landing pública** (a app vive sob auth). A landing **não
+  refere nomes pessoais**.
+- Inclui: problema, **vantagens vs alternativas**, como funciona,
+  **desenvolvimentos futuros** e **formulário de contacto** (RGPD + honeypot).
+- O **admin é o Tiago** (1.º email da allow-list): as mensagens de contacto
+  caem numa tabela `contact_messages` e aparecem no inbox `/mensagens`, visível
+  só ao admin.

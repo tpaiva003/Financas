@@ -5,7 +5,7 @@ import { householdUsers, userById } from "@/lib/users";
 import { formatCents } from "@/lib/domain";
 import { SettlementForm } from "@/components/SettlementForm";
 
-export const metadata = { title: "Acertos — Finanças" };
+export const metadata = { title: "Acertos · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function AcertosPage() {
@@ -34,7 +34,7 @@ export default async function AcertosPage() {
 
       <div className="card p-5">
         {statement.settled ? (
-          <p className="text-sm text-fg-muted">Está tudo acertado — nada a pagar. ✦</p>
+          <p className="text-sm text-fg-muted">Está tudo acertado, nada a pagar. ✦</p>
         ) : (
           <p className="text-[15px] text-fg-muted">
             <span className="font-medium text-fg">{userById(statement.debtorId ?? "")?.name}</span>{" "}

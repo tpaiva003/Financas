@@ -6,7 +6,7 @@ import { userById } from "@/lib/users";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
-export const metadata = { title: "Saldo — Finanças" };
+export const metadata = { title: "Saldo · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {

@@ -26,6 +26,21 @@ export interface Category {
   icon?: string;
 }
 
+export interface ContactMessage {
+  id: string;
+  name?: string | null;
+  email: string;
+  message: string;
+  createdAt: string;
+  readAt?: string | null;
+}
+
+export interface CreateContactInput {
+  name?: string | null;
+  email: string;
+  message: string;
+}
+
 export interface ExpenseFilters {
   /** Utilizador que faz o pedido (para respeitar privacidade das pessoais). */
   viewerId: string;
@@ -77,4 +92,13 @@ export interface Repository {
 
   listCategories(): Promise<Category[]>;
   listClassificationRules(): Promise<ClassificationRule[]>;
+
+  // Palavra-chave (login interim).
+  getUserPasswordHash(userId: string): Promise<string | null>;
+  setUserPasswordHash(userId: string, hash: string): Promise<void>;
+
+  // Mensagens de contacto da landing.
+  createContactMessage(input: CreateContactInput): Promise<void>;
+  listContactMessages(): Promise<ContactMessage[]>;
+  markContactMessageRead(id: string): Promise<void>;
 }

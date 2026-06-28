@@ -1,35 +1,52 @@
 /**
- * Configuração de autenticação (Auth.js / NextAuth v5).
+ * Autenticação completa (runtime Node) — usada pelo route handler e pelo servidor.
  *
  * REQ-AUTH:
- *  - Login via SSO: Google (Tiago) e Google ou Microsoft (Clara).
- *  - Allow-list de 2 emails: qualquer outro login é recusado, mesmo com SSO
- *    válido e sem criar conta.
- *  - Sessões persistentes (JWT), com logout manual.
- *
- * Dev: se AUTH_DEV_LOGIN=true, é adicionado um provider de credenciais que
- * permite entrar como um dos emails da allow-list SEM SSO real (apenas para
- * desenvolvimento local — NUNCA em produção). Ver DECISOES.md.
+ *  - SSO Google + Microsoft com allow-list de 2 emails (ver auth.config.ts).
+ *  - Login por PALAVRA-CHAVE (interim, enquanto o SSO não está ligado): na 1.ª
+ *    entrada de cada utilizador, a palavra-chave que ele escrever fica definida;
+ *    nas seguintes é validada. Substitui o "Modo de desenvolvimento".
+ *  - Dev-login (AUTH_DEV_LOGIN=true) entra sem palavra-chave. Só para dev local.
  */
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
-import Google from "next-auth/providers/google";
-import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import Credentials from "next-auth/providers/credentials";
-import { isEmailAllowed, isDevLoginEnabled } from "./env";
+import { authConfig } from "./auth.config";
+import { isDevLoginEnabled, isEmailAllowed } from "./env";
 import { userByEmail } from "./users";
+import { hashPassword, verifyPassword, passwordIssue } from "./password";
+import { getRepository } from "./data";
 
-const providers: NextAuthConfig["providers"] = [
-  Google({
-    clientId: process.env.AUTH_GOOGLE_ID,
-    clientSecret: process.env.AUTH_GOOGLE_SECRET,
+const providers: NextAuthConfig["providers"] = [...authConfig.providers];
+
+providers.push(
+  Credentials({
+    id: "password",
+    name: "Palavra-chave",
+    credentials: {
+      email: { label: "Email", type: "email" },
+      password: { label: "Palavra-chave", type: "password" },
+    },
+    authorize: async (raw) => {
+      const email = typeof raw?.email === "string" ? raw.email.toLowerCase() : "";
+      const password = typeof raw?.password === "string" ? raw.password : "";
+      if (!isEmailAllowed(email)) return null;
+      const u = userByEmail(email);
+      if (!u) return null;
+      if (passwordIssue(password)) return null;
+
+      const repo = getRepository();
+      const existing = await repo.getUserPasswordHash(u.id);
+      if (!existing) {
+        // Primeira entrada: define a palavra-chave.
+        await repo.setUserPasswordHash(u.id, await hashPassword(password));
+        return { id: u.id, email: u.email, name: u.name };
+      }
+      const ok = await verifyPassword(password, existing);
+      return ok ? { id: u.id, email: u.email, name: u.name } : null;
+    },
   }),
-  MicrosoftEntraID({
-    clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
-    clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
-    issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
-  }),
-];
+);
 
 if (isDevLoginEnabled()) {
   providers.push(
@@ -47,32 +64,4 @@ if (isDevLoginEnabled()) {
   );
 }
 
-export const authConfig: NextAuthConfig = {
-  providers,
-  trustHost: true,
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
-  callbacks: {
-    // Allow-list: barra qualquer email fora da lista, mesmo com SSO válido.
-    signIn: ({ user }) => isEmailAllowed(user.email),
-    jwt: ({ token }) => {
-      if (token.email) {
-        const u = userByEmail(token.email);
-        if (u) token.householdUserId = u.id;
-      }
-      return token;
-    },
-    session: ({ session, token }) => {
-      if (session.user) {
-        session.user.householdUserId =
-          (token.householdUserId as string | undefined) ??
-          userByEmail(session.user.email)?.id;
-      }
-      return session;
-    },
-  },
-};
-
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export const { handlers, auth, signIn, signOut } = NextAuth({ ...authConfig, providers });

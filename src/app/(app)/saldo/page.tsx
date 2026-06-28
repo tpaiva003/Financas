@@ -4,7 +4,7 @@ import { getHouseholdBalance } from "@/lib/services/balance-service";
 import { userById } from "@/lib/users";
 import { formatCents } from "@/lib/domain";
 
-export const metadata = { title: "Saldo explicado — Finanças" };
+export const metadata = { title: "Saldo explicado · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function SaldoPage() {

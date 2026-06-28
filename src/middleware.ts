@@ -1,21 +1,24 @@
 /**
  * Proteção de rotas (REQ-AUTH-4): tudo o que não seja público exige sessão.
  *
- * Público: /login, a landing futura, ativos estáticos e as rotas de auth.
- * Todo o resto é privado — sem sessão, redireciona para /login.
+ * Público: a landing (/), o login, a submissão de contacto, ativos estáticos e
+ * as rotas de auth. Todo o resto é privado. Usa a config edge-safe.
  */
 
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
+import { authConfig } from "@/lib/auth.config";
 
-const PUBLIC_PATHS = ["/login"];
+const { auth } = NextAuth(authConfig);
+
+const PUBLIC_EXACT = ["/", "/login"];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const isPublic =
+    PUBLIC_EXACT.includes(pathname) || pathname.startsWith("/login/");
 
   if (isPublic) {
-    // Já autenticado a tentar ver /login → manda para o dashboard.
     if (req.auth && pathname === "/login") {
       return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
     }
@@ -32,7 +35,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  // Corre em tudo menos ativos estáticos, imagens, manifest, service worker e
-  // as rotas internas de auth.
   matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)"],
 };

@@ -46,3 +46,12 @@ export function userById(id: string): HouseholdUser | undefined {
 export function partnerOf(id: string): HouseholdUser | undefined {
   return householdUsers().find((u) => u.id !== id);
 }
+
+/** O admin é o primeiro utilizador (Tiago): recebe as mensagens de contacto. */
+export function adminUser(): HouseholdUser {
+  return householdUsers()[0]!;
+}
+
+export function isAdmin(id: string): boolean {
+  return adminUser().id === id;
+}

@@ -4,7 +4,7 @@ import { getRepository } from "@/lib/data";
 import { householdUsers } from "@/lib/users";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
 
-export const metadata = { title: "Nova despesa — Finanças" };
+export const metadata = { title: "Nova despesa · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function NovaDespesaPage() {

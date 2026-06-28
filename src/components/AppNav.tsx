@@ -4,14 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 
-const LINKS = [
+const BASE_LINKS = [
   { href: "/dashboard", label: "Saldo" },
   { href: "/despesas", label: "Despesas" },
   { href: "/acertos", label: "Acertos" },
 ];
 
-export function AppNav({ userName }: { userName: string }) {
+export function AppNav({ userName, isAdmin = false }: { userName: string; isAdmin?: boolean }) {
   const pathname = usePathname();
+  const LINKS = isAdmin
+    ? [...BASE_LINKS, { href: "/mensagens", label: "Mensagens" }]
+    : BASE_LINKS;
 
   return (
     <div className="flex items-center gap-1.5">

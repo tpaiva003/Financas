@@ -142,3 +142,13 @@ export async function deleteExpenseAction(formData: FormData): Promise<void> {
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
 }
+
+export async function markMessageReadAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const { isAdmin } = await import("@/lib/users");
+  if (!isAdmin(user.id)) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().markContactMessageRead(id);
+  revalidatePath("/mensagens");
+}

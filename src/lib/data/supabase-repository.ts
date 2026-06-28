@@ -10,6 +10,8 @@ import { normalizeText, stableUid } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   Category,
+  ContactMessage,
+  CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
   ExpenseFilters,
@@ -192,5 +194,59 @@ export class SupabaseRepository implements Repository {
       priority: r.priority,
       enabled: r.enabled,
     }));
+  }
+
+  async getUserPasswordHash(userId: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("app_users")
+      .select("password_hash")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data?.password_hash ?? null;
+  }
+
+  async setUserPasswordHash(userId: string, hash: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("app_users").update({ password_hash: hash }).eq("id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async createContactMessage(input: CreateContactInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("contact_messages").insert({
+      name: input.name ?? null,
+      email: input.email,
+      message: input.message,
+      consent: true,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async listContactMessages(): Promise<ContactMessage[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("contact_messages")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      message: r.message,
+      createdAt: r.created_at,
+      readAt: r.read_at,
+    }));
+  }
+
+  async markContactMessageRead(id: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("contact_messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
   }
 }

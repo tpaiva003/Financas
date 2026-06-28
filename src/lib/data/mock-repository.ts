@@ -12,6 +12,8 @@ import type { Expense, Settlement, ClassificationRule } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   Category,
+  ContactMessage,
+  CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
   ExpenseFilters,
@@ -29,6 +31,8 @@ interface Store {
   settlements: Settlement[];
   categories: Category[];
   rules: ClassificationRule[];
+  passwords: Record<string, string>;
+  contacts: ContactMessage[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -41,6 +45,8 @@ function getStore(): Store {
       settlements: seedSettlements(),
       categories: DEFAULT_CATEGORIES,
       rules: DEFAULT_RULES,
+      passwords: {},
+      contacts: [],
     };
   }
   return globalForStore.__financasStore;
@@ -145,5 +151,33 @@ export class MockRepository implements Repository {
 
   async listClassificationRules(): Promise<ClassificationRule[]> {
     return getStore().rules;
+  }
+
+  async getUserPasswordHash(userId: string): Promise<string | null> {
+    return getStore().passwords[userId] ?? null;
+  }
+
+  async setUserPasswordHash(userId: string, hash: string): Promise<void> {
+    getStore().passwords[userId] = hash;
+  }
+
+  async createContactMessage(input: CreateContactInput): Promise<void> {
+    getStore().contacts.unshift({
+      id: randomUUID(),
+      name: input.name ?? null,
+      email: input.email,
+      message: input.message,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+    });
+  }
+
+  async listContactMessages(): Promise<ContactMessage[]> {
+    return [...getStore().contacts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async markContactMessageRead(id: string): Promise<void> {
+    const m = getStore().contacts.find((c) => c.id === id);
+    if (m) m.readAt = new Date().toISOString();
   }
 }

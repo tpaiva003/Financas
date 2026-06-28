@@ -16,7 +16,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finanças — Despesas Partilhadas",
+  title: "Finanças · Despesas Partilhadas",
   description: "App privada de despesas partilhadas (Tiago & Clara).",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
