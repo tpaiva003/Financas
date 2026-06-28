@@ -14,7 +14,7 @@ export function AppNav({ userName }: { userName: string }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <nav className="mr-2 hidden items-center gap-1 sm:flex">
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(`${l.href}/`);
@@ -22,8 +22,8 @@ export function AppNav({ userName }: { userName: string }) {
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                active ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-100"
+              className={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
+                active ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
               }`}
             >
               {l.label}
@@ -31,11 +31,15 @@ export function AppNav({ userName }: { userName: string }) {
           );
         })}
       </nav>
-      <span className="hidden text-sm text-slate-400 sm:inline">{userName}</span>
+      <span className="hidden items-center gap-2 pl-1 text-sm text-fg-muted sm:flex">
+        <span className="grid h-7 w-7 place-items-center rounded-full border border-hair font-mono text-[11px] text-fg">
+          {userName.charAt(0)}
+        </span>
+      </span>
       <button
         type="button"
         onClick={() => signOut({ callbackUrl: "/login" })}
-        className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+        className="rounded-full px-3 py-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
       >
         Sair
       </button>

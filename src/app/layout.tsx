@@ -1,9 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const display = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Finanças — Despesas Partilhadas",
@@ -11,14 +21,14 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Finanças",
   },
   robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1f59db",
+  themeColor: "#08080a",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -28,7 +38,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt">
-      <body className={`${inter.variable} font-sans`}>
+      <body className={`${sans.variable} ${display.variable} ${mono.variable} font-sans`}>
         {children}
         <ServiceWorkerRegister />
       </body>

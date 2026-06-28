@@ -12,36 +12,55 @@ export default function LoginPage({
   const devUsers = isDevLoginEnabled() ? householdUsers() : [];
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand-50 to-slate-100 p-6">
-      <div className="card w-full max-w-sm p-8">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-2xl">
-            <span aria-hidden>💸</span>
-          </div>
-          <h1 className="text-xl font-semibold text-slate-900">Finanças</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Despesas partilhadas — acesso privado.
-          </p>
-        </div>
+    <main className="relative flex min-h-[100dvh] flex-col">
+      {/* topo */}
+      <header className="flex items-center justify-between px-6 py-6 sm:px-10">
+        <span className="font-display text-sm font-semibold tracking-tight">Finanças</span>
+        <span className="eyebrow hidden sm:block">Acesso privado</span>
+      </header>
 
-        {searchParams.error ? (
+      {/* hero */}
+      <div className="flex flex-1 items-center justify-center px-6 pb-16">
+        <div className="w-full max-w-md">
+          <p className="eyebrow animate-fade-in">Tiago &amp; Clara</p>
+          <h1 className="mt-4 animate-fade-up font-display text-5xl font-semibold leading-[0.95] tracking-tightest text-balance sm:text-6xl">
+            As contas da casa,
+            <br />
+            <span className="text-fg-muted">sem fricção.</span>
+          </h1>
           <p
-            role="alert"
-            className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mt-5 max-w-sm animate-fade-up text-[15px] leading-relaxed text-fg-muted"
+            style={{ animationDelay: "60ms" }}
           >
-            Não foi possível entrar. Só os emails autorizados têm acesso.
+            Regista, divide e mantém o saldo — sempre claro, sempre vosso.
+            Substitui o Tricount e o Splitwise.
           </p>
-        ) : null}
 
-        <LoginForm
-          callbackUrl={searchParams.callbackUrl ?? "/dashboard"}
-          devUsers={devUsers}
-        />
+          <div className="mt-10 animate-fade-up" style={{ animationDelay: "120ms" }}>
+            {searchParams.error ? (
+              <p
+                role="alert"
+                className="mb-4 rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm text-debt"
+              >
+                Não foi possível entrar. Só os emails autorizados têm acesso.
+              </p>
+            ) : null}
 
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Só os dois emails autorizados conseguem entrar.
-        </p>
+            <LoginForm
+              callbackUrl={searchParams.callbackUrl ?? "/dashboard"}
+              devUsers={devUsers}
+            />
+          </div>
+        </div>
       </div>
+
+      {/* rodapé */}
+      <footer className="px-6 pb-8 sm:px-10">
+        <div className="flex items-center gap-2 border-t border-hair2 pt-6">
+          <span className="h-1.5 w-1.5 rounded-full bg-credit" />
+          <p className="eyebrow">Encriptado · Allow-list de 2 emails</p>
+        </div>
+      </footer>
     </main>
   );
 }

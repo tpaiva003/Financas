@@ -17,6 +17,18 @@ function splitLabel(e: Expense): string {
   }
 }
 
+const CATEGORY_EMOJI: Record<string, string> = {
+  supermercado: "🛒",
+  restauracao: "🍽️",
+  combustivel: "⛽",
+  casa: "🏠",
+  saude: "💊",
+  lazer: "🎬",
+  subscricoes: "📺",
+  transportes: "🚆",
+  outros: "📦",
+};
+
 export function ExpenseRow({
   expense,
   categoryName,
@@ -31,31 +43,31 @@ export function ExpenseRow({
     day: "2-digit",
     month: "short",
   });
+  const emoji = expense.categoryId ? (CATEGORY_EMOJI[expense.categoryId] ?? "•") : "•";
 
   return (
-    <li className="card flex items-center gap-3 p-3">
+    <li className="row hover:border-hair">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-hair bg-panel2/50 text-base">
+        {emoji}
+      </span>
+
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate font-medium text-slate-900">{expense.description}</p>
-          {expense.kind === "personal" ? (
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-500">
-              Pessoal
-            </span>
-          ) : null}
+          <p className="truncate text-[15px] font-medium text-fg">{expense.description}</p>
+          {expense.kind === "personal" ? <span className="chip shrink-0">Pessoal</span> : null}
           {expense.status === "pending" ? (
-            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase text-amber-700">
-              Pendente
-            </span>
+            <span className="chip shrink-0 border-debt/30 text-debt">Pendente</span>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {date} · {categoryName} · pagou {payerName}
+        <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
+          {date} · {categoryName} · {payerName}
           {expense.kind === "shared" ? ` · ${splitLabel(expense)}` : ""}
         </p>
       </div>
+
       <div
-        className={`shrink-0 text-right font-semibold ${
-          isRefund ? "text-green-600" : "text-slate-900"
+        className={`shrink-0 font-mono text-[15px] tnum ${
+          isRefund ? "text-credit" : "text-fg"
         }`}
       >
         {formatCents(expense.amountCents, expense.currency)}

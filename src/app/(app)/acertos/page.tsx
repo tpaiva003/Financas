@@ -17,7 +17,6 @@ export default async function AcertosPage() {
   const users = householdUsers();
   const today = new Date().toISOString().slice(0, 10);
 
-  // Pré-preenche o acerto sugerido: o devedor paga ao credor o valor em dívida.
   const suggested = statement.settled
     ? null
     : {
@@ -27,28 +26,26 @@ export default async function AcertosPage() {
       };
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-lg font-semibold text-slate-900">Acertos</h1>
+    <div className="space-y-7">
+      <div>
+        <p className="eyebrow">Pagamentos entre vocês</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Acertos</h1>
+      </div>
 
-      <div className="card p-4">
+      <div className="card p-5">
         {statement.settled ? (
-          <p className="text-sm text-slate-600">Está tudo acertado — nada a pagar. 🎉</p>
+          <p className="text-sm text-fg-muted">Está tudo acertado — nada a pagar. ✦</p>
         ) : (
-          <p className="text-sm text-slate-600">
-            <span className="font-medium text-slate-900">
-              {userById(statement.debtorId ?? "")?.name}
-            </span>{" "}
-            deve {formatCents(statement.amountCents)} a{" "}
-            <span className="font-medium text-slate-900">
-              {userById(statement.creditorId ?? "")?.name}
-            </span>
-            .
+          <p className="text-[15px] text-fg-muted">
+            <span className="font-medium text-fg">{userById(statement.debtorId ?? "")?.name}</span>{" "}
+            deve <span className="tnum font-mono text-fg">{formatCents(statement.amountCents)}</span> a{" "}
+            <span className="font-medium text-fg">{userById(statement.creditorId ?? "")?.name}</span>.
           </p>
         )}
       </div>
 
-      <div className="card p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Registar acerto</h2>
+      <div className="card p-6">
+        <h2 className="label">Registar acerto</h2>
         <SettlementForm
           users={users.map((u) => ({ id: u.id, name: u.name }))}
           today={today}
@@ -57,28 +54,26 @@ export default async function AcertosPage() {
       </div>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Histórico de acertos
-        </h2>
+        <h2 className="eyebrow mb-2">Histórico</h2>
         {settlements.length === 0 ? (
-          <p className="card p-6 text-center text-sm text-slate-500">Sem acertos registados.</p>
+          <p className="card p-8 text-center text-sm text-fg-muted">Sem acertos registados.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul>
             {settlements.map((s) => (
-              <li key={s.id} className="card flex items-center gap-3 p-3">
-                <span aria-hidden className="text-lg">
-                  🤝
+              <li key={s.id} className="row">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-hair bg-panel2/50">
+                  ↪
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-slate-900">
+                  <p className="truncate text-[15px] font-medium text-fg">
                     {userById(s.fromUserId)?.name} → {userById(s.toUserId)?.name}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
                     {new Date(s.date).toLocaleDateString("pt-PT")}
                     {s.note ? ` · ${s.note}` : ""}
                   </p>
                 </div>
-                <div className="shrink-0 font-semibold text-slate-900">
+                <div className="shrink-0 font-mono text-[15px] tnum text-fg">
                   {formatCents(s.amountCents, s.currency)}
                 </div>
               </li>

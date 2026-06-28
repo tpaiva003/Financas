@@ -33,71 +33,52 @@ export function AddExpenseForm({
   const userB = users[1];
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-5">
       {state.error ? (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm text-debt">
           {state.error}
         </p>
       ) : null}
 
-      <div className="card p-4">
-        <label className="label" htmlFor="amount">
-          Valor (€)
-        </label>
-        <input
-          id="amount"
-          name="amount"
-          type="text"
-          inputMode="decimal"
-          required
-          autoFocus
-          placeholder="0,00"
-          className="input text-2xl font-semibold"
-        />
-        <p className="mt-1 text-xs text-slate-400">
-          Usa valor negativo para reembolsos/estornos.
+      {/* Valor — protagonista */}
+      <div className="card p-6">
+        <label className="label" htmlFor="amount">Valor</label>
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-3xl text-fg-faint">€</span>
+          <input
+            id="amount"
+            name="amount"
+            type="text"
+            inputMode="decimal"
+            required
+            autoFocus
+            placeholder="0,00"
+            className="w-full border-0 bg-transparent p-0 font-display text-5xl font-semibold tracking-tight tnum text-fg placeholder:text-fg-faint/40 focus:outline-none focus:ring-0"
+          />
+        </div>
+        <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
+          Valor negativo = reembolso / estorno
         </p>
       </div>
 
-      <div className="card space-y-4 p-4">
+      <div className="card space-y-5 p-6">
         <div>
-          <label className="label" htmlFor="description">
-            Descrição
-          </label>
-          <input
-            id="description"
-            name="description"
-            type="text"
-            required
-            placeholder="Ex.: Continente, jantar…"
-            className="input"
-          />
+          <label className="label" htmlFor="description">Descrição</label>
+          <input id="description" name="description" type="text" required placeholder="Ex.: Continente, jantar…" className="input" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label" htmlFor="transactionDate">
-              Data
-            </label>
-            <input
-              id="transactionDate"
-              name="transactionDate"
-              type="date"
-              defaultValue={today}
-              required
-              className="input"
-            />
+            <label className="label" htmlFor="transactionDate">Data</label>
+            <input id="transactionDate" name="transactionDate" type="date" defaultValue={today} required className="input" />
           </div>
           <div>
-            <label className="label" htmlFor="categoryId">
-              Categoria
-            </label>
-            <select id="categoryId" name="categoryId" className="input" defaultValue="">
+            <label className="label" htmlFor="categoryId">Categoria</label>
+            <select id="categoryId" name="categoryId" className="select" defaultValue="">
               <option value="">Sem categoria</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.icon ? `${c.icon} ` : ""}
-                  {c.name}
+                  {c.icon ? `${c.icon} ` : ""}{c.name}
                 </option>
               ))}
             </select>
@@ -110,7 +91,7 @@ export function AddExpenseForm({
             {users.map((u) => (
               <label
                 key={u.id}
-                className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-700"
+                className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-hair px-3 py-2.5 text-sm text-fg-muted transition has-[:checked]:border-fg/40 has-[:checked]:bg-panel2 has-[:checked]:text-fg"
               >
                 <input
                   type="radio"
@@ -126,16 +107,12 @@ export function AddExpenseForm({
         </div>
       </div>
 
-      <div className="card space-y-4 p-4">
+      <div className="card space-y-5 p-6">
         <div>
           <span className="label">Tipo</span>
           <div className="grid grid-cols-2 gap-2">
-            <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>
-              Partilhada
-            </ToggleButton>
-            <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>
-              Pessoal
-            </ToggleButton>
+            <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>Partilhada</ToggleButton>
+            <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>Pessoal</ToggleButton>
           </div>
           <input type="hidden" name="kind" value={kind} />
         </div>
@@ -144,24 +121,16 @@ export function AddExpenseForm({
           <div>
             <span className="label">Como se divide</span>
             <div className="grid grid-cols-2 gap-2">
-              <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>
-                50 / 50
-              </ToggleButton>
-              <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>
-                Percentagem
-              </ToggleButton>
+              <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>50 / 50</ToggleButton>
+              <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>Percentagem</ToggleButton>
             </div>
             <input type="hidden" name="splitType" value={splitType} />
 
             {splitType === "PERCENT" && userA && userB ? (
-              <div className="mt-3">
-                <div className="flex items-center justify-between text-sm text-slate-600">
-                  <span>
-                    {userA.name}: {percentA}%
-                  </span>
-                  <span>
-                    {userB.name}: {100 - percentA}%
-                  </span>
+              <div className="mt-4">
+                <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
+                  <span>{userA.name}: {percentA}%</span>
+                  <span>{userB.name}: {100 - percentA}%</span>
                 </div>
                 <input
                   type="range"
@@ -170,7 +139,7 @@ export function AddExpenseForm({
                   step={5}
                   value={percentA}
                   onChange={(e) => setPercentA(Number(e.target.value))}
-                  className="mt-1 w-full"
+                  className="mt-2 w-full accent-fg"
                   aria-label={`Percentagem de ${userA.name}`}
                 />
                 <input type="hidden" name="percentA" value={percentA} />
@@ -178,8 +147,8 @@ export function AddExpenseForm({
             ) : null}
           </div>
         ) : (
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" name="visibleToPartner" className="h-4 w-4 rounded border-slate-300" />
+          <label className="flex items-center gap-3 text-sm text-fg-muted">
+            <input type="checkbox" name="visibleToPartner" className="h-4 w-4 rounded border-hair bg-panel2 accent-fg" />
             Tornar visível ao/à parceiro(a)
           </label>
         )}
@@ -203,10 +172,8 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
-        active
-          ? "border-brand-500 bg-brand-50 text-brand-700"
-          : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+      className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+        active ? "border-fg/40 bg-panel2 text-fg" : "border-hair text-fg-muted hover:text-fg"
       }`}
     >
       {children}
@@ -217,7 +184,7 @@ function ToggleButton({
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className="btn-primary w-full py-3 text-base">
+    <button type="submit" disabled={pending} className="btn-primary w-full py-3.5 text-base">
       {pending ? "A guardar…" : "Guardar despesa"}
     </button>
   );

@@ -14,12 +14,12 @@ export default async function NovaDespesaPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="mx-auto max-w-lg space-y-4">
-      <div className="flex items-center gap-2">
-        <Link href="/despesas" className="text-slate-400 hover:text-slate-600" aria-label="Voltar">
-          ←
+    <div className="mx-auto max-w-lg space-y-6">
+      <div>
+        <Link href="/despesas" className="eyebrow transition-colors hover:text-fg">
+          ← Despesas
         </Link>
-        <h1 className="text-lg font-semibold text-slate-900">Nova despesa</h1>
+        <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight">Nova despesa</h1>
       </div>
 
       <AddExpenseForm

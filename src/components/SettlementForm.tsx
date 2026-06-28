@@ -22,78 +22,45 @@ export function SettlementForm({
   const [state, formAction] = useFormState(createSettlementAction, initial);
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form action={formAction} className="mt-2 space-y-4">
       {state.error ? (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm text-debt">
           {state.error}
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label" htmlFor="fromUserId">
-            Quem paga
-          </label>
-          <select
-            id="fromUserId"
-            name="fromUserId"
-            className="input"
-            defaultValue={suggested?.fromUserId ?? users[0]?.id}
-          >
+          <label className="label" htmlFor="fromUserId">Quem paga</label>
+          <select id="fromUserId" name="fromUserId" className="select" defaultValue={suggested?.fromUserId ?? users[0]?.id}>
             {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
+              <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="toUserId">
-            Quem recebe
-          </label>
-          <select
-            id="toUserId"
-            name="toUserId"
-            className="input"
-            defaultValue={suggested?.toUserId ?? users[1]?.id}
-          >
+          <label className="label" htmlFor="toUserId">Quem recebe</label>
+          <select id="toUserId" name="toUserId" className="select" defaultValue={suggested?.toUserId ?? users[1]?.id}>
             {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
+              <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label" htmlFor="amount">
-            Valor (€)
-          </label>
-          <input
-            id="amount"
-            name="amount"
-            type="text"
-            inputMode="decimal"
-            required
-            defaultValue={suggested?.amount ?? ""}
-            placeholder="0,00"
-            className="input"
-          />
+          <label className="label" htmlFor="amount">Valor (€)</label>
+          <input id="amount" name="amount" type="text" inputMode="decimal" required defaultValue={suggested?.amount ?? ""} placeholder="0,00" className="input tnum" />
         </div>
         <div>
-          <label className="label" htmlFor="date">
-            Data
-          </label>
+          <label className="label" htmlFor="date">Data</label>
           <input id="date" name="date" type="date" defaultValue={today} required className="input" />
         </div>
       </div>
 
       <div>
-        <label className="label" htmlFor="note">
-          Nota (opcional)
-        </label>
+        <label className="label" htmlFor="note">Nota (opcional)</label>
         <input id="note" name="note" type="text" placeholder="Ex.: acerto de junho" className="input" />
       </div>
 

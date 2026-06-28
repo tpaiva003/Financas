@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { getHouseholdBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
-import { householdUsers, userById } from "@/lib/users";
+import { userById } from "@/lib/users";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
@@ -25,37 +25,38 @@ export default async function DashboardPage() {
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <BalanceHero statement={statement} />
 
       {pending.length > 0 ? (
-        <div className="card border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm font-medium text-amber-800">
-            {pending.length} despesa(s) recorrente(s) por confirmar
-          </p>
-          <p className="mt-1 text-xs text-amber-700">
-            Valores variáveis (luz, água, gás) precisam de confirmação antes de
-            entrarem no saldo.
-          </p>
-          <Link href="/despesas?status=pending" className="mt-2 inline-block text-sm font-medium text-amber-900 underline">
-            Ver pendentes →
-          </Link>
-        </div>
+        <Link
+          href="/despesas?status=pending"
+          className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-debt/15 text-debt">!</span>
+            <div>
+              <p className="text-sm font-medium">
+                {pending.length} recorrente(s) por confirmar
+              </p>
+              <p className="text-xs text-fg-muted">Valores variáveis (luz, água, gás).</p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
       ) : null}
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Despesas recentes
-          </h2>
-          <Link href="/despesas" className="text-sm font-medium text-brand-700">
-            Ver todas
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="eyebrow">Despesas recentes</h2>
+          <Link href="/despesas" className="text-xs text-fg-muted transition-colors hover:text-fg">
+            Ver todas →
           </Link>
         </div>
         {confirmed.length === 0 ? (
           <EmptyState />
         ) : (
-          <ul className="space-y-2">
+          <ul>
             {confirmed.map((e) => (
               <ExpenseRow
                 key={e.id}
@@ -78,38 +79,40 @@ function BalanceHero({
 }) {
   if (statement.settled) {
     return (
-      <div className="card bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white">
-        <p className="text-sm text-brand-100">Saldo atual</p>
-        <p className="mt-1 text-2xl font-semibold">Está tudo acertado 🎉</p>
-        <p className="mt-1 text-sm text-brand-100">Ninguém deve nada a ninguém.</p>
-      </div>
+      <section className="pt-4">
+        <p className="eyebrow">Saldo atual</p>
+        <p className="mt-3 font-display text-5xl font-semibold tracking-tightest sm:text-6xl">
+          Tudo acertado
+        </p>
+        <p className="mt-3 text-sm text-fg-muted">Ninguém deve nada a ninguém. ✦</p>
+      </section>
     );
   }
   const debtor = userById(statement.debtorId ?? "")?.name ?? statement.debtorId;
   const creditor = userById(statement.creditorId ?? "")?.name ?? statement.creditorId;
   return (
-    <Link href="/saldo" className="block">
-      <div className="card bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white transition hover:from-brand-700 hover:to-brand-900">
-        <p className="text-sm text-brand-100">Saldo atual</p>
-        <p className="mt-1 text-3xl font-semibold">{formatCents(statement.amountCents)}</p>
-        <p className="mt-1 text-sm text-brand-100">
-          <span className="font-medium text-white">{debtor}</span> deve a{" "}
-          <span className="font-medium text-white">{creditor}</span>
-        </p>
-        <p className="mt-3 text-xs text-brand-200 underline">Ver como é composto →</p>
-      </div>
+    <Link href="/saldo" className="block pt-4">
+      <p className="eyebrow">Saldo atual</p>
+      <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
+        {formatCents(statement.amountCents)}
+      </p>
+      <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-fg-muted">
+        <span className="font-medium text-fg">{debtor}</span>
+        <span>deve a</span>
+        <span className="font-medium text-fg">{creditor}</span>
+        <span className="ml-1 inline-flex items-center gap-1 text-xs text-fg-faint underline-offset-4 group-hover:underline">
+          · ver detalhe →
+        </span>
+      </p>
     </Link>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="card flex flex-col items-center gap-2 p-8 text-center">
-      <span className="text-3xl" aria-hidden>
-        🧾
-      </span>
-      <p className="text-sm text-slate-600">Ainda não há despesas.</p>
-      <Link href="/despesas/nova" className="btn-primary mt-1">
+    <div className="card flex flex-col items-center gap-3 p-10 text-center">
+      <p className="text-sm text-fg-muted">Ainda não há despesas.</p>
+      <Link href="/despesas/nova" className="btn-primary">
         Adicionar a primeira
       </Link>
     </div>
