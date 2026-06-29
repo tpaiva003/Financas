@@ -178,6 +178,21 @@ export class MockRepository implements Repository {
     return expense;
   }
 
+  async updateExpense(id: string, input: import("./repository").UpdateExpenseInput): Promise<void> {
+    const e = getStore().expenses.find((x) => x.id === id);
+    if (!e) return;
+    e.description = input.description;
+    e.amountCents = input.amountCents;
+    e.transactionDate = input.transactionDate;
+    e.categoryId = input.categoryId ?? null;
+    e.payerId = input.payerId;
+    e.kind = input.kind;
+    e.split = input.split;
+    e.ownerId = input.ownerId;
+    e.visibleToPartner = input.visibleToPartner ?? false;
+    e.updatedAt = new Date().toISOString();
+  }
+
   async softDeleteExpense(id: string, _actorId: string): Promise<void> {
     const e = getStore().expenses.find((x) => x.id === id);
     if (e) {

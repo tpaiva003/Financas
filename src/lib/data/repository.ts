@@ -103,6 +103,18 @@ export interface CreateExpenseInput {
   createdBy: string;
 }
 
+export interface UpdateExpenseInput {
+  description: string;
+  amountCents: number;
+  transactionDate: string;
+  categoryId?: string | null;
+  payerId: string;
+  kind: ExpenseKind;
+  split: Split;
+  ownerId: string;
+  visibleToPartner?: boolean;
+}
+
 export interface CreateSettlementInput {
   spaceId: string;
   fromUserId: string;
@@ -125,6 +137,7 @@ export interface Repository {
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
   getExpense(id: string, viewerId: string): Promise<Expense | null>;
   createExpense(input: CreateExpenseInput): Promise<Expense>;
+  updateExpense(id: string, input: UpdateExpenseInput): Promise<void>;
   softDeleteExpense(id: string, actorId: string): Promise<void>;
 
   listSettlements(spaceId: string): Promise<Settlement[]>;

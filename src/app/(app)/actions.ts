@@ -127,6 +127,57 @@ export async function createSettlementAction(
   redirect("/acertos");
 }
 
+export async function updateExpenseAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const memberIds = ctx.members.map((m) => m.id);
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Despesa inválida." };
+
+  const parsed = expenseSchema.safeParse({
+    description: formData.get("description"),
+    amount: formData.get("amount"),
+    transactionDate: formData.get("transactionDate"),
+    categoryId: formData.get("categoryId") || null,
+    payerId: formData.get("payerId"),
+    kind: formData.get("kind"),
+    splitType: formData.get("splitType") || "EQUAL",
+    percentA: formData.get("percentA") ?? undefined,
+    visibleToPartner: formData.get("visibleToPartner") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const data = parsed.data;
+  if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
+
+  const amountCents = toCents(data.amount);
+  let split: Split = { type: "EQUAL" };
+  if (data.kind === "shared" && data.splitType === "PERCENT" && ctx.members.length === 2) {
+    const pa = data.percentA ?? 50;
+    split = { type: "PERCENT", weights: { [memberIds[0]!]: pa, [memberIds[1]!]: 100 - pa } };
+    const v = validateSplit(split, memberIds, amountCents);
+    if (!v.ok) return { error: v.error };
+  }
+
+  await getRepository().updateExpense(id, {
+    description: data.description,
+    amountCents,
+    transactionDate: data.transactionDate,
+    categoryId: data.categoryId ?? null,
+    payerId: data.payerId,
+    kind: data.kind,
+    split,
+    ownerId: data.kind === "personal" ? ctx.viewerMemberId : data.payerId,
+    visibleToPartner: data.kind === "personal" ? Boolean(data.visibleToPartner) : false,
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  redirect("/despesas");
+}
+
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
@@ -134,6 +185,8 @@ export async function deleteExpenseAction(formData: FormData): Promise<void> {
   await getRepository().softDeleteExpense(id, user.id);
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  redirect("/despesas");
 }
 
 export async function markMessageReadAction(formData: FormData): Promise<void> {

@@ -226,6 +226,29 @@ export class SupabaseRepository implements Repository {
     return rowToExpense(data);
   }
 
+  async updateExpense(
+    id: string,
+    input: import("./repository").UpdateExpenseInput,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("expenses")
+      .update({
+        description: input.description,
+        amount_cents: input.amountCents,
+        transaction_date: input.transactionDate,
+        category_id: input.categoryId ?? null,
+        payer_id: input.payerId,
+        kind: input.kind,
+        split: input.split,
+        owner_id: input.ownerId,
+        visible_to_partner: input.visibleToPartner ?? false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   async softDeleteExpense(id: string, _actorId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
