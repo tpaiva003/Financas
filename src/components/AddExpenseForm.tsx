@@ -26,8 +26,9 @@ export function AddExpenseForm({
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
   const [kind, setKind] = useState<"shared" | "personal">("shared");
-  const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT">("EQUAL");
+  const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
+  const [soleId, setSoleId] = useState(members[0]?.id ?? "");
 
   const isPair = members.length === 2;
   const a = members[0];
@@ -131,41 +132,45 @@ export function AddExpenseForm({
         {kind === "shared" ? (
           <div>
             <span className="label">Como se divide</span>
-            {isPair ? (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>50 / 50</ToggleButton>
-                  <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>Percentagem</ToggleButton>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>
+                {isPair ? "50 / 50" : "Partes iguais"}
+              </ToggleButton>
+              {isPair ? (
+                <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>
+                  Percentagem
+                </ToggleButton>
+              ) : null}
+              <ToggleButton active={splitType === "SOLE"} onClick={() => setSplitType("SOLE")}>
+                Só de um(a)
+              </ToggleButton>
+            </div>
+            <input type="hidden" name="splitType" value={splitType} />
+
+            {splitType === "PERCENT" && a && b ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
+                  <span>{a.name}: {percentA}%</span>
+                  <span>{b.name}: {100 - percentA}%</span>
                 </div>
-                <input type="hidden" name="splitType" value={splitType} />
-                {splitType === "PERCENT" && a && b ? (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                      <span>{a.name}: {percentA}%</span>
-                      <span>{b.name}: {100 - percentA}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={percentA}
-                      onChange={(e) => setPercentA(Number(e.target.value))}
-                      className="mt-2 w-full accent-fg"
-                      aria-label={`Percentagem de ${a.name}`}
-                    />
-                    <input type="hidden" name="percentA" value={percentA} />
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <p className="rounded-xl border border-hair bg-panel2/50 px-3 py-2.5 text-sm text-fg-muted">
-                  Dividido em partes iguais por {members.length} participantes.
-                </p>
-                <input type="hidden" name="splitType" value="EQUAL" />
-              </>
-            )}
+                <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
+                <input type="hidden" name="percentA" value={percentA} />
+              </div>
+            ) : null}
+
+            {splitType === "SOLE" ? (
+              <div className="mt-3">
+                <p className="mb-2 text-xs text-fg-muted">De quem é, a 100% (mesmo que outro pague):</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {members.map((m) => (
+                    <label key={m.id} className="flex cursor-pointer items-center justify-center rounded-xl border border-hair px-3 py-2.5 text-sm text-fg-muted transition has-[:checked]:border-fg/40 has-[:checked]:bg-panel2 has-[:checked]:text-fg">
+                      <input type="radio" name="soleMemberId" value={m.id} checked={soleId === m.id} onChange={() => setSoleId(m.id)} className="sr-only" />
+                      {m.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <label className="flex items-center gap-3 text-sm text-fg-muted">

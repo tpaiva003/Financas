@@ -31,10 +31,38 @@ const expenseSchema = z.object({
   categoryId: z.string().optional().nullable(),
   payerId: z.string().min(1),
   kind: z.enum(["shared", "personal"]),
-  splitType: z.enum(["EQUAL", "PERCENT"]).default("EQUAL"),
+  splitType: z.enum(["EQUAL", "PERCENT", "SOLE"]).default("EQUAL"),
   percentA: z.coerce.number().min(0).max(100).optional(),
+  soleMemberId: z.string().optional(),
   visibleToPartner: z.coerce.boolean().optional(),
 });
+
+/** Constrói a divisão a partir dos dados do formulário. */
+function buildSplit(
+  data: z.infer<typeof expenseSchema>,
+  memberIds: string[],
+  amountCents: number,
+): { split: Split } | { error: string } {
+  if (data.kind !== "shared") return { split: { type: "EQUAL" } };
+
+  if (data.splitType === "SOLE") {
+    const sole = data.soleMemberId ?? "";
+    if (!memberIds.includes(sole)) return { error: "Escolhe de quem é a despesa." };
+    const weights: Record<string, number> = {};
+    for (const id of memberIds) weights[id] = id === sole ? 100 : 0;
+    return { split: { type: "PERCENT", weights } };
+  }
+
+  if (data.splitType === "PERCENT" && memberIds.length === 2) {
+    const pa = data.percentA ?? 50;
+    const split: Split = { type: "PERCENT", weights: { [memberIds[0]!]: pa, [memberIds[1]!]: 100 - pa } };
+    const v = validateSplit(split, memberIds, amountCents);
+    if (!v.ok) return { error: v.error ?? "Divisão inválida." };
+    return { split };
+  }
+
+  return { split: { type: "EQUAL" } };
+}
 
 export async function createExpenseAction(
   _prev: ActionState,
@@ -52,6 +80,7 @@ export async function createExpenseAction(
     kind: formData.get("kind"),
     splitType: formData.get("splitType") || "EQUAL",
     percentA: formData.get("percentA") ?? undefined,
+    soleMemberId: formData.get("soleMemberId") ?? undefined,
     visibleToPartner: formData.get("visibleToPartner") === "on",
   });
 
@@ -61,16 +90,9 @@ export async function createExpenseAction(
 
   const amountCents = toCents(data.amount);
 
-  let split: Split = { type: "EQUAL" };
-  if (data.kind === "shared" && data.splitType === "PERCENT" && ctx.members.length === 2) {
-    const pa = data.percentA ?? 50;
-    split = {
-      type: "PERCENT",
-      weights: { [memberIds[0]!]: pa, [memberIds[1]!]: 100 - pa },
-    };
-    const v = validateSplit(split, memberIds, amountCents);
-    if (!v.ok) return { error: v.error };
-  }
+  const built = buildSplit(data, memberIds, amountCents);
+  if ("error" in built) return { error: built.error };
+  const split = built.split;
 
   const created = await getRepository().createExpense({
     spaceId: ctx.space.id,
@@ -156,6 +178,7 @@ export async function updateExpenseAction(
     kind: formData.get("kind"),
     splitType: formData.get("splitType") || "EQUAL",
     percentA: formData.get("percentA") ?? undefined,
+    soleMemberId: formData.get("soleMemberId") ?? undefined,
     visibleToPartner: formData.get("visibleToPartner") === "on",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -163,13 +186,9 @@ export async function updateExpenseAction(
   if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
 
   const amountCents = toCents(data.amount);
-  let split: Split = { type: "EQUAL" };
-  if (data.kind === "shared" && data.splitType === "PERCENT" && ctx.members.length === 2) {
-    const pa = data.percentA ?? 50;
-    split = { type: "PERCENT", weights: { [memberIds[0]!]: pa, [memberIds[1]!]: 100 - pa } };
-    const v = validateSplit(split, memberIds, amountCents);
-    if (!v.ok) return { error: v.error };
-  }
+  const built = buildSplit(data, memberIds, amountCents);
+  if ("error" in built) return { error: built.error };
+  const split = built.split;
 
   await getRepository().updateExpense(id, {
     description: data.description,

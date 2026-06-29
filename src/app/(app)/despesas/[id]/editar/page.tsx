@@ -14,6 +14,21 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
   if (!expense) redirect("/despesas");
 
   const categories = await repo.listCategories();
+  const memberIds = ctx.members.map((m) => m.id);
+
+  // Deteta divisão "só de um(a)": PERCENT em que um membro tem 100% e os restantes 0%.
+  let splitType: "EQUAL" | "PERCENT" | "SOLE" = expense.split.type === "PERCENT" ? "PERCENT" : "EQUAL";
+  let soleId = memberIds[0] ?? "";
+  if (expense.split.type === "PERCENT") {
+    const weights = expense.split.weights ?? {};
+    const at100 = memberIds.filter((id) => (weights[id] ?? 0) === 100);
+    const rest = memberIds.filter((id) => (weights[id] ?? 0) !== 100);
+    if (at100.length === 1 && rest.every((id) => (weights[id] ?? 0) === 0)) {
+      splitType = "SOLE";
+      soleId = at100[0]!;
+    }
+  }
+
   const percentA =
     expense.split.type === "PERCENT"
       ? (expense.split.weights?.[ctx.members[0]?.id ?? ""] ?? 50)
@@ -41,7 +56,8 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
           categoryId: expense.categoryId ?? "",
           payerId: expense.payerId,
           kind: expense.kind,
-          splitType: expense.split.type === "PERCENT" ? "PERCENT" : "EQUAL",
+          splitType,
+          soleId,
           percentA,
           visibleToPartner: expense.visibleToPartner ?? false,
         }}
