@@ -366,6 +366,8 @@ export class SupabaseRepository implements Repository {
       message: r.message,
       createdAt: r.created_at,
       readAt: r.read_at,
+      archivedAt: r.archived_at ?? null,
+      notes: r.notes ?? null,
     }));
   }
 
@@ -376,5 +378,43 @@ export class SupabaseRepository implements Repository {
       .update({ read_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw new Error(error.message);
+  }
+
+  async setContactMessageArchived(id: string, archived: boolean): Promise<void> {
+    const db = getSupabaseAdmin();
+    const patch: Record<string, unknown> = {
+      archived_at: archived ? new Date().toISOString() : null,
+    };
+    // Arquivar implica lida.
+    if (archived) patch.read_at = new Date().toISOString();
+    const { error } = await db.from("contact_messages").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async setContactMessageNotes(id: string, notes: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("contact_messages")
+      .update({ notes })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async countUnreadContactMessages(): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null)
+      .is("archived_at", null);
+    if (!error) return count ?? 0;
+
+    // Tolerante: se a coluna archived_at ainda não existir (migração por aplicar),
+    // conta apenas por ler para não partir o cabeçalho da app.
+    const fallback = await db
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null);
+    return fallback.count ?? 0;
   }
 }

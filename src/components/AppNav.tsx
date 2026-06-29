@@ -11,7 +11,15 @@ const BASE_LINKS = [
   { href: "/acertos", label: "Acertos" },
 ];
 
-export function AppNav({ userName, isAdmin = false }: { userName: string; isAdmin?: boolean }) {
+export function AppNav({
+  userName,
+  isAdmin = false,
+  unreadMessages = 0,
+}: {
+  userName: string;
+  isAdmin?: boolean;
+  unreadMessages?: number;
+}) {
   const pathname = usePathname();
   const LINKS = isAdmin
     ? [...BASE_LINKS, { href: "/mensagens", label: "Mensagens" }]
@@ -19,18 +27,36 @@ export function AppNav({ userName, isAdmin = false }: { userName: string; isAdmi
 
   return (
     <div className="flex items-center gap-1.5">
+      {/* Atalho mensagens por ler — visível no topo também em mobile (admin). */}
+      {isAdmin && unreadMessages > 0 ? (
+        <Link
+          href="/mensagens"
+          className="flex items-center gap-1.5 rounded-full border border-credit/30 bg-credit/10 px-2.5 py-1 text-xs font-medium text-credit transition hover:bg-credit/20 sm:hidden"
+          aria-label={`${unreadMessages} mensagens por ler`}
+        >
+          <IconMail />
+          {unreadMessages}
+        </Link>
+      ) : null}
+
       <nav className="mr-2 hidden items-center gap-1 sm:flex">
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(`${l.href}/`);
+          const showBadge = l.href === "/mensagens" && unreadMessages > 0;
           return (
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-colors ${
                 active ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
               }`}
             >
               {l.label}
+              {showBadge ? (
+                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-credit px-1 text-[11px] font-semibold leading-none text-bg">
+                  {unreadMessages}
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -48,5 +74,14 @@ export function AppNav({ userName, isAdmin = false }: { userName: string; isAdmi
         Sair
       </button>
     </div>
+  );
+}
+
+function IconMail() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
   );
 }

@@ -62,6 +62,8 @@ export interface ContactMessage {
   message: string;
   createdAt: string;
   readAt?: string | null;
+  archivedAt?: string | null;
+  notes?: string | null;
 }
 
 export interface CreateContactInput {
@@ -155,4 +157,7 @@ export interface Repository {
   createContactMessage(input: CreateContactInput): Promise<void>;
   listContactMessages(): Promise<ContactMessage[]>;
   markContactMessageRead(id: string): Promise<void>;
+  setContactMessageArchived(id: string, archived: boolean): Promise<void>;
+  setContactMessageNotes(id: string, notes: string | null): Promise<void>;
+  countUnreadContactMessages(): Promise<number>;
 }

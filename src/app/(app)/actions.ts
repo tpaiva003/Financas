@@ -227,6 +227,28 @@ export async function markMessageReadAction(formData: FormData): Promise<void> {
   if (!id) return;
   await getRepository().markContactMessageRead(id);
   revalidatePath("/mensagens");
+  revalidatePath("/", "layout");
+}
+
+export async function archiveMessageAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const archived = String(formData.get("archived") ?? "") === "true";
+  await getRepository().setContactMessageArchived(id, archived);
+  revalidatePath("/mensagens");
+  revalidatePath("/", "layout");
+}
+
+export async function setMessageNotesAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const raw = String(formData.get("notes") ?? "").trim().slice(0, 2000);
+  await getRepository().setContactMessageNotes(id, raw || null);
+  revalidatePath("/mensagens");
 }
 
 // ---- Ambientes (spaces) ---------------------------------------------------

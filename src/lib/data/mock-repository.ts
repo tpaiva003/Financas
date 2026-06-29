@@ -253,6 +253,8 @@ export class MockRepository implements Repository {
       message: input.message,
       createdAt: new Date().toISOString(),
       readAt: null,
+      archivedAt: null,
+      notes: null,
     });
   }
 
@@ -263,5 +265,22 @@ export class MockRepository implements Repository {
   async markContactMessageRead(id: string): Promise<void> {
     const m = getStore().contacts.find((c) => c.id === id);
     if (m) m.readAt = new Date().toISOString();
+  }
+
+  async setContactMessageArchived(id: string, archived: boolean): Promise<void> {
+    const m = getStore().contacts.find((c) => c.id === id);
+    if (m) {
+      m.archivedAt = archived ? new Date().toISOString() : null;
+      if (archived && !m.readAt) m.readAt = new Date().toISOString();
+    }
+  }
+
+  async setContactMessageNotes(id: string, notes: string | null): Promise<void> {
+    const m = getStore().contacts.find((c) => c.id === id);
+    if (m) m.notes = notes;
+  }
+
+  async countUnreadContactMessages(): Promise<number> {
+    return getStore().contacts.filter((c) => !c.readAt && !c.archivedAt).length;
   }
 }

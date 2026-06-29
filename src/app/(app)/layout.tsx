@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { isAdmin } from "@/lib/users";
 import { getSpaceContext } from "@/lib/space";
+import { getRepository } from "@/lib/data";
 import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 
@@ -8,6 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const ctx = await getSpaceContext();
   const user = ctx.user;
   const admin = isAdmin(user.id);
+  const unreadMessages = admin ? await getRepository().countUnreadContactMessages() : 0;
 
   return (
     <div className="min-h-[100dvh]">
@@ -25,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               />
             ) : null}
           </div>
-          <AppNav userName={user.name} isAdmin={admin} />
+          <AppNav userName={user.name} isAdmin={admin} unreadMessages={unreadMessages} />
         </div>
       </header>
 
