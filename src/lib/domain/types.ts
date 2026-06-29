@@ -49,6 +49,8 @@ export interface ExpenseItem {
 
 export interface Expense {
   id: string;
+  /** Ambiente (space) a que pertence. */
+  spaceId?: string;
   /** UID estável para deduplicação. */
   uid: string;
   description: string;
@@ -81,6 +83,7 @@ export interface Expense {
 
 export interface Settlement {
   id: string;
+  spaceId?: string;
   /** Quem paga. */
   fromUserId: UserId;
   /** Quem recebe. */

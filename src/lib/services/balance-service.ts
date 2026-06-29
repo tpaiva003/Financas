@@ -1,42 +1,36 @@
 /**
- * Serviço de saldo: junta dados do repositório à lógica de domínio.
+ * Serviço de saldo por ambiente: junta dados do repositório à lógica de domínio.
+ * Funciona para N participantes (não só 2).
  */
 
-import { computeBalance, pairwiseStatement } from "@/lib/domain";
-import type { BalanceResult, PairwiseStatement } from "@/lib/domain";
-import { householdUsers } from "@/lib/users";
+import { computeBalance, simplifyDebts } from "@/lib/domain";
+import type { BalanceResult, Transfer } from "@/lib/domain";
 import { getRepository } from "@/lib/data";
+import type { Member } from "@/lib/data";
 
-export interface HouseholdBalance {
+export interface SpaceBalance {
   balance: BalanceResult;
-  statement: PairwiseStatement;
-  userAId: string;
-  userBId: string;
+  /** Pagamentos sugeridos para zerar o saldo (mínimos). */
+  transfers: Transfer[];
+  /** É um ambiente de 2 pessoas? (UI mais simples) */
+  isPair: boolean;
 }
 
-export async function getHouseholdBalance(viewerId: string): Promise<HouseholdBalance> {
+export async function getSpaceBalance(
+  spaceId: string,
+  members: Member[],
+  viewerMemberId: string,
+): Promise<SpaceBalance> {
   const repo = getRepository();
-  const users = householdUsers();
-  const userIds = users.map((u) => u.id);
+  const memberIds = members.map((m) => m.id);
 
-  // Para o saldo só interessam as partilhadas (visíveis a ambos); usamos o
-  // viewer só para satisfazer a interface — as partilhadas passam o filtro.
   const [expenses, settlements] = await Promise.all([
-    repo.listExpenses({ viewerId, kind: "shared" }),
-    repo.listSettlements(),
+    repo.listExpenses({ spaceId, viewerId: viewerMemberId, kind: "shared" }),
+    repo.listSettlements(spaceId),
   ]);
 
-  const balance = computeBalance({ users: userIds, expenses, settlements });
-  const statement = pairwiseStatement(
-    balance.netByUser,
-    userIds[0] ?? "",
-    userIds[1] ?? "",
-  );
+  const balance = computeBalance({ users: memberIds, expenses, settlements });
+  const transfers = simplifyDebts(balance.netByUser);
 
-  return {
-    balance,
-    statement,
-    userAId: userIds[0] ?? "",
-    userBId: userIds[1] ?? "",
-  };
+  return { balance, transfers, isPair: members.length === 2 };
 }

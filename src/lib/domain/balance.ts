@@ -95,6 +95,49 @@ export function computeBalance(params: ComputeBalanceParams): BalanceResult {
   return { netByUser: net, contributions };
 }
 
+export interface Transfer {
+  fromUserId: UserId;
+  toUserId: UserId;
+  amountCents: number;
+}
+
+/**
+ * Simplificação de dívidas (REQ-BAL, multi-pessoa): a partir do net por
+ * utilizador, devolve a lista mínima (greedy) de pagamentos que zera o saldo.
+ * Ex.: net {A:+10, B:-30, C:+20} → C? Aqui A e C são credores, B paga.
+ *
+ * Algoritmo: emparelha o maior devedor com o maior credor, repetidamente.
+ * Não é teoricamente ótimo no nº de transferências, mas é o padrão usado e dá
+ * sempre um plano correto (a soma das transferências reconcilia os nets).
+ */
+export function simplifyDebts(netByUser: Record<UserId, number>): Transfer[] {
+  const debtors: { id: UserId; amount: number }[] = [];
+  const creditors: { id: UserId; amount: number }[] = [];
+  for (const [id, net] of Object.entries(netByUser)) {
+    if (net < 0) debtors.push({ id, amount: -net });
+    else if (net > 0) creditors.push({ id, amount: net });
+  }
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
+
+  const transfers: Transfer[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const d = debtors[i]!;
+    const c = creditors[j]!;
+    const pay = Math.min(d.amount, c.amount);
+    if (pay > 0) {
+      transfers.push({ fromUserId: d.id, toUserId: c.id, amountCents: pay });
+    }
+    d.amount -= pay;
+    c.amount -= pay;
+    if (d.amount === 0) i += 1;
+    if (c.amount === 0) j += 1;
+  }
+  return transfers;
+}
+
 export interface PairwiseStatement {
   settled: boolean;
   /** Quem deve (só presente se não estiver saldado). */

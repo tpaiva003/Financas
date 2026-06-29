@@ -7,10 +7,22 @@
 
 import { stableUid, equalSplit, percentSplit } from "@/lib/domain";
 import type { Expense, Settlement, ClassificationRule } from "@/lib/domain";
-import type { Category } from "./repository";
+import type { Category, Space, Member } from "./repository";
+
+export function seedSpaces(): Space[] {
+  return [{ id: DEFAULT_SPACE, name: "Casa", createdBy: TIAGO, createdAt: "2026-01-01T00:00:00Z" }];
+}
+
+export function seedMembers(): Member[] {
+  return [
+    { id: TIAGO, spaceId: DEFAULT_SPACE, name: "Tiago", linkedUserId: TIAGO, email: "tiago@example.com" },
+    { id: CLARA, spaceId: DEFAULT_SPACE, name: "Clara", linkedUserId: CLARA, email: "clara@example.com" },
+  ];
+}
 
 export const TIAGO = "tiago";
 export const CLARA = "clara";
+export const DEFAULT_SPACE = "casa";
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: "supermercado", name: "Supermercado", color: "#16a34a", icon: "🛒" },
@@ -60,6 +72,7 @@ function mkExpense(e: {
   });
   return {
     id: e.id,
+    spaceId: DEFAULT_SPACE,
     uid,
     description: e.description,
     amountCents: e.amountCents,
@@ -99,6 +112,7 @@ export function seedSettlements(): Settlement[] {
   return [
     {
       id: "settle-1",
+      spaceId: DEFAULT_SPACE,
       fromUserId: CLARA,
       toUserId: TIAGO,
       amountCents: 3000,

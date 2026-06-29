@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import { createSettlementAction, type ActionState } from "@/app/(app)/actions";
 
-interface UserOpt {
+interface MemberOpt {
   id: string;
   name: string;
 }
@@ -11,11 +11,11 @@ interface UserOpt {
 const initial: ActionState = {};
 
 export function SettlementForm({
-  users,
+  members,
   today,
   suggested,
 }: {
-  users: UserOpt[];
+  members: MemberOpt[];
   today: string;
   suggested: { fromUserId: string; toUserId: string; amount: string } | null;
 }) {
@@ -32,17 +32,17 @@ export function SettlementForm({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="label" htmlFor="fromUserId">Quem paga</label>
-          <select id="fromUserId" name="fromUserId" className="select" defaultValue={suggested?.fromUserId ?? users[0]?.id}>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+          <select id="fromUserId" name="fromUserId" className="select" defaultValue={suggested?.fromUserId ?? members[0]?.id}>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
         </div>
         <div>
           <label className="label" htmlFor="toUserId">Quem recebe</label>
-          <select id="toUserId" name="toUserId" className="select" defaultValue={suggested?.toUserId ?? users[1]?.id}>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+          <select id="toUserId" name="toUserId" className="select" defaultValue={suggested?.toUserId ?? members[1]?.id}>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
         </div>

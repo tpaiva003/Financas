@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeBalance, pairwiseStatement, countsTowardsBalance } from "./balance";
+import { computeBalance, pairwiseStatement, countsTowardsBalance, simplifyDebts } from "./balance";
 import { equalSplit, percentSplit } from "./split";
 import type { Expense, Settlement, Split } from "./types";
 
@@ -125,6 +125,30 @@ describe("computeBalance", () => {
     expect(sumA).toBe(netByUser[A]);
     expect(sumB).toBe(netByUser[B]);
     expect(sumA).toBe(3000);
+  });
+
+  it("simplifyDebts: 2 pessoas", () => {
+    const transfers = simplifyDebts({ a: 5000, b: -5000 });
+    expect(transfers).toEqual([{ fromUserId: "b", toUserId: "a", amountCents: 5000 }]);
+  });
+
+  it("simplifyDebts: 3 pessoas reconcilia os nets e soma zero", () => {
+    const net = { a: 6000, b: -4500, c: -1500 };
+    const transfers = simplifyDebts(net);
+    // cada transferência move de devedor para credor
+    const sum = transfers.reduce((s, t) => s + t.amountCents, 0);
+    expect(sum).toBe(6000); // total em dívida
+    // reconstruir nets a partir das transferências
+    const rebuilt: Record<string, number> = { a: 0, b: 0, c: 0 };
+    for (const t of transfers) {
+      rebuilt[t.fromUserId]! -= t.amountCents;
+      rebuilt[t.toUserId]! += t.amountCents;
+    }
+    expect(rebuilt).toEqual(net);
+  });
+
+  it("simplifyDebts: tudo saldado → sem transferências", () => {
+    expect(simplifyDebts({ a: 0, b: 0 })).toEqual([]);
   });
 
   it("reembolso (valor negativo) não parte o saldo", () => {

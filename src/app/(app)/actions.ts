@@ -1,12 +1,18 @@
 "use server";
 
 import { z } from "zod";
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
+import { getSpaceContext, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { householdUsers } from "@/lib/users";
+import { isAdmin } from "@/lib/users";
 import { toCents, validateSplit, type Split } from "@/lib/domain";
+
+export interface ActionState {
+  error?: string;
+}
 
 const expenseSchema = z.object({
   description: z.string().trim().min(1, "Descrição obrigatória").max(200),
@@ -20,15 +26,12 @@ const expenseSchema = z.object({
   visibleToPartner: z.coerce.boolean().optional(),
 });
 
-export interface ActionState {
-  error?: string;
-}
-
 export async function createExpenseAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
+  const memberIds = ctx.members.map((m) => m.id);
 
   const parsed = expenseSchema.safeParse({
     description: formData.get("description"),
@@ -42,33 +45,25 @@ export async function createExpenseAction(
     visibleToPartner: formData.get("visibleToPartner") === "on",
   });
 
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   const data = parsed.data;
-  const users = householdUsers();
-  const userIds = users.map((u) => u.id);
-
-  if (!userIds.includes(data.payerId)) {
-    return { error: "Pagador inválido." };
-  }
+  if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
 
   const amountCents = toCents(data.amount);
 
-  // Constrói a divisão (MVP: 50/50 ou percentagem).
   let split: Split = { type: "EQUAL" };
-  if (data.kind === "shared" && data.splitType === "PERCENT") {
+  if (data.kind === "shared" && data.splitType === "PERCENT" && ctx.members.length === 2) {
     const pa = data.percentA ?? 50;
     split = {
       type: "PERCENT",
-      weights: { [userIds[0]!]: pa, [userIds[1]!]: 100 - pa },
+      weights: { [memberIds[0]!]: pa, [memberIds[1]!]: 100 - pa },
     };
-    const v = validateSplit(split, userIds, amountCents);
+    const v = validateSplit(split, memberIds, amountCents);
     if (!v.ok) return { error: v.error };
   }
 
-  const repo = getRepository();
-  await repo.createExpense({
+  await getRepository().createExpense({
+    spaceId: ctx.space.id,
     description: data.description,
     amountCents,
     currency: "EUR",
@@ -79,9 +74,9 @@ export async function createExpenseAction(
     split,
     origin: "manual",
     status: "confirmed",
-    ownerId: data.kind === "personal" ? user.id : data.payerId,
+    ownerId: data.kind === "personal" ? ctx.viewerMemberId : data.payerId,
     visibleToPartner: data.kind === "personal" ? Boolean(data.visibleToPartner) : false,
-    createdBy: user.id,
+    createdBy: ctx.user.id,
   });
 
   revalidatePath("/dashboard");
@@ -101,7 +96,7 @@ export async function createSettlementAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
 
   const parsed = settlementSchema.safeParse({
     fromUserId: formData.get("fromUserId"),
@@ -110,23 +105,21 @@ export async function createSettlementAction(
     date: formData.get("date"),
     note: formData.get("note") || null,
   });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   const data = parsed.data;
   if (data.fromUserId === data.toUserId) {
     return { error: "O pagador e o recetor têm de ser diferentes." };
   }
 
-  const repo = getRepository();
-  await repo.createSettlement({
+  await getRepository().createSettlement({
+    spaceId: ctx.space.id,
     fromUserId: data.fromUserId,
     toUserId: data.toUserId,
     amountCents: toCents(data.amount),
     currency: "EUR",
     date: data.date,
     note: data.note ?? null,
-    createdBy: user.id,
+    createdBy: ctx.user.id,
   });
 
   revalidatePath("/dashboard");
@@ -145,10 +138,84 @@ export async function deleteExpenseAction(formData: FormData): Promise<void> {
 
 export async function markMessageReadAction(formData: FormData): Promise<void> {
   const user = await requireUser();
-  const { isAdmin } = await import("@/lib/users");
   if (!isAdmin(user.id)) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().markContactMessageRead(id);
   revalidatePath("/mensagens");
+}
+
+// ---- Ambientes (spaces) ---------------------------------------------------
+
+export async function setCurrentSpaceAction(formData: FormData): Promise<void> {
+  await requireUser();
+  const spaceId = String(formData.get("spaceId") ?? "");
+  if (spaceId) {
+    cookies().set(SPACE_COOKIE, spaceId, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  }
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+const spaceSchema = z.object({
+  name: z.string().trim().min(1, "Dá um nome ao ambiente.").max(60),
+  members: z.string().trim().max(400).optional(),
+});
+
+export async function createSpaceAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const parsed = spaceSchema.safeParse({
+    name: formData.get("name"),
+    members: formData.get("members") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  // Participantes extra (um por linha ou separados por vírgula), além do criador.
+  const extras = (parsed.data.members ?? "")
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 20)
+    .map((name) => ({ name }));
+
+  const space = await getRepository().createSpace({
+    name: parsed.data.name,
+    createdBy: user.id,
+    members: [{ name: user.name, linkedUserId: user.id, email: user.email }, ...extras],
+  });
+
+  cookies().set(SPACE_COOKIE, space.id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+const memberSchema = z.object({
+  spaceId: z.string().min(1),
+  name: z.string().trim().min(1, "Indica um nome.").max(80),
+  email: z.string().trim().email("Email inválido.").max(200).optional().or(z.literal("")),
+});
+
+export async function addMemberAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireUser();
+  const parsed = memberSchema.safeParse({
+    spaceId: formData.get("spaceId"),
+    name: formData.get("name"),
+    email: formData.get("email") || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  await getRepository().addMember({
+    spaceId: parsed.data.spaceId,
+    name: parsed.data.name,
+    email: parsed.data.email || null,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/", "layout");
+  return {};
 }

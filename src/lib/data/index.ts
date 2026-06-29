@@ -16,4 +16,15 @@ export function getRepository(): Repository {
   return cached;
 }
 
-export type { Repository, Category, ExpenseFilters, CreateExpenseInput, CreateSettlementInput } from "./repository";
+export type {
+  Repository,
+  Category,
+  ExpenseFilters,
+  CreateExpenseInput,
+  CreateSettlementInput,
+  Space,
+  Member,
+  CreateSpaceInput,
+  AddMemberInput,
+  ContactMessage,
+} from "./repository";

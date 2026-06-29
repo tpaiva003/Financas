@@ -26,6 +26,35 @@ export interface Category {
   icon?: string;
 }
 
+export interface Space {
+  id: string;
+  name: string;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface Member {
+  id: string;
+  spaceId: string;
+  name: string;
+  linkedUserId?: string | null;
+  email?: string | null;
+}
+
+export interface CreateSpaceInput {
+  name: string;
+  createdBy: string;
+  /** Participantes iniciais (o criador é incluído automaticamente). */
+  members: { name: string; email?: string | null; linkedUserId?: string | null }[];
+}
+
+export interface AddMemberInput {
+  spaceId: string;
+  name: string;
+  email?: string | null;
+  linkedUserId?: string | null;
+}
+
 export interface ContactMessage {
   id: string;
   name?: string | null;
@@ -42,7 +71,9 @@ export interface CreateContactInput {
 }
 
 export interface ExpenseFilters {
-  /** Utilizador que faz o pedido (para respeitar privacidade das pessoais). */
+  /** Ambiente (space) a consultar. */
+  spaceId: string;
+  /** Participante (member) que faz o pedido, p/ privacidade das pessoais. */
   viewerId: string;
   from?: string;
   to?: string;
@@ -55,6 +86,7 @@ export interface ExpenseFilters {
 }
 
 export interface CreateExpenseInput {
+  spaceId: string;
   description: string;
   amountCents: number;
   currency: Currency;
@@ -72,6 +104,7 @@ export interface CreateExpenseInput {
 }
 
 export interface CreateSettlementInput {
+  spaceId: string;
   fromUserId: string;
   toUserId: string;
   amountCents: number;
@@ -82,12 +115,19 @@ export interface CreateSettlementInput {
 }
 
 export interface Repository {
+  // Ambientes (spaces) e participantes (members).
+  listSpacesForUser(userId: string): Promise<Space[]>;
+  getSpace(spaceId: string): Promise<Space | null>;
+  createSpace(input: CreateSpaceInput): Promise<Space>;
+  listMembers(spaceId: string): Promise<Member[]>;
+  addMember(input: AddMemberInput): Promise<Member>;
+
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
   getExpense(id: string, viewerId: string): Promise<Expense | null>;
   createExpense(input: CreateExpenseInput): Promise<Expense>;
   softDeleteExpense(id: string, actorId: string): Promise<void>;
 
-  listSettlements(): Promise<Settlement[]>;
+  listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;
 
   listCategories(): Promise<Category[]>;

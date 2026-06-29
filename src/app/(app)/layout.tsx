@@ -1,22 +1,30 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
 import { isAdmin } from "@/lib/users";
+import { getSpaceContext } from "@/lib/space";
 import { AppNav } from "@/components/AppNav";
+import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
+  const user = ctx.user;
   const admin = isAdmin(user.id);
 
   return (
     <div className="min-h-[100dvh]">
       <header className="sticky top-0 z-20 border-b border-hair bg-bg/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4">
-          <Link
-            href="/dashboard"
-            className="font-display text-[15px] font-semibold tracking-tight"
-          >
-            Finanças
-          </Link>
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard" className="font-display text-[15px] font-semibold tracking-tight">
+              Finanças
+            </Link>
+            {ctx.space ? (
+              <SpaceSwitcher
+                spaces={ctx.spaces.map((s) => ({ id: s.id, name: s.name }))}
+                currentId={ctx.space.id}
+                currentName={ctx.space.name}
+              />
+            ) : null}
+          </div>
           <AppNav userName={user.name} isAdmin={admin} />
         </div>
       </header>

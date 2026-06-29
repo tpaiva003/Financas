@@ -1,16 +1,14 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { householdUsers } from "@/lib/users";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
 
 export const metadata = { title: "Nova despesa · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function NovaDespesaPage() {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
   const categories = await getRepository().listCategories();
-  const users = householdUsers();
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -20,12 +18,13 @@ export default async function NovaDespesaPage() {
           ← Despesas
         </Link>
         <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight">Nova despesa</h1>
+        <p className="mt-1 text-sm text-fg-muted">em {ctx.space.name}</p>
       </div>
 
       <AddExpenseForm
         categories={categories}
-        users={users.map((u) => ({ id: u.id, name: u.name }))}
-        currentUserId={user.id}
+        members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
+        currentMemberId={ctx.viewerMemberId}
         today={today}
       />
     </div>

@@ -9,18 +9,23 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { normalizeText, stableUid } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
+  AddMemberInput,
   Category,
   ContactMessage,
   CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
+  CreateSpaceInput,
   ExpenseFilters,
+  Member,
   Repository,
+  Space,
 } from "./repository";
 
 function rowToExpense(r: any): Expense {
   return {
     id: r.id,
+    spaceId: r.space_id,
     uid: r.uid,
     description: r.description,
     amountCents: r.amount_cents,
@@ -46,6 +51,7 @@ function rowToExpense(r: any): Expense {
 function rowToSettlement(r: any): Settlement {
   return {
     id: r.id,
+    spaceId: r.space_id,
     fromUserId: r.from_user_id,
     toUserId: r.to_user_id,
     amountCents: r.amount_cents,
@@ -58,9 +64,99 @@ function rowToSettlement(r: any): Settlement {
 }
 
 export class SupabaseRepository implements Repository {
+  async listSpacesForUser(userId: string): Promise<Space[]> {
+    const db = getSupabaseAdmin();
+    const { data: mem, error: e1 } = await db
+      .from("members")
+      .select("space_id")
+      .eq("linked_user_id", userId);
+    if (e1) throw new Error(e1.message);
+    const ids = [...new Set((mem ?? []).map((m: any) => m.space_id))];
+    if (ids.length === 0) return [];
+    const { data, error } = await db.from("spaces").select("*").in("id", ids).order("created_at");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async getSpace(spaceId: string): Promise<Space | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.from("spaces").select("*").eq("id", spaceId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return { id: data.id, name: data.name, createdBy: data.created_by, createdAt: data.created_at };
+  }
+
+  async createSpace(input: CreateSpaceInput): Promise<Space> {
+    const db = getSupabaseAdmin();
+    const id = crypto.randomUUID();
+    const { data, error } = await db
+      .from("spaces")
+      .insert({ id, name: input.name, created_by: input.createdBy })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    const rows = input.members.map((m) => ({
+      id: crypto.randomUUID(),
+      space_id: id,
+      name: m.name,
+      linked_user_id: m.linkedUserId ?? null,
+      email: m.email ?? null,
+    }));
+    if (rows.length) {
+      const { error: e2 } = await db.from("members").insert(rows);
+      if (e2) throw new Error(e2.message);
+    }
+    return { id: data.id, name: data.name, createdBy: data.created_by, createdAt: data.created_at };
+  }
+
+  async listMembers(spaceId: string): Promise<Member[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("members")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("created_at");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      spaceId: r.space_id,
+      name: r.name,
+      linkedUserId: r.linked_user_id,
+      email: r.email,
+    }));
+  }
+
+  async addMember(input: AddMemberInput): Promise<Member> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("members")
+      .insert({
+        id: crypto.randomUUID(),
+        space_id: input.spaceId,
+        name: input.name,
+        linked_user_id: input.linkedUserId ?? null,
+        email: input.email ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      id: data.id,
+      spaceId: data.space_id,
+      name: data.name,
+      linkedUserId: data.linked_user_id,
+      email: data.email,
+    };
+  }
+
   async listExpenses(filters: ExpenseFilters): Promise<Expense[]> {
     const db = getSupabaseAdmin();
-    let q = db.from("expenses").select("*");
+    let q = db.from("expenses").select("*").eq("space_id", filters.spaceId);
 
     if (!filters.includeDeleted) q = q.is("deleted_at", null);
     if (filters.from) q = q.gte("transaction_date", filters.from);
@@ -107,6 +203,7 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await db
       .from("expenses")
       .insert({
+        space_id: input.spaceId,
         uid,
         description: input.description,
         amount_cents: input.amountCents,
@@ -138,11 +235,12 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async listSettlements(): Promise<Settlement[]> {
+  async listSettlements(spaceId: string): Promise<Settlement[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
       .from("settlements")
       .select("*")
+      .eq("space_id", spaceId)
       .order("date", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(rowToSettlement);
@@ -153,6 +251,7 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await db
       .from("settlements")
       .insert({
+        space_id: input.spaceId,
         from_user_id: input.fromUserId,
         to_user_id: input.toUserId,
         amount_cents: input.amountCents,

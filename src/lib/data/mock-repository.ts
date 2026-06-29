@@ -11,22 +11,30 @@ import { stableUid } from "@/lib/domain";
 import type { Expense, Settlement, ClassificationRule } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
+  AddMemberInput,
   Category,
   ContactMessage,
   CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
+  CreateSpaceInput,
   ExpenseFilters,
+  Member,
   Repository,
+  Space,
 } from "./repository";
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
   seedExpenses,
   seedSettlements,
+  seedSpaces,
+  seedMembers,
 } from "./seed-data";
 
 interface Store {
+  spaces: Space[];
+  members: Member[];
   expenses: Expense[];
   settlements: Settlement[];
   categories: Category[];
@@ -41,6 +49,8 @@ const globalForStore = globalThis as unknown as { __financasStore?: Store };
 function getStore(): Store {
   if (!globalForStore.__financasStore) {
     globalForStore.__financasStore = {
+      spaces: seedSpaces(),
+      members: seedMembers(),
       expenses: seedExpenses(),
       settlements: seedSettlements(),
       categories: DEFAULT_CATEGORIES,
@@ -60,9 +70,59 @@ function canView(e: Expense, viewerId: string): boolean {
 }
 
 export class MockRepository implements Repository {
+  async listSpacesForUser(userId: string): Promise<Space[]> {
+    const store = getStore();
+    const spaceIds = new Set(
+      store.members.filter((m) => m.linkedUserId === userId).map((m) => m.spaceId),
+    );
+    return store.spaces.filter((s) => spaceIds.has(s.id));
+  }
+
+  async getSpace(spaceId: string): Promise<Space | null> {
+    return getStore().spaces.find((s) => s.id === spaceId) ?? null;
+  }
+
+  async createSpace(input: CreateSpaceInput): Promise<Space> {
+    const store = getStore();
+    const space: Space = {
+      id: randomUUID(),
+      name: input.name,
+      createdBy: input.createdBy,
+      createdAt: new Date().toISOString(),
+    };
+    store.spaces.unshift(space);
+    for (const m of input.members) {
+      store.members.push({
+        id: randomUUID(),
+        spaceId: space.id,
+        name: m.name,
+        linkedUserId: m.linkedUserId ?? null,
+        email: m.email ?? null,
+      });
+    }
+    return space;
+  }
+
+  async listMembers(spaceId: string): Promise<Member[]> {
+    return getStore().members.filter((m) => m.spaceId === spaceId);
+  }
+
+  async addMember(input: AddMemberInput): Promise<Member> {
+    const member: Member = {
+      id: randomUUID(),
+      spaceId: input.spaceId,
+      name: input.name,
+      linkedUserId: input.linkedUserId ?? null,
+      email: input.email ?? null,
+    };
+    getStore().members.push(member);
+    return member;
+  }
+
   async listExpenses(filters: ExpenseFilters): Promise<Expense[]> {
     const store = getStore();
     return store.expenses
+      .filter((e) => (e.spaceId ?? "casa") === filters.spaceId)
       .filter((e) => filters.includeDeleted || !e.deletedAt)
       .filter((e) => canView(e, filters.viewerId))
       .filter((e) => (filters.from ? e.transactionDate >= filters.from : true))
@@ -94,6 +154,7 @@ export class MockRepository implements Repository {
     });
     const expense: Expense = {
       id: randomUUID(),
+      spaceId: input.spaceId,
       uid,
       description: input.description,
       amountCents: input.amountCents,
@@ -125,13 +186,16 @@ export class MockRepository implements Repository {
     }
   }
 
-  async listSettlements(): Promise<Settlement[]> {
-    return [...getStore().settlements].sort((a, b) => (a.date < b.date ? 1 : -1));
+  async listSettlements(spaceId: string): Promise<Settlement[]> {
+    return getStore()
+      .settlements.filter((s) => (s.spaceId ?? "casa") === spaceId)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 
   async createSettlement(input: CreateSettlementInput): Promise<Settlement> {
     const settlement: Settlement = {
       id: randomUUID(),
+      spaceId: input.spaceId,
       fromUserId: input.fromUserId,
       toUserId: input.toUserId,
       amountCents: input.amountCents,

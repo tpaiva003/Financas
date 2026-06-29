@@ -5,7 +5,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import { createExpenseAction, type ActionState } from "@/app/(app)/actions";
 import type { Category } from "@/lib/data";
 
-interface UserOpt {
+interface MemberOpt {
   id: string;
   name: string;
 }
@@ -14,13 +14,13 @@ const initial: ActionState = {};
 
 export function AddExpenseForm({
   categories,
-  users,
-  currentUserId,
+  members,
+  currentMemberId,
   today,
 }: {
   categories: Category[];
-  users: UserOpt[];
-  currentUserId: string;
+  members: MemberOpt[];
+  currentMemberId: string;
   today: string;
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
@@ -29,8 +29,9 @@ export function AddExpenseForm({
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT">("EQUAL");
   const [percentA, setPercentA] = useState(50);
 
-  const userA = users[0];
-  const userB = users[1];
+  const isPair = members.length === 2;
+  const a = members[0];
+  const b = members[1];
 
   return (
     <form action={formAction} className="space-y-5">
@@ -40,7 +41,6 @@ export function AddExpenseForm({
         </p>
       ) : null}
 
-      {/* Valor — protagonista */}
       <div className="card p-6">
         <label className="label" htmlFor="amount">Valor</label>
         <div className="flex items-baseline gap-2">
@@ -87,20 +87,20 @@ export function AddExpenseForm({
 
         <div>
           <span className="label">Quem pagou</span>
-          <div className="grid grid-cols-2 gap-2">
-            {users.map((u) => (
+          <div className={`grid gap-2 ${members.length > 2 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
+            {members.map((m) => (
               <label
-                key={u.id}
+                key={m.id}
                 className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-hair px-3 py-2.5 text-sm text-fg-muted transition has-[:checked]:border-fg/40 has-[:checked]:bg-panel2 has-[:checked]:text-fg"
               >
                 <input
                   type="radio"
                   name="payerId"
-                  value={u.id}
-                  defaultChecked={u.id === currentUserId}
+                  value={m.id}
+                  defaultChecked={m.id === currentMemberId}
                   className="sr-only"
                 />
-                {u.name}
+                {m.name}
               </label>
             ))}
           </div>
@@ -120,36 +120,46 @@ export function AddExpenseForm({
         {kind === "shared" ? (
           <div>
             <span className="label">Como se divide</span>
-            <div className="grid grid-cols-2 gap-2">
-              <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>50 / 50</ToggleButton>
-              <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>Percentagem</ToggleButton>
-            </div>
-            <input type="hidden" name="splitType" value={splitType} />
-
-            {splitType === "PERCENT" && userA && userB ? (
-              <div className="mt-4">
-                <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                  <span>{userA.name}: {percentA}%</span>
-                  <span>{userB.name}: {100 - percentA}%</span>
+            {isPair ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToggleButton active={splitType === "EQUAL"} onClick={() => setSplitType("EQUAL")}>50 / 50</ToggleButton>
+                  <ToggleButton active={splitType === "PERCENT"} onClick={() => setSplitType("PERCENT")}>Percentagem</ToggleButton>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={percentA}
-                  onChange={(e) => setPercentA(Number(e.target.value))}
-                  className="mt-2 w-full accent-fg"
-                  aria-label={`Percentagem de ${userA.name}`}
-                />
-                <input type="hidden" name="percentA" value={percentA} />
-              </div>
-            ) : null}
+                <input type="hidden" name="splitType" value={splitType} />
+                {splitType === "PERCENT" && a && b ? (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
+                      <span>{a.name}: {percentA}%</span>
+                      <span>{b.name}: {100 - percentA}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={percentA}
+                      onChange={(e) => setPercentA(Number(e.target.value))}
+                      className="mt-2 w-full accent-fg"
+                      aria-label={`Percentagem de ${a.name}`}
+                    />
+                    <input type="hidden" name="percentA" value={percentA} />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="rounded-xl border border-hair bg-panel2/50 px-3 py-2.5 text-sm text-fg-muted">
+                  Dividido em partes iguais por {members.length} participantes.
+                </p>
+                <input type="hidden" name="splitType" value="EQUAL" />
+              </>
+            )}
           </div>
         ) : (
           <label className="flex items-center gap-3 text-sm text-fg-muted">
             <input type="checkbox" name="visibleToPartner" className="h-4 w-4 rounded border-hair bg-panel2 accent-fg" />
-            Tornar visível ao/à parceiro(a)
+            Tornar visível aos outros participantes
           </label>
         )}
       </div>

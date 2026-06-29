@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { householdUsers, userById } from "@/lib/users";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { formatCents, type ExpenseKind } from "@/lib/domain";
 
@@ -18,15 +17,11 @@ interface SearchParams {
   status?: string;
 }
 
-export default async function DespesasPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  const user = await requireUser();
+export default async function DespesasPage({ searchParams }: { searchParams: SearchParams }) {
+  const ctx = await getSpaceContext();
   const repo = getRepository();
   const categories = await repo.listCategories();
-  const users = householdUsers();
+  const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
   const kind =
     searchParams.kind === "shared" || searchParams.kind === "personal"
@@ -34,7 +29,8 @@ export default async function DespesasPage({
       : undefined;
 
   let expenses = await repo.listExpenses({
-    viewerId: user.id,
+    spaceId: ctx.space.id,
+    viewerId: ctx.viewerMemberId,
     query: searchParams.q,
     categoryId: searchParams.categoryId,
     payerId: searchParams.payerId,
@@ -58,15 +54,12 @@ export default async function DespesasPage({
     <div className="space-y-7">
       <div className="flex items-end justify-between">
         <div>
-          <p className="eyebrow">Histórico</p>
+          <p className="eyebrow">{ctx.space.name}</p>
           <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Despesas</h1>
         </div>
-        <Link href="/despesas/nova" className="btn-primary hidden sm:inline-flex">
-          Adicionar
-        </Link>
+        <Link href="/despesas/nova" className="btn-primary hidden sm:inline-flex">Adicionar</Link>
       </div>
 
-      {/* Filtros (GET — funciona sem JS) */}
       <form className="card grid grid-cols-2 gap-3 p-4 sm:grid-cols-4" method="get">
         <div className="col-span-2">
           <label className="label" htmlFor="q">Pesquisar</label>
@@ -92,9 +85,9 @@ export default async function DespesasPage({
         <div>
           <label className="label" htmlFor="payerId">Quem pagou</label>
           <select id="payerId" name="payerId" defaultValue={searchParams.payerId ?? ""} className="select">
-            <option value="">Ambos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+            <option value="">Todos</option>
+            {ctx.members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
         </div>
@@ -132,7 +125,7 @@ export default async function DespesasPage({
               key={e.id}
               expense={e}
               categoryName={categoryName(e.categoryId)}
-              payerName={userById(e.payerId)?.name ?? e.payerId}
+              payerName={nameOf(e.payerId)}
             />
           ))}
         </ul>
