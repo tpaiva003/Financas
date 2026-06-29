@@ -8,10 +8,20 @@ import { requireUser } from "@/lib/session";
 import { getSpaceContext, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { isAdmin } from "@/lib/users";
+import { uploadReceipt } from "@/lib/services/receipts-service";
 import { toCents, validateSplit, type Split } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
+}
+
+async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
+  try {
+    const path = await uploadReceipt(expenseId, spaceId, formData.get("receipt"));
+    if (path) await getRepository().setReceiptPath(expenseId, path);
+  } catch {
+    // upload de recibo falhou: não bloqueia a gravação da despesa
+  }
 }
 
 const expenseSchema = z.object({
@@ -62,7 +72,7 @@ export async function createExpenseAction(
     if (!v.ok) return { error: v.error };
   }
 
-  await getRepository().createExpense({
+  const created = await getRepository().createExpense({
     spaceId: ctx.space.id,
     description: data.description,
     amountCents,
@@ -78,6 +88,7 @@ export async function createExpenseAction(
     visibleToPartner: data.kind === "personal" ? Boolean(data.visibleToPartner) : false,
     createdBy: ctx.user.id,
   });
+  await handleReceipt(created.id, ctx.space.id, formData);
 
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
@@ -171,6 +182,7 @@ export async function updateExpenseAction(
     ownerId: data.kind === "personal" ? ctx.viewerMemberId : data.payerId,
     visibleToPartner: data.kind === "personal" ? Boolean(data.visibleToPartner) : false,
   });
+  await handleReceipt(id, ctx.space.id, formData);
 
   revalidatePath("/dashboard");
   revalidatePath("/despesas");

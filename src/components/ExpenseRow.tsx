@@ -63,6 +63,9 @@ export function ExpenseRow({
             {expense.status === "pending" ? (
               <span className="chip shrink-0 border-debt/30 text-debt">Pendente</span>
             ) : null}
+            {expense.receiptPath ? (
+              <span className="shrink-0 text-fg-faint" title="Tem recibo" aria-label="Tem recibo">📎</span>
+            ) : null}
           </div>
           <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
             {date} · {categoryName} · {payerName}

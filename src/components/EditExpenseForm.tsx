@@ -29,11 +29,13 @@ export function EditExpenseForm({
   categories,
   members,
   initial,
+  hasReceipt,
 }: {
   id: string;
   categories: Category[];
   members: MemberOpt[];
   initial: Initial;
+  hasReceipt: boolean;
 }) {
   const [state, formAction] = useFormState(updateExpenseAction, empty);
 
@@ -109,6 +111,27 @@ export function EditExpenseForm({
                 </label>
               ))}
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="label" htmlFor="receipt">Recibo</label>
+              {hasReceipt ? (
+                <a href={`/api/receipt/${id}`} target="_blank" rel="noreferrer" className="text-xs text-fg-muted underline-offset-4 hover:text-fg hover:underline">
+                  Ver recibo atual ↗
+                </a>
+              ) : null}
+            </div>
+            <input
+              id="receipt"
+              name="receipt"
+              type="file"
+              accept="image/*,application/pdf"
+              className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-panel2 file:px-3 file:py-2 file:text-sm file:text-fg hover:file:bg-panel2/70"
+            />
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
+              {hasReceipt ? "Anexar substitui o atual" : "Foto ou PDF, opcional"}
+            </p>
           </div>
         </div>
 

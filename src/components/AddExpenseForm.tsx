@@ -105,6 +105,17 @@ export function AddExpenseForm({
             ))}
           </div>
         </div>
+
+        <div>
+          <label className="label" htmlFor="receipt">Recibo (opcional)</label>
+          <input
+            id="receipt"
+            name="receipt"
+            type="file"
+            accept="image/*,application/pdf"
+            className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-panel2 file:px-3 file:py-2 file:text-sm file:text-fg hover:file:bg-panel2/70"
+          />
+        </div>
       </div>
 
       <div className="card space-y-5 p-6">

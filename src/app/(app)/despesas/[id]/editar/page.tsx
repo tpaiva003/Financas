@@ -31,6 +31,7 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
 
       <EditExpenseForm
         id={expense.id}
+        hasReceipt={Boolean(expense.receiptPath)}
         categories={categories}
         members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
         initial={{

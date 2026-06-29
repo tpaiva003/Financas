@@ -249,6 +249,12 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async setReceiptPath(id: string, path: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("expenses").update({ receipt_path: path }).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   async softDeleteExpense(id: string, _actorId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db

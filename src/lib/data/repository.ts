@@ -138,6 +138,7 @@ export interface Repository {
   getExpense(id: string, viewerId: string): Promise<Expense | null>;
   createExpense(input: CreateExpenseInput): Promise<Expense>;
   updateExpense(id: string, input: UpdateExpenseInput): Promise<void>;
+  setReceiptPath(id: string, path: string | null): Promise<void>;
   softDeleteExpense(id: string, actorId: string): Promise<void>;
 
   listSettlements(spaceId: string): Promise<Settlement[]>;

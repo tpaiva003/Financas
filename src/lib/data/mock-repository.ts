@@ -193,6 +193,11 @@ export class MockRepository implements Repository {
     e.updatedAt = new Date().toISOString();
   }
 
+  async setReceiptPath(id: string, path: string | null): Promise<void> {
+    const e = getStore().expenses.find((x) => x.id === id);
+    if (e) e.receiptPath = path;
+  }
+
   async softDeleteExpense(id: string, _actorId: string): Promise<void> {
     const e = getStore().expenses.find((x) => x.id === id);
     if (e) {
