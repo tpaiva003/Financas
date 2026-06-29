@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react";
 const BASE_LINKS = [
   { href: "/dashboard", label: "Saldo" },
   { href: "/despesas", label: "Despesas" },
+  { href: "/relatorios", label: "Relatórios" },
   { href: "/acertos", label: "Acertos" },
 ];
 
