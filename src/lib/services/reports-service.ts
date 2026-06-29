@@ -5,6 +5,7 @@
 
 import { getRepository } from "@/lib/data";
 import type { Member, Category } from "@/lib/data";
+import { buildMonthComparison, type MonthComparison } from "@/lib/domain";
 
 export interface Slice {
   key: string;
@@ -19,6 +20,7 @@ export interface SpaceReport {
   byMonth: Slice[];
   byPayer: Slice[];
   count: number;
+  comparison: MonthComparison;
 }
 
 const MONTHS_PT = [
@@ -85,5 +87,14 @@ export async function getSpaceReport(
     }))
     .sort((a, b) => b.amountCents - a.amountCents);
 
-  return { totalCents: total, byCategory, byMonth, byPayer, count: expenses.length };
+  const comparison = buildMonthComparison(
+    expenses.map((e) => ({
+      amountCents: e.amountCents,
+      transactionDate: e.transactionDate,
+      categoryId: e.categoryId ?? null,
+    })),
+    categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+  );
+
+  return { totalCents: total, byCategory, byMonth, byPayer, count: expenses.length, comparison };
 }
