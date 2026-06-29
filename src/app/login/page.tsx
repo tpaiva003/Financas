@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { isDevLoginEnabled } from "@/lib/env";
-import { householdUsers } from "@/lib/users";
 import { LoginForm } from "@/components/LoginForm";
 
 export const metadata = { title: "Entrar · Finanças" };
@@ -10,8 +8,6 @@ export default function LoginPage({
 }: {
   searchParams: { callbackUrl?: string; error?: string };
 }) {
-  const devUsers = isDevLoginEnabled() ? householdUsers() : [];
-
   return (
     <main className="relative flex min-h-[100dvh] flex-col">
       {/* topo */}
@@ -47,10 +43,7 @@ export default function LoginPage({
               </p>
             ) : null}
 
-            <LoginForm
-              callbackUrl={searchParams.callbackUrl ?? "/dashboard"}
-              devUsers={devUsers}
-            />
+            <LoginForm callbackUrl={searchParams.callbackUrl ?? "/dashboard"} />
           </div>
         </div>
       </div>

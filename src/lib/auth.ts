@@ -12,7 +12,7 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
-import { isDevLoginEnabled, isEmailAllowed } from "./env";
+import { isEmailAllowed } from "./env";
 import { userByEmail } from "./users";
 import { hashPassword, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
@@ -47,21 +47,5 @@ providers.push(
     },
   }),
 );
-
-if (isDevLoginEnabled()) {
-  providers.push(
-    Credentials({
-      id: "dev-login",
-      name: "Dev login (sem SSO)",
-      credentials: { email: { label: "Email", type: "email" } },
-      authorize: (raw) => {
-        const email = typeof raw?.email === "string" ? raw.email.toLowerCase() : "";
-        if (!isEmailAllowed(email)) return null;
-        const u = userByEmail(email);
-        return { id: u?.id ?? email, email, name: u?.name ?? email };
-      },
-    }),
-  );
-}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({ ...authConfig, providers });
