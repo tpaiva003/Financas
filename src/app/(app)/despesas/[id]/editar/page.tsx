@@ -13,7 +13,7 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
   const expense = await repo.getExpense(params.id, ctx.viewerMemberId);
   if (!expense) redirect("/despesas");
 
-  const categories = await repo.listCategories();
+  const categories = await repo.listCategories(ctx.space.id);
   const memberIds = ctx.members.map((m) => m.id);
 
   // Deteta divisão "só de um(a)": PERCENT em que um membro tem 100% e os restantes 0%.

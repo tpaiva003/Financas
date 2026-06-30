@@ -20,7 +20,7 @@ interface SearchParams {
 export default async function DespesasPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await getSpaceContext();
   const repo = getRepository();
-  const categories = await repo.listCategories();
+  const categories = await repo.listCategories(ctx.space.id);
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
   const kind =

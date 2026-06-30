@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
+import { getRepository } from "@/lib/data";
 import { AddMemberForm } from "@/components/AddMemberForm";
+import { CategoriesManager } from "@/components/CategoriesManager";
 
 export const metadata = { title: "Ambiente · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function AmbientePage() {
   const ctx = await getSpaceContext();
+  const categories = await getRepository().listCategories(ctx.space.id);
+  const custom = categories.filter((c) => c.spaceId);
+  const defaults = categories.filter((c) => !c.spaceId);
 
   return (
     <div className="space-y-7">
@@ -42,6 +47,15 @@ export default async function AmbientePage() {
           precisa de conta; o email é opcional, para mais tarde poder entrar.
         </p>
         <AddMemberForm spaceId={ctx.space.id} />
+      </section>
+
+      <section>
+        <h2 className="eyebrow mb-2">Categorias</h2>
+        <p className="mb-3 text-sm text-fg-muted">
+          Ajusta as categorias deste ambiente (ex.: Casamento ou Férias na Casa). As
+          categorias padrão ficam sempre disponíveis.
+        </p>
+        <CategoriesManager custom={custom} defaults={defaults} />
       </section>
 
       <Link href="/ambientes/novo" className="btn-secondary">+ Criar novo ambiente</Link>

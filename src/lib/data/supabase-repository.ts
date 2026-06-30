@@ -12,6 +12,7 @@ import type {
   AddMemberInput,
   Category,
   ContactMessage,
+  CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
@@ -20,7 +21,9 @@ import type {
   Member,
   Repository,
   Space,
+  UpdateCategoryInput,
 } from "./repository";
+import { randomUUID } from "node:crypto";
 
 function rowToExpense(r: any): Expense {
   return {
@@ -295,16 +298,62 @@ export class SupabaseRepository implements Repository {
     return rowToSettlement(data);
   }
 
-  async listCategories(): Promise<Category[]> {
+  async listCategories(spaceId?: string): Promise<Category[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("categories").select("*").order("name");
+    let query = db.from("categories").select("*").order("name");
+    query = spaceId
+      ? query.or(`space_id.is.null,space_id.eq.${spaceId}`)
+      : query.is("space_id", null);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return (data ?? []).map((r: any) => ({
       id: r.id,
       name: r.name,
       color: r.color,
       icon: r.icon,
+      spaceId: r.space_id ?? null,
     }));
+  }
+
+  async createCategory(input: CreateCategoryInput): Promise<Category> {
+    const db = getSupabaseAdmin();
+    const id = `cat_${randomUUID()}`;
+    const { error } = await db.from("categories").insert({
+      id,
+      name: input.name,
+      color: input.color,
+      icon: input.icon ?? null,
+      space_id: input.spaceId,
+    });
+    if (error) throw new Error(error.message);
+    return { id, name: input.name, color: input.color, icon: input.icon ?? undefined, spaceId: input.spaceId };
+  }
+
+  async updateCategory(id: string, spaceId: string, patch: UpdateCategoryInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const update: Record<string, unknown> = {};
+    if (patch.name !== undefined) update.name = patch.name;
+    if (patch.color !== undefined) update.color = patch.color;
+    if (patch.icon !== undefined) update.icon = patch.icon ?? null;
+    if (Object.keys(update).length === 0) return;
+    // Só permite editar categorias do próprio ambiente (nunca as padrão).
+    const { error } = await db
+      .from("categories")
+      .update(update)
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteCategory(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    // FK on delete set null nas despesas => ficam sem categoria.
+    const { error } = await db
+      .from("categories")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
   }
 
   async listClassificationRules(): Promise<ClassificationRule[]> {

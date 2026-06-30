@@ -24,6 +24,21 @@ export interface Category {
   name: string;
   color: string;
   icon?: string;
+  /** null = categoria padrão (disponível em todos os ambientes). */
+  spaceId?: string | null;
+}
+
+export interface CreateCategoryInput {
+  spaceId: string;
+  name: string;
+  color: string;
+  icon?: string | null;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  color?: string;
+  icon?: string | null;
 }
 
 export interface Space {
@@ -146,7 +161,11 @@ export interface Repository {
   listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;
 
-  listCategories(): Promise<Category[]>;
+  /** Categorias disponíveis: padrão (space_id null) + as do ambiente indicado. */
+  listCategories(spaceId?: string): Promise<Category[]>;
+  createCategory(input: CreateCategoryInput): Promise<Category>;
+  updateCategory(id: string, spaceId: string, patch: UpdateCategoryInput): Promise<void>;
+  deleteCategory(id: string, spaceId: string): Promise<void>;
   listClassificationRules(): Promise<ClassificationRule[]>;
 
   // Palavra-chave (login interim).

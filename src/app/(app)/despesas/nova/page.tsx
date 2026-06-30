@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NovaDespesaPage() {
   const ctx = await getSpaceContext();
-  const categories = await getRepository().listCategories();
+  const categories = await getRepository().listCategories(ctx.space.id);
   const today = new Date().toISOString().slice(0, 10);
 
   return (

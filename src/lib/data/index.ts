@@ -19,6 +19,8 @@ export function getRepository(): Repository {
 export type {
   Repository,
   Category,
+  CreateCategoryInput,
+  UpdateCategoryInput,
   ExpenseFilters,
   CreateExpenseInput,
   CreateSettlementInput,

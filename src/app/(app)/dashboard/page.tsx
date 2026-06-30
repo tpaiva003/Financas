@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const [{ transfers }, recent, categories] = await Promise.all([
     getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId),
     repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
-    repo.listCategories(),
+    repo.listCategories(ctx.space.id),
   ]);
 
   const pending = recent.filter((e) => e.status === "pending");

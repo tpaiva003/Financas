@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RelatoriosPage() {
   const ctx = await getSpaceContext();
-  const categories = await getRepository().listCategories();
+  const categories = await getRepository().listCategories(ctx.space.id);
   const report = await getSpaceReport(ctx.space.id, ctx.viewerMemberId, ctx.members, categories);
 
   return (

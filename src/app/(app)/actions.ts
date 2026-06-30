@@ -298,6 +298,67 @@ export async function createSpaceAction(
   redirect("/dashboard");
 }
 
+// ---- Categorias por ambiente ----------------------------------------------
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+const categorySchema = z.object({
+  name: z.string().trim().min(1, "Dá um nome à categoria.").max(40),
+  color: z.string().trim().regex(HEX, "Cor inválida.").optional().or(z.literal("")),
+  icon: z.string().trim().max(4).optional().or(z.literal("")),
+});
+
+export async function createCategoryAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const parsed = categorySchema.safeParse({
+    name: formData.get("name"),
+    color: formData.get("color") || "",
+    icon: formData.get("icon") || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  await getRepository().createCategory({
+    spaceId: ctx.space.id,
+    name: parsed.data.name,
+    color: parsed.data.color || "#64748b",
+    icon: parsed.data.icon || null,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/despesas");
+  return {};
+}
+
+export async function updateCategoryAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const parsed = categorySchema.safeParse({
+    name: formData.get("name"),
+    color: formData.get("color") || "",
+    icon: formData.get("icon") || "",
+  });
+  if (!parsed.success) return;
+  await getRepository().updateCategory(id, ctx.space.id, {
+    name: parsed.data.name,
+    color: parsed.data.color || "#64748b",
+    icon: parsed.data.icon || null,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/despesas");
+}
+
+export async function deleteCategoryAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().deleteCategory(id, ctx.space.id);
+  revalidatePath("/ambiente");
+  revalidatePath("/despesas");
+}
+
 const memberSchema = z.object({
   spaceId: z.string().min(1),
   name: z.string().trim().min(1, "Indica um nome.").max(80),

@@ -14,7 +14,7 @@ export async function GET() {
   const repo = getRepository();
   const [expenses, categories] = await Promise.all([
     repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
-    repo.listCategories(),
+    repo.listCategories(ctx.space.id),
   ]);
 
   const catName = (id?: string | null) => categories.find((c) => c.id === id)?.name ?? "";

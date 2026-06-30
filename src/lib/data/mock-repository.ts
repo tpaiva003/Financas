@@ -14,6 +14,7 @@ import type {
   AddMemberInput,
   Category,
   ContactMessage,
+  CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
   CreateSettlementInput,
@@ -22,6 +23,7 @@ import type {
   Member,
   Repository,
   Space,
+  UpdateCategoryInput,
 } from "./repository";
 import {
   DEFAULT_CATEGORIES,
@@ -53,7 +55,7 @@ function getStore(): Store {
       members: seedMembers(),
       expenses: seedExpenses(),
       settlements: seedSettlements(),
-      categories: DEFAULT_CATEGORIES,
+      categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, spaceId: null })),
       rules: DEFAULT_RULES,
       passwords: {},
       contacts: [],
@@ -229,8 +231,39 @@ export class MockRepository implements Repository {
     return settlement;
   }
 
-  async listCategories(): Promise<Category[]> {
-    return getStore().categories;
+  async listCategories(spaceId?: string): Promise<Category[]> {
+    return getStore()
+      .categories.filter((c) => !c.spaceId || (spaceId && c.spaceId === spaceId))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  }
+
+  async createCategory(input: CreateCategoryInput): Promise<Category> {
+    const cat: Category = {
+      id: `cat_${randomUUID()}`,
+      name: input.name,
+      color: input.color,
+      icon: input.icon ?? undefined,
+      spaceId: input.spaceId,
+    };
+    getStore().categories.push(cat);
+    return cat;
+  }
+
+  async updateCategory(id: string, spaceId: string, patch: UpdateCategoryInput): Promise<void> {
+    const c = getStore().categories.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!c) return; // padrão (sem space) não é editável
+    if (patch.name !== undefined) c.name = patch.name;
+    if (patch.color !== undefined) c.color = patch.color;
+    if (patch.icon !== undefined) c.icon = patch.icon ?? undefined;
+  }
+
+  async deleteCategory(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.categories = store.categories.filter((c) => !(c.id === id && c.spaceId === spaceId));
+    // Despesas que apontavam para esta categoria ficam sem categoria.
+    for (const e of store.expenses) {
+      if (e.categoryId === id) e.categoryId = null;
+    }
   }
 
   async listClassificationRules(): Promise<ClassificationRule[]> {
