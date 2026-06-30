@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { createExpenseAction, type ActionState } from "@/app/(app)/actions";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { formatCents } from "@/lib/domain";
+import { parseMoneyToCents } from "@/lib/money-input";
 import type { Category } from "@/lib/data";
 
 interface MemberOpt {
@@ -32,6 +34,11 @@ export function AddExpenseForm({
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
+  const [amountStr, setAmountStr] = useState("");
+
+  const amountCents = parseMoneyToCents(amountStr);
+  const shareA = Math.round((amountCents * percentA) / 100);
+  const shareB = amountCents - shareA;
 
   const isPair = members.length === 2;
   const a = members[0];
@@ -56,6 +63,8 @@ export function AddExpenseForm({
             inputMode="decimal"
             required
             autoFocus
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
             placeholder="0,00"
             className="w-full border-0 bg-transparent p-0 font-display text-5xl font-semibold tracking-tight tnum text-fg placeholder:text-fg-faint/40 focus:outline-none focus:ring-0"
           />
@@ -162,8 +171,8 @@ export function AddExpenseForm({
             {splitType === "PERCENT" && a && b ? (
               <div className="mt-4">
                 <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                  <span>{a.name}: {percentA}%</span>
-                  <span>{b.name}: {100 - percentA}%</span>
+                  <span>{a.name}: {percentA}%{amountCents ? ` · ${formatCents(shareA)}` : ""}</span>
+                  <span>{b.name}: {100 - percentA}%{amountCents ? ` · ${formatCents(shareB)}` : ""}</span>
                 </div>
                 <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                 <input type="hidden" name="percentA" value={percentA} />
