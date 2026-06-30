@@ -158,3 +158,23 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   participantes** (mapeados por `linked_user_id`): zera aqui (acerto interno +
   colapso) e recria a dívida no destino como despesa "Saldo transferido de X"
   (paga pelo credor, 100% do devedor). Tudo continua explicável.
+
+### Despesas recorrentes (#20, REQ-REC)
+- Migração 0007: tabela `recurring_templates` (por ambiente) + coluna
+  `recurring_id` em `expenses` com índice único `(recurring_id, transaction_date)`
+  para idempotência. A tabela original (0001), vazia e sem uso, foi recriada.
+- Lógica pura e testada em `src/lib/domain/recurring.ts` (`nextOccurrence`,
+  `enumerateDue`) — frequência semanal/mensal/anual, com clamp do dia ao último
+  do mês. 10 testes.
+- **Geração preguiçosa** (`recurring-service.ts`): como não há cron, as
+  ocorrências em atraso são materializadas ao abrir o Dashboard ou os
+  Recorrentes. Idempotente (verifica ocorrência + índice único) e tolerante a
+  falhas (try/catch — nunca bloqueia a app).
+- **Valor fixo** → despesa `confirmed` (entra logo no saldo). **Valor variável**
+  → despesa `pending`; só entra no saldo depois de confirmar o valor real
+  (REQ-REC-2). `computeBalance` já ignora `pending`, por isso o saldo mantém-se
+  correto e explicável.
+- Página `/recorrentes`: "por confirmar", lista de templates (pausar, retomar,
+  saltar, terminar, eliminar — REQ-REC-4) e formulário de criação.
+- **Import de extratos** fica pendente até o utilizador partilhar exemplos de
+  export dos bancos (Activo/Bankinter) para mapear colunas.

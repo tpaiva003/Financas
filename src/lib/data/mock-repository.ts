@@ -20,11 +20,14 @@ import type {
   CreateSettlementInput,
   CreateSpaceInput,
   ExpenseFilters,
+  CreateRecurringInput,
   Member,
+  RecurringTemplate,
   Repository,
   Space,
   UpdateCategoryInput,
   UpdateMemberInput,
+  UpdateRecurringInput,
 } from "./repository";
 import {
   DEFAULT_CATEGORIES,
@@ -44,6 +47,7 @@ interface Store {
   rules: ClassificationRule[];
   passwords: Record<string, string>;
   contacts: ContactMessage[];
+  recurring: RecurringTemplate[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -60,6 +64,7 @@ function getStore(): Store {
       rules: DEFAULT_RULES,
       passwords: {},
       contacts: [],
+      recurring: [],
     };
   }
   return globalForStore.__financasStore;
@@ -200,6 +205,7 @@ export class MockRepository implements Repository {
       updatedAt: now,
       deletedAt: null,
       settledAt: null,
+      recurringId: input.recurringId ?? null,
     };
     getStore().expenses.unshift(expense);
     return expense;
@@ -255,6 +261,73 @@ export class MockRepository implements Repository {
     for (const e of getStore().expenses) {
       if ((e.spaceId ?? "casa") === spaceId) e.settledAt = null;
     }
+  }
+
+  async confirmExpense(id: string, amountCents: number): Promise<void> {
+    const e = getStore().expenses.find((x) => x.id === id);
+    if (e) {
+      e.amountCents = amountCents;
+      e.status = "confirmed";
+      e.updatedAt = new Date().toISOString();
+    }
+  }
+
+  async listRecurring(spaceId: string): Promise<RecurringTemplate[]> {
+    return getStore()
+      .recurring.filter((r) => r.spaceId === spaceId)
+      .sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1));
+  }
+
+  async getRecurring(id: string, spaceId: string): Promise<RecurringTemplate | null> {
+    return getStore().recurring.find((r) => r.id === id && r.spaceId === spaceId) ?? null;
+  }
+
+  async createRecurring(input: CreateRecurringInput): Promise<RecurringTemplate> {
+    const tpl: RecurringTemplate = {
+      id: `rec_${randomUUID()}`,
+      spaceId: input.spaceId,
+      description: input.description,
+      categoryId: input.categoryId ?? null,
+      payerId: input.payerId,
+      kind: input.kind,
+      split: input.split,
+      amountCents: input.amountCents ?? null,
+      valueType: input.valueType,
+      frequency: input.frequency,
+      nextDate: input.nextDate,
+      endDate: input.endDate ?? null,
+      status: "active",
+      createdBy: input.createdBy ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    getStore().recurring.push(tpl);
+    return tpl;
+  }
+
+  async updateRecurring(id: string, spaceId: string, patch: UpdateRecurringInput): Promise<void> {
+    const r = getStore().recurring.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!r) return;
+    if (patch.description !== undefined) r.description = patch.description;
+    if (patch.categoryId !== undefined) r.categoryId = patch.categoryId;
+    if (patch.payerId !== undefined) r.payerId = patch.payerId;
+    if (patch.split !== undefined) r.split = patch.split;
+    if (patch.amountCents !== undefined) r.amountCents = patch.amountCents;
+    if (patch.valueType !== undefined) r.valueType = patch.valueType;
+    if (patch.frequency !== undefined) r.frequency = patch.frequency;
+    if (patch.nextDate !== undefined) r.nextDate = patch.nextDate;
+    if (patch.endDate !== undefined) r.endDate = patch.endDate;
+    if (patch.status !== undefined) r.status = patch.status;
+  }
+
+  async deleteRecurring(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.recurring = store.recurring.filter((r) => !(r.id === id && r.spaceId === spaceId));
+  }
+
+  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+    return getStore().expenses.some(
+      (e) => e.recurringId === recurringId && e.transactionDate === transactionDate && !e.deletedAt,
+    );
   }
 
   async listSettlements(spaceId: string): Promise<Settlement[]> {

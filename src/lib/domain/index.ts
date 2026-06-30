@@ -6,3 +6,4 @@ export * from "./normalize";
 export * from "./dedup";
 export * from "./classify";
 export * from "./reports";
+export * from "./recurring";

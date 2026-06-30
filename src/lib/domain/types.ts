@@ -81,6 +81,8 @@ export interface Expense {
   deletedAt?: string | null;
   /** Marca de fecho de período (acerto pago ou transitado). Só afeta a UI. */
   settledAt?: string | null;
+  /** Template recorrente que originou esta despesa, se aplicável. */
+  recurringId?: string | null;
 }
 
 export interface Settlement {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
+import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
@@ -12,6 +13,9 @@ export default async function DashboardPage() {
   const ctx = await getSpaceContext();
   const repo = getRepository();
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
+
+  // Gera ocorrências de recorrentes em atraso (idempotente, tolerante a falhas).
+  await generateDueRecurring(ctx.space.id);
 
   const [{ transfers }, recent, categories] = await Promise.all([
     getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId),
@@ -36,7 +40,7 @@ export default async function DashboardPage() {
 
       {pending.length > 0 ? (
         <Link
-          href="/despesas?status=pending"
+          href="/recorrentes"
           className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
         >
           <div className="flex items-center gap-3">

@@ -29,4 +29,10 @@ export type {
   CreateSpaceInput,
   AddMemberInput,
   ContactMessage,
+  RecurringTemplate,
+  RecurringFrequency,
+  RecurringValueType,
+  RecurringStatus,
+  CreateRecurringInput,
+  UpdateRecurringInput,
 } from "./repository";

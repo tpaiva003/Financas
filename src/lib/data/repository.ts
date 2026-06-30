@@ -41,6 +41,57 @@ export interface UpdateCategoryInput {
   icon?: string | null;
 }
 
+export type RecurringFrequency = "weekly" | "monthly" | "yearly";
+export type RecurringValueType = "fixed" | "variable";
+export type RecurringStatus = "active" | "paused";
+
+export interface RecurringTemplate {
+  id: string;
+  spaceId: string;
+  description: string;
+  categoryId?: string | null;
+  payerId: string;
+  kind: ExpenseKind;
+  split: Split;
+  /** Valor fixo (cêntimos). null = variável sem estimativa. */
+  amountCents?: number | null;
+  valueType: RecurringValueType;
+  frequency: RecurringFrequency;
+  nextDate: string;
+  endDate?: string | null;
+  status: RecurringStatus;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface CreateRecurringInput {
+  spaceId: string;
+  description: string;
+  categoryId?: string | null;
+  payerId: string;
+  kind: ExpenseKind;
+  split: Split;
+  amountCents?: number | null;
+  valueType: RecurringValueType;
+  frequency: RecurringFrequency;
+  nextDate: string;
+  endDate?: string | null;
+  createdBy?: string | null;
+}
+
+export interface UpdateRecurringInput {
+  description?: string;
+  categoryId?: string | null;
+  payerId?: string;
+  split?: Split;
+  amountCents?: number | null;
+  valueType?: RecurringValueType;
+  frequency?: RecurringFrequency;
+  nextDate?: string;
+  endDate?: string | null;
+  status?: RecurringStatus;
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -123,6 +174,8 @@ export interface CreateExpenseInput {
   ownerId: string;
   visibleToPartner?: boolean;
   createdBy: string;
+  /** Template recorrente que originou esta despesa (idempotência). */
+  recurringId?: string | null;
 }
 
 export interface UpdateExpenseInput {
@@ -171,8 +224,20 @@ export interface Repository {
   /** Reabre o período: limpa a marca de liquidação das despesas do ambiente. */
   reopenExpenses(spaceId: string): Promise<void>;
 
+  /** Confirma uma despesa pendente, fixando o valor real (recorrentes variáveis). */
+  confirmExpense(id: string, amountCents: number): Promise<void>;
+
   listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;
+
+  // Despesas recorrentes (REQ-REC).
+  listRecurring(spaceId: string): Promise<RecurringTemplate[]>;
+  getRecurring(id: string, spaceId: string): Promise<RecurringTemplate | null>;
+  createRecurring(input: CreateRecurringInput): Promise<RecurringTemplate>;
+  updateRecurring(id: string, spaceId: string, patch: UpdateRecurringInput): Promise<void>;
+  deleteRecurring(id: string, spaceId: string): Promise<void>;
+  /** Já existe uma despesa gerada para este template nesta data? (idempotência) */
+  recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean>;
 
   /** Categorias disponíveis: padrão (space_id null) + as do ambiente indicado. */
   listCategories(spaceId?: string): Promise<Category[]>;

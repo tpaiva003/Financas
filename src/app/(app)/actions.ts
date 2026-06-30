@@ -10,7 +10,7 @@ import { getRepository } from "@/lib/data";
 import { isAdmin } from "@/lib/users";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { toCents, validateSplit, type Split } from "@/lib/domain";
+import { toCents, validateSplit, nextOccurrence, type Split } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -39,9 +39,16 @@ const expenseSchema = z.object({
   visibleToPartner: z.coerce.boolean().optional(),
 });
 
+interface SplitChoice {
+  kind: "shared" | "personal";
+  splitType: "EQUAL" | "PERCENT" | "SOLE";
+  percentA?: number;
+  soleMemberId?: string;
+}
+
 /** Constrói a divisão a partir dos dados do formulário. */
 function buildSplit(
-  data: z.infer<typeof expenseSchema>,
+  data: SplitChoice,
   memberIds: string[],
   amountCents: number,
 ): { split: Split } | { error: string } {
@@ -484,6 +491,138 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
   await getRepository().deleteCategory(id, ctx.space.id);
   revalidatePath("/ambiente");
   revalidatePath("/despesas");
+}
+
+// ---- Despesas recorrentes (REQ-REC) ---------------------------------------
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const recurringSchema = z.object({
+  description: z.string().trim().min(1, "Descrição obrigatória.").max(200),
+  valueType: z.enum(["fixed", "variable"]).default("fixed"),
+  frequency: z.enum(["weekly", "monthly", "yearly"]).default("monthly"),
+  nextDate: z.string().regex(DATE_RE, "Data inválida."),
+  endDate: z.string().optional(),
+  categoryId: z.string().optional().nullable(),
+  payerId: z.string().min(1),
+  splitType: z.enum(["EQUAL", "PERCENT", "SOLE"]).default("EQUAL"),
+  percentA: z.coerce.number().min(0).max(100).optional(),
+  soleMemberId: z.string().optional(),
+});
+
+function parseAmountCents(raw: unknown): number | null {
+  const s = String(raw ?? "").trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return NaN as unknown as number; // sinaliza inválido
+  return toCents(n);
+}
+
+export async function createRecurringAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const memberIds = ctx.members.map((m) => m.id);
+
+  const parsed = recurringSchema.safeParse({
+    description: formData.get("description"),
+    valueType: formData.get("valueType") || "fixed",
+    frequency: formData.get("frequency") || "monthly",
+    nextDate: formData.get("nextDate"),
+    endDate: formData.get("endDate") || undefined,
+    categoryId: formData.get("categoryId") || null,
+    payerId: formData.get("payerId"),
+    splitType: formData.get("splitType") || "EQUAL",
+    percentA: formData.get("percentA") ?? undefined,
+    soleMemberId: formData.get("soleMemberId") ?? undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const d = parsed.data;
+  if (!memberIds.includes(d.payerId)) return { error: "Pagador inválido." };
+
+  const amountCents = parseAmountCents(formData.get("amount"));
+  if (Number.isNaN(amountCents)) return { error: "Valor inválido." };
+  if (d.valueType === "fixed" && amountCents === null) {
+    return { error: "Indica o valor (recorrente de valor fixo)." };
+  }
+
+  const endDate = d.endDate && DATE_RE.test(d.endDate) ? d.endDate : null;
+  if (endDate && endDate < d.nextDate) return { error: "A data de fim é anterior à próxima data." };
+
+  const built = buildSplit(
+    { kind: "shared", splitType: d.splitType, percentA: d.percentA, soleMemberId: d.soleMemberId },
+    memberIds,
+    amountCents ?? 0,
+  );
+  if ("error" in built) return { error: built.error };
+
+  await getRepository().createRecurring({
+    spaceId: ctx.space.id,
+    description: d.description,
+    categoryId: d.categoryId ?? null,
+    payerId: d.payerId,
+    kind: "shared",
+    split: built.split,
+    amountCents,
+    valueType: d.valueType,
+    frequency: d.frequency,
+    nextDate: d.nextDate,
+    endDate,
+    createdBy: ctx.user.id,
+  });
+  revalidatePath("/recorrentes");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/** Pausar, retomar, saltar uma ocorrência, terminar ou eliminar (REQ-REC-4). */
+export async function recurringOpAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  const op = String(formData.get("op") ?? "");
+  if (!id) return;
+  const repo = getRepository();
+
+  if (op === "delete") {
+    await repo.deleteRecurring(id, ctx.space.id);
+  } else if (op === "pause") {
+    await repo.updateRecurring(id, ctx.space.id, { status: "paused" });
+  } else if (op === "resume") {
+    await repo.updateRecurring(id, ctx.space.id, { status: "active" });
+  } else if (op === "skip") {
+    const tpl = await repo.getRecurring(id, ctx.space.id);
+    if (tpl) {
+      await repo.updateRecurring(id, ctx.space.id, {
+        nextDate: nextOccurrence(tpl.nextDate, tpl.frequency),
+      });
+    }
+  } else if (op === "end") {
+    const today = new Date().toISOString().slice(0, 10);
+    await repo.updateRecurring(id, ctx.space.id, { endDate: today, status: "paused" });
+  }
+  revalidatePath("/recorrentes");
+  revalidatePath("/dashboard");
+}
+
+/** Confirma o valor real de uma despesa recorrente variável pendente (REQ-REC-2). */
+export async function confirmRecurringExpenseAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Despesa inválida." };
+  const amountCents = parseAmountCents(formData.get("amount"));
+  if (amountCents === null || Number.isNaN(amountCents)) {
+    return { error: "Indica o valor real." };
+  }
+  await getRepository().confirmExpense(id, amountCents);
+  revalidatePath("/recorrentes");
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  return { ok: true };
 }
 
 const memberSchema = z.object({

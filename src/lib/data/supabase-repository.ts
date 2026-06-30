@@ -19,12 +19,35 @@ import type {
   CreateSpaceInput,
   ExpenseFilters,
   Member,
+  CreateRecurringInput,
+  RecurringTemplate,
   Repository,
   Space,
   UpdateCategoryInput,
   UpdateMemberInput,
+  UpdateRecurringInput,
 } from "./repository";
 import { randomUUID } from "node:crypto";
+
+function rowToRecurring(r: any): RecurringTemplate {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    description: r.description,
+    categoryId: r.category_id,
+    payerId: r.payer_id,
+    kind: r.kind,
+    split: (r.split ?? { type: "EQUAL" }) as Split,
+    amountCents: r.amount_cents ?? null,
+    valueType: r.value_type,
+    frequency: r.frequency,
+    nextDate: r.next_date,
+    endDate: r.end_date,
+    status: r.status,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  };
+}
 
 function rowToExpense(r: any): Expense {
   return {
@@ -50,6 +73,7 @@ function rowToExpense(r: any): Expense {
     updatedAt: r.updated_at,
     deletedAt: r.deleted_at,
     settledAt: r.settled_at ?? null,
+    recurringId: r.recurring_id ?? null,
   };
 }
 
@@ -260,6 +284,7 @@ export class SupabaseRepository implements Repository {
         owner_id: input.ownerId,
         visible_to_partner: input.visibleToPartner ?? false,
         created_by: input.createdBy,
+        recurring_id: input.recurringId ?? null,
       })
       .select("*")
       .single();
@@ -328,6 +353,108 @@ export class SupabaseRepository implements Repository {
       .eq("space_id", spaceId)
       .not("settled_at", "is", null);
     if (error) throw new Error(error.message);
+  }
+
+  async confirmExpense(id: string, amountCents: number): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("expenses")
+      .update({ amount_cents: amountCents, status: "confirmed" })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async listRecurring(spaceId: string): Promise<RecurringTemplate[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("recurring_templates")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("next_date");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToRecurring);
+  }
+
+  async getRecurring(id: string, spaceId: string): Promise<RecurringTemplate | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("recurring_templates")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToRecurring(data) : null;
+  }
+
+  async createRecurring(input: CreateRecurringInput): Promise<RecurringTemplate> {
+    const db = getSupabaseAdmin();
+    const id = `rec_${randomUUID()}`;
+    const { data, error } = await db
+      .from("recurring_templates")
+      .insert({
+        id,
+        space_id: input.spaceId,
+        description: input.description,
+        category_id: input.categoryId ?? null,
+        payer_id: input.payerId,
+        kind: input.kind,
+        split: input.split,
+        amount_cents: input.amountCents ?? null,
+        value_type: input.valueType,
+        frequency: input.frequency,
+        next_date: input.nextDate,
+        end_date: input.endDate ?? null,
+        status: "active",
+        created_by: input.createdBy ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return rowToRecurring(data);
+  }
+
+  async updateRecurring(id: string, spaceId: string, patch: UpdateRecurringInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.description !== undefined) update.description = patch.description;
+    if (patch.categoryId !== undefined) update.category_id = patch.categoryId;
+    if (patch.payerId !== undefined) update.payer_id = patch.payerId;
+    if (patch.split !== undefined) update.split = patch.split;
+    if (patch.amountCents !== undefined) update.amount_cents = patch.amountCents;
+    if (patch.valueType !== undefined) update.value_type = patch.valueType;
+    if (patch.frequency !== undefined) update.frequency = patch.frequency;
+    if (patch.nextDate !== undefined) update.next_date = patch.nextDate;
+    if (patch.endDate !== undefined) update.end_date = patch.endDate;
+    if (patch.status !== undefined) update.status = patch.status;
+    const { error } = await db
+      .from("recurring_templates")
+      .update(update)
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteRecurring(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("recurring_templates")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .eq("recurring_id", recurringId)
+      .eq("transaction_date", transactionDate)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+    return (count ?? 0) > 0;
   }
 
   async listSettlements(spaceId: string): Promise<Settlement[]> {

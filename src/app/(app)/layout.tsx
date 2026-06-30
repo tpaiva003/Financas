@@ -51,6 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-3xl items-stretch justify-around">
           <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
           <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
+          <BottomLink href="/recorrentes" label="Recorr." icon={<IconRepeat />} />
           <BottomLink href="/relatorios" label="Relatórios" icon={<IconChart />} />
           <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />
         </div>
@@ -82,6 +83,13 @@ function IconList() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
       <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+function IconRepeat() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
     </svg>
   );
 }
