@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { createExpenseAction, type ActionState } from "@/app/(app)/actions";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
 import type { Category } from "@/lib/data";
 
 interface MemberOpt {
@@ -17,11 +18,13 @@ export function AddExpenseForm({
   members,
   currentMemberId,
   today,
+  descriptions = [],
 }: {
   categories: Category[];
   members: MemberOpt[];
   currentMemberId: string;
   today: string;
+  descriptions?: string[];
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
@@ -65,7 +68,23 @@ export function AddExpenseForm({
       <div className="card space-y-5 p-6">
         <div>
           <label className="label" htmlFor="description">Descrição</label>
-          <input id="description" name="description" type="text" required placeholder="Ex.: Continente, jantar…" className="input" />
+          <input
+            id="description"
+            name="description"
+            type="text"
+            required
+            list="desc-suggestions"
+            autoComplete="off"
+            placeholder="Ex.: Continente, jantar…"
+            className="input"
+          />
+          {descriptions.length > 0 ? (
+            <datalist id="desc-suggestions">
+              {descriptions.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -75,14 +94,7 @@ export function AddExpenseForm({
           </div>
           <div>
             <label className="label" htmlFor="categoryId">Categoria</label>
-            <select id="categoryId" name="categoryId" className="select" defaultValue="">
-              <option value="">Sem categoria</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.icon ? `${c.icon} ` : ""}{c.name}
-                </option>
-              ))}
-            </select>
+            <CategoryCombobox categories={categories} />
           </div>
         </div>
 

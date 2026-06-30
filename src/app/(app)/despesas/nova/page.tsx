@@ -8,8 +8,17 @@ export const dynamic = "force-dynamic";
 
 export default async function NovaDespesaPage() {
   const ctx = await getSpaceContext();
-  const categories = await getRepository().listCategories(ctx.space.id);
+  const repo = getRepository();
+  const [categories, recent] = await Promise.all([
+    repo.listCategories(ctx.space.id),
+    repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
+  ]);
   const today = new Date().toISOString().slice(0, 10);
+
+  // Descrições já usadas neste ambiente, para sugestão (distintas, mais recentes).
+  const descriptions = Array.from(
+    new Set(recent.map((e) => e.description.trim()).filter(Boolean)),
+  ).slice(0, 50);
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
@@ -26,6 +35,7 @@ export default async function NovaDespesaPage() {
         members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
         currentMemberId={ctx.viewerMemberId}
         today={today}
+        descriptions={descriptions}
       />
     </div>
   );

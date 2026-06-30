@@ -30,6 +30,16 @@ export default async function DashboardPage() {
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
 
+  // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
+  const fmtDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+  const myRegistered = [...recent]
+    .filter((e) => e.createdBy === ctx.user.id)
+    .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+  const myPaid = [...recent]
+    .filter((e) => e.payerId === ctx.viewerMemberId && e.status === "confirmed")
+    .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1))[0];
+
   return (
     <div className="space-y-10">
       <BalanceHero
@@ -53,6 +63,27 @@ export default async function DashboardPage() {
           <span className="text-fg-faint">→</span>
         </Link>
       ) : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card p-4">
+          <p className="eyebrow">Última que registaste</p>
+          <p className="mt-1 text-[15px] font-medium tnum text-fg">
+            {myRegistered ? fmtDate(myRegistered.transactionDate) : "—"}
+          </p>
+          {myRegistered ? (
+            <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
+          ) : null}
+        </div>
+        <div className="card p-4">
+          <p className="eyebrow">Última que pagaste</p>
+          <p className="mt-1 text-[15px] font-medium tnum text-fg">
+            {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
+          </p>
+          {myPaid ? (
+            <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
+          ) : null}
+        </div>
+      </div>
 
       <section>
         <div className="mb-2 flex items-center justify-between">

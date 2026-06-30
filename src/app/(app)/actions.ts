@@ -26,9 +26,26 @@ async function handleReceipt(expenseId: string, spaceId: string, formData: FormD
   }
 }
 
+/** Normaliza valores monetários europeus ("1.234,56" / "12,34") para número. */
+function normalizeAmount(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  let s = v.trim().replace(/\s/g, "");
+  if (s.includes(",") && s.includes(".")) {
+    s = s.replace(/\./g, "").replace(",", "."); // ponto = milhares, vírgula = decimal
+  } else if (s.includes(",")) {
+    s = s.replace(",", ".");
+  }
+  return s;
+}
+
+const amountField = z.preprocess(
+  normalizeAmount,
+  z.coerce.number().refine((n) => Number.isFinite(n) && n !== 0, "Valor inválido"),
+);
+
 const expenseSchema = z.object({
   description: z.string().trim().min(1, "Descrição obrigatória").max(200),
-  amount: z.coerce.number().refine((n) => Number.isFinite(n) && n !== 0, "Valor inválido"),
+  amount: amountField,
   transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
   categoryId: z.string().optional().nullable(),
   payerId: z.string().min(1),
@@ -129,7 +146,7 @@ export async function createExpenseAction(
 const settlementSchema = z.object({
   fromUserId: z.string().min(1),
   toUserId: z.string().min(1),
-  amount: z.coerce.number().positive("Valor tem de ser positivo"),
+  amount: z.preprocess(normalizeAmount, z.coerce.number().positive("Valor tem de ser positivo")),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
   note: z.string().trim().max(200).optional().nullable(),
 });
@@ -511,7 +528,7 @@ const recurringSchema = z.object({
 });
 
 function parseAmountCents(raw: unknown): number | null {
-  const s = String(raw ?? "").trim().replace(",", ".");
+  const s = String(normalizeAmount(String(raw ?? "")) ?? "").trim();
   if (!s) return null;
   const n = Number(s);
   if (!Number.isFinite(n) || n <= 0) return NaN as unknown as number; // sinaliza inválido
