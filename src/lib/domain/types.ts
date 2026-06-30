@@ -79,6 +79,8 @@ export interface Expense {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  /** Marca de fecho de período (acerto pago ou transitado). Só afeta a UI. */
+  settledAt?: string | null;
 }
 
 export interface Settlement {

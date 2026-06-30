@@ -199,6 +199,7 @@ export class MockRepository implements Repository {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      settledAt: null,
     };
     getStore().expenses.unshift(expense);
     return expense;
@@ -229,6 +230,30 @@ export class MockRepository implements Repository {
     if (e) {
       e.deletedAt = new Date().toISOString();
       e.updatedAt = e.deletedAt;
+    }
+  }
+
+  async settleOpenExpenses(spaceId: string): Promise<number> {
+    const now = new Date().toISOString();
+    let n = 0;
+    for (const e of getStore().expenses) {
+      if (
+        (e.spaceId ?? "casa") === spaceId &&
+        e.kind === "shared" &&
+        !e.deletedAt &&
+        e.status === "confirmed" &&
+        !e.settledAt
+      ) {
+        e.settledAt = now;
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  async reopenExpenses(spaceId: string): Promise<void> {
+    for (const e of getStore().expenses) {
+      if ((e.spaceId ?? "casa") === spaceId) e.settledAt = null;
     }
   }
 

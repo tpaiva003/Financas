@@ -9,6 +9,7 @@ import { getSpaceContext, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { isAdmin } from "@/lib/users";
 import { uploadReceipt } from "@/lib/services/receipts-service";
+import { getSpaceBalance } from "@/lib/services/balance-service";
 import { toCents, validateSplit, type Split } from "@/lib/domain";
 
 export interface ActionState {
@@ -158,6 +159,55 @@ export async function createSettlementAction(
 
   revalidatePath("/dashboard");
   revalidatePath("/acertos");
+  redirect("/acertos");
+}
+
+// ---- Fecho de período (acerto) --------------------------------------------
+
+function revalidatePeriod() {
+  revalidatePath("/dashboard");
+  revalidatePath("/acertos");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+}
+
+/** Regista o(s) pagamento(s) sugerido(s) e fecha o período (colapsa despesas). */
+export async function settleAndPayAction(): Promise<void> {
+  const ctx = await getSpaceContext();
+  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId);
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const t of transfers) {
+    if (t.amountCents <= 0) continue;
+    await getRepository().createSettlement({
+      spaceId: ctx.space.id,
+      fromUserId: t.fromUserId,
+      toUserId: t.toUserId,
+      amountCents: t.amountCents,
+      currency: "EUR",
+      date: today,
+      note: "Acerto do período",
+      createdBy: ctx.user.id,
+    });
+  }
+  await getRepository().settleOpenExpenses(ctx.space.id);
+  revalidatePeriod();
+  redirect("/acertos");
+}
+
+/** Transita o saldo para o período seguinte: fecha sem registar pagamento. */
+export async function carryBalanceAction(): Promise<void> {
+  const ctx = await getSpaceContext();
+  await getRepository().settleOpenExpenses(ctx.space.id);
+  revalidatePeriod();
+  redirect("/acertos");
+}
+
+/** Reabre o último fecho: volta a mostrar as despesas liquidadas. */
+export async function reopenPeriodAction(): Promise<void> {
+  const ctx = await getSpaceContext();
+  await getRepository().reopenExpenses(ctx.space.id);
+  revalidatePeriod();
   redirect("/acertos");
 }
 

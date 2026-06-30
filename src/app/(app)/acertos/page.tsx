@@ -3,18 +3,28 @@ import { getRepository } from "@/lib/data";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { formatCents } from "@/lib/domain";
 import { SettlementForm } from "@/components/SettlementForm";
+import { ClosePeriodPanel } from "@/components/ClosePeriodPanel";
 
 export const metadata = { title: "Acertos · Finanças" };
 export const dynamic = "force-dynamic";
 
 export default async function AcertosPage() {
   const ctx = await getSpaceContext();
-  const [settlements, { transfers }] = await Promise.all([
+  const [settlements, { transfers }, sharedExpenses] = await Promise.all([
     getRepository().listSettlements(ctx.space.id),
     getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId),
+    getRepository().listExpenses({
+      spaceId: ctx.space.id,
+      viewerId: ctx.viewerMemberId,
+      kind: "shared",
+    }),
   ]);
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
   const today = new Date().toISOString().slice(0, 10);
+
+  const openCount = sharedExpenses.filter((e) => !e.settledAt && e.status === "confirmed").length;
+  const settledCount = sharedExpenses.filter((e) => e.settledAt).length;
+  const transfersTotal = transfers.reduce((acc, t) => acc + t.amountCents, 0);
 
   const first = transfers[0];
   const suggested = first
@@ -48,8 +58,15 @@ export default async function AcertosPage() {
         )}
       </div>
 
+      <ClosePeriodPanel
+        hasBalance={transfers.length > 0}
+        balanceLabel={formatCents(transfersTotal)}
+        openCount={openCount}
+        settledCount={settledCount}
+      />
+
       <div className="card p-6">
-        <h2 className="label">Registar acerto</h2>
+        <h2 className="label">Registar acerto manual</h2>
         <SettlementForm
           members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
           today={today}

@@ -49,6 +49,7 @@ function rowToExpense(r: any): Expense {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     deletedAt: r.deleted_at,
+    settledAt: r.settled_at ?? null,
   };
 }
 
@@ -301,6 +302,31 @@ export class SupabaseRepository implements Repository {
       .from("expenses")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async settleOpenExpenses(spaceId: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("expenses")
+      .update({ settled_at: new Date().toISOString() })
+      .eq("space_id", spaceId)
+      .eq("kind", "shared")
+      .eq("status", "confirmed")
+      .is("deleted_at", null)
+      .is("settled_at", null)
+      .select("id");
+    if (error) throw new Error(error.message);
+    return data?.length ?? 0;
+  }
+
+  async reopenExpenses(spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("expenses")
+      .update({ settled_at: null })
+      .eq("space_id", spaceId)
+      .not("settled_at", "is", null);
     if (error) throw new Error(error.message);
   }
 

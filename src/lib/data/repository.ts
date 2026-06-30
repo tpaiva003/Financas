@@ -166,6 +166,10 @@ export interface Repository {
   updateExpense(id: string, input: UpdateExpenseInput): Promise<void>;
   setReceiptPath(id: string, path: string | null): Promise<void>;
   softDeleteExpense(id: string, actorId: string): Promise<void>;
+  /** Fecha o período: marca as despesas partilhadas abertas como liquidadas. Devolve nº afetado. */
+  settleOpenExpenses(spaceId: string): Promise<number>;
+  /** Reabre o período: limpa a marca de liquidação das despesas do ambiente. */
+  reopenExpenses(spaceId: string): Promise<void>;
 
   listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;

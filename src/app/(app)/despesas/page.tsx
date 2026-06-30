@@ -46,7 +46,10 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
   const categoryName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 
-  const total = expenses
+  const openExpenses = expenses.filter((e) => !e.settledAt);
+  const settledExpenses = expenses.filter((e) => e.settledAt);
+
+  const total = openExpenses
     .filter((e) => e.kind === "shared")
     .reduce((acc, e) => acc + e.amountCents, 0);
 
@@ -107,7 +110,7 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
 
       <div className="flex items-center justify-between">
         <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint">
-          {expenses.length} despesa(s)
+          {openExpenses.length} aberta(s){settledExpenses.length > 0 ? ` · ${settledExpenses.length} liquidada(s)` : ""}
         </p>
         <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint">
           Total partilhado <span className="tnum text-fg-muted">{formatCents(total)}</span>
@@ -119,16 +122,42 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
           Nenhuma despesa corresponde aos filtros.
         </div>
       ) : (
-        <ul>
-          {expenses.map((e) => (
-            <ExpenseRow
-              key={e.id}
-              expense={e}
-              categoryName={categoryName(e.categoryId)}
-              payerName={nameOf(e.payerId)}
-            />
-          ))}
-        </ul>
+        <>
+          {openExpenses.length > 0 ? (
+            <ul>
+              {openExpenses.map((e) => (
+                <ExpenseRow
+                  key={e.id}
+                  expense={e}
+                  categoryName={categoryName(e.categoryId)}
+                  payerName={nameOf(e.payerId)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="card p-8 text-center text-sm text-fg-muted">
+              Sem despesas abertas. As liquidadas estão recolhidas abaixo.
+            </div>
+          )}
+
+          {settledExpenses.length > 0 ? (
+            <details className="mt-4 rounded-2xl border border-hair bg-panel/40">
+              <summary className="cursor-pointer list-none px-4 py-3 font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint transition-colors hover:text-fg-muted">
+                ▸ {settledExpenses.length} despesa(s) liquidada(s) · período fechado
+              </summary>
+              <ul className="px-1 pb-1 opacity-60">
+                {settledExpenses.map((e) => (
+                  <ExpenseRow
+                    key={e.id}
+                    expense={e}
+                    categoryName={categoryName(e.categoryId)}
+                    payerName={nameOf(e.payerId)}
+                  />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </>
       )}
     </div>
   );
