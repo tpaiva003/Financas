@@ -70,6 +70,11 @@ export interface AddMemberInput {
   linkedUserId?: string | null;
 }
 
+export interface UpdateMemberInput {
+  name?: string;
+  email?: string | null;
+}
+
 export interface ContactMessage {
   id: string;
   name?: string | null;
@@ -150,6 +155,10 @@ export interface Repository {
   createSpace(input: CreateSpaceInput): Promise<Space>;
   listMembers(spaceId: string): Promise<Member[]>;
   addMember(input: AddMemberInput): Promise<Member>;
+  updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void>;
+  deleteMember(id: string, spaceId: string): Promise<void>;
+  /** Nº de despesas/acertos (não eliminados) que referenciam este participante. */
+  countMemberActivity(memberId: string): Promise<number>;
 
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
   getExpense(id: string, viewerId: string): Promise<Expense | null>;

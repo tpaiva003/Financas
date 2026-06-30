@@ -13,6 +13,7 @@ import { toCents, validateSplit, type Split } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
+  ok?: boolean;
 }
 
 async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
@@ -385,4 +386,61 @@ export async function addMemberAction(
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return {};
+}
+
+const memberEditSchema = z.object({
+  name: z.string().trim().min(1, "Indica um nome.").max(80),
+  email: z.string().trim().email("Email inválido.").max(200).optional().or(z.literal("")),
+});
+
+export async function updateMemberAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Participante inválido." };
+  const parsed = memberEditSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email") || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  await getRepository().updateMember(id, ctx.space.id, {
+    name: parsed.data.name,
+    email: parsed.data.email || null,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  return { ok: true };
+}
+
+export async function deleteMemberAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Participante inválido." };
+
+  const member = ctx.members.find((m) => m.id === id);
+  if (!member) return { error: "Participante não encontrado." };
+  if (ctx.members.length <= 1) return { error: "Tem de existir pelo menos um participante." };
+  if (member.linkedUserId) {
+    return { error: "Este participante tem acesso à app e não pode ser eliminado." };
+  }
+
+  const activity = await getRepository().countMemberActivity(id);
+  if (activity > 0) {
+    return {
+      error: "Tem despesas ou acertos associados. Reatribui-os antes de eliminar.",
+    };
+  }
+
+  await getRepository().deleteMember(id, ctx.space.id);
+  revalidatePath("/ambiente");
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

@@ -3,6 +3,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AddMemberForm } from "@/components/AddMemberForm";
 import { CategoriesManager } from "@/components/CategoriesManager";
+import { MembersManager } from "@/components/MembersManager";
 
 export const metadata = { title: "Ambiente · Finanças" };
 export const dynamic = "force-dynamic";
@@ -22,22 +23,17 @@ export default async function AmbientePage() {
 
       <section>
         <h2 className="eyebrow mb-2">Participantes ({ctx.members.length})</h2>
-        <ul className="card divide-y divide-hair2 p-2">
-          {ctx.members.map((m) => (
-            <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="grid h-8 w-8 place-items-center rounded-full border border-hair font-mono text-[11px] text-fg">
-                  {m.name.charAt(0)}
-                </span>
-                <div>
-                  <p className="text-[15px] text-fg">{m.name}</p>
-                  {m.email ? <p className="font-mono text-[11px] text-fg-faint">{m.email}</p> : null}
-                </div>
-              </div>
-              {m.linkedUserId ? <span className="chip border-credit/30 text-credit">tem acesso</span> : null}
-            </li>
-          ))}
-        </ul>
+        <MembersManager
+          members={ctx.members.map((m) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            linkedUserId: m.linkedUserId,
+          }))}
+        />
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
+          Participantes com despesas ou acertos não podem ser eliminados.
+        </p>
       </section>
 
       <section className="card p-6">

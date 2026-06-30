@@ -24,6 +24,7 @@ import type {
   Repository,
   Space,
   UpdateCategoryInput,
+  UpdateMemberInput,
 } from "./repository";
 import {
   DEFAULT_CATEGORIES,
@@ -119,6 +120,29 @@ export class MockRepository implements Repository {
     };
     getStore().members.push(member);
     return member;
+  }
+
+  async updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void> {
+    const m = getStore().members.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!m) return;
+    if (patch.name !== undefined) m.name = patch.name;
+    if (patch.email !== undefined) m.email = patch.email;
+  }
+
+  async deleteMember(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.members = store.members.filter((m) => !(m.id === id && m.spaceId === spaceId));
+  }
+
+  async countMemberActivity(memberId: string): Promise<number> {
+    const store = getStore();
+    const exp = store.expenses.filter(
+      (e) => !e.deletedAt && (e.payerId === memberId || e.ownerId === memberId),
+    ).length;
+    const set = store.settlements.filter(
+      (s) => s.fromUserId === memberId || s.toUserId === memberId,
+    ).length;
+    return exp + set;
   }
 
   async listExpenses(filters: ExpenseFilters): Promise<Expense[]> {

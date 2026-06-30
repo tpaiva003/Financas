@@ -22,6 +22,7 @@ import type {
   Repository,
   Space,
   UpdateCategoryInput,
+  UpdateMemberInput,
 } from "./repository";
 import { randomUUID } from "node:crypto";
 
@@ -155,6 +156,42 @@ export class SupabaseRepository implements Repository {
       linkedUserId: data.linked_user_id,
       email: data.email,
     };
+  }
+
+  async updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const update: Record<string, unknown> = {};
+    if (patch.name !== undefined) update.name = patch.name;
+    if (patch.email !== undefined) update.email = patch.email;
+    if (Object.keys(update).length === 0) return;
+    const { error } = await db
+      .from("members")
+      .update(update)
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteMember(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("members").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async countMemberActivity(memberId: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const exp = await db
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
+      .or(`payer_id.eq.${memberId},owner_id.eq.${memberId}`);
+    if (exp.error) throw new Error(exp.error.message);
+    const set = await db
+      .from("settlements")
+      .select("id", { count: "exact", head: true })
+      .or(`from_user_id.eq.${memberId},to_user_id.eq.${memberId}`);
+    if (set.error) throw new Error(set.error.message);
+    return (exp.count ?? 0) + (set.count ?? 0);
   }
 
   async listExpenses(filters: ExpenseFilters): Promise<Expense[]> {
