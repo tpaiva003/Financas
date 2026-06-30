@@ -761,6 +761,10 @@ export async function addMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const grantSubmit = formData.get("grantSubmit") === "on";
+  const accessEmail = String(formData.get("accessEmail") ?? "").trim().toLowerCase();
+
   const parsed = memberSchema.safeParse({
     spaceId: formData.get("spaceId"),
     name: formData.get("name"),
@@ -768,14 +772,41 @@ export async function addMemberAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  await getRepository().addMember({
+  const repo = getRepository();
+
+  // Validação do acesso de submissão (quando pedido na mesma ação).
+  if (grantSubmit) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accessEmail)) {
+      return { error: "Indica um email válido para o acesso." };
+    }
+    if (isEmailAllowed(accessEmail) || userByEmail(accessEmail)) {
+      return { error: "Esse email já pertence a um utilizador base." };
+    }
+    if (await repo.getAppUserByEmail(accessEmail)) {
+      return { error: "Esse email já tem acesso." };
+    }
+  }
+
+  const member = await repo.addMember({
     spaceId: parsed.data.spaceId,
     name: parsed.data.name,
-    email: parsed.data.email || null,
+    email: grantSubmit ? accessEmail : parsed.data.email || null,
   });
+
+  // Dá logo acesso de submissão (role submitter + utilizador com login).
+  if (grantSubmit) {
+    const userId = `usr_${randomUUID()}`;
+    await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
+    await repo.updateMember(member.id, parsed.data.spaceId, {
+      role: "submitter",
+      linkedUserId: userId,
+      email: accessEmail,
+    });
+  }
+
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
-  return {};
+  return { ok: true };
 }
 
 const memberEditSchema = z.object({
