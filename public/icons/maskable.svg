@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Finanças">
+  <rect width="512" height="512" fill="#1f59db"/>
+  <g fill="#ffffff" transform="translate(0,8)">
+    <path d="M256 144c-66 0-120 30-120 68v107c0 38 54 68 120 68s120-30 120-68V212c0-38-54-68-120-68zm0 32c50 0 88 21 88 36s-38 36-88 36-88-21-88-36 38-36 88-36zm88 175c0 15-38 36-88 36s-88-21-88-36v-23c22 15 54 24 88 24s66-9 88-24zm0-54c0 15-38 36-88 36s-88-21-88-36v-23c22 15 54 24 88 24s66-9 88-24z"/>
+  </g>
+</svg>

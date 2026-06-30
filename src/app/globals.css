@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-bg text-fg;
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Fundo com um brilho subtil no topo — vibe editorial/premium. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(60rem 40rem at 50% -10%, rgba(99, 102, 241, 0.07), transparent 60%),
+      radial-gradient(50rem 40rem at 100% 0%, rgba(98, 209, 150, 0.05), transparent 55%);
+    pointer-events: none;
+  }
+
+  ::selection {
+    background: rgba(243, 242, 238, 0.18);
+  }
+
+  /* Números tabulares e mono onde fizer sentido. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-fg-faint;
+  }
+
+  .card {
+    @apply rounded-2xl border border-hair bg-panel/80 backdrop-blur-sm;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-fg text-bg hover:bg-white active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply btn border border-hair bg-transparent text-fg hover:border-fg/30 hover:bg-panel2 active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-fg-muted hover:text-fg;
+  }
+
+  .input,
+  .select {
+    @apply w-full rounded-xl border border-hair bg-panel2/60 px-3.5 py-2.5 text-sm text-fg placeholder:text-fg-faint transition focus:border-fg/30 focus:outline-none focus:ring-2 focus:ring-fg/10;
+  }
+  .select {
+    @apply appearance-none bg-[length:1rem] bg-[right_0.75rem_center] bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a3a29c' stroke-width='1.5' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  .label {
+    @apply mb-1.5 block font-mono text-[11px] uppercase tracking-[0.12em] text-fg-faint;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border border-hair px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-fg-muted;
+  }
+
+  .hairline {
+    @apply border-hair;
+  }
+
+  /* Linha de despesa: estilo lista editorial (hairline em vez de cartões pesados). */
+  .row {
+    @apply flex items-center gap-4 border-b border-hair2 py-3.5 transition-colors;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
