@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { getSpaceBalance } from "@/lib/services/balance-service";
@@ -11,9 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function AcertosPage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const [settlements, { transfers }, sharedExpenses] = await Promise.all([
     getRepository().listSettlements(ctx.space.id),
-    getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId),
+    getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
     getRepository().listExpenses({
       spaceId: ctx.space.id,
       viewerId: ctx.viewerMemberId,
@@ -28,7 +30,7 @@ export default async function AcertosPage() {
   const transfersTotal = transfers.reduce((acc, t) => acc + t.amountCents, 0);
 
   const otherSpaces = ctx.spaces.filter((s) => s.id !== ctx.space.id);
-  const canTransfer = ctx.members.length === 2 && transfers.length > 0 && otherSpaces.length > 0;
+  const canTransfer = ctx.fullMembers.length === 2 && transfers.length > 0 && otherSpaces.length > 0;
 
   const first = transfers[0];
   const suggested = first
@@ -82,7 +84,7 @@ export default async function AcertosPage() {
       <div className="card p-6">
         <h2 className="label">Registar acerto manual</h2>
         <SettlementForm
-          members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
+          members={ctx.fullMembers.map((m) => ({ id: m.id, name: m.name }))}
           today={today}
           suggested={suggested}
         />

@@ -63,6 +63,12 @@ export function ExpenseRow({
             {expense.status === "pending" ? (
               <span className="chip shrink-0 border-debt/30 text-debt">Pendente</span>
             ) : null}
+            {expense.approvalStatus === "pending" ? (
+              <span className="chip shrink-0 border-debt/30 text-debt">Por aprovar</span>
+            ) : null}
+            {expense.approvalStatus === "rejected" ? (
+              <span className="chip shrink-0 border-hair text-fg-faint">Rejeitada</span>
+            ) : null}
             {expense.receiptPath ? (
               <span className="shrink-0 text-fg-faint" title="Tem recibo" aria-label="Tem recibo">📎</span>
             ) : null}

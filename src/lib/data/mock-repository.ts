@@ -12,6 +12,7 @@ import type { Expense, Settlement, ClassificationRule } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
+  AppUser,
   Category,
   ContactMessage,
   CreateCategoryInput,
@@ -48,6 +49,7 @@ interface Store {
   passwords: Record<string, string>;
   contacts: ContactMessage[];
   recurring: RecurringTemplate[];
+  appUsers: AppUser[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -65,6 +67,7 @@ function getStore(): Store {
       passwords: {},
       contacts: [],
       recurring: [],
+      appUsers: [],
     };
   }
   return globalForStore.__financasStore;
@@ -132,6 +135,8 @@ export class MockRepository implements Repository {
     if (!m) return;
     if (patch.name !== undefined) m.name = patch.name;
     if (patch.email !== undefined) m.email = patch.email;
+    if (patch.role !== undefined) m.role = patch.role;
+    if (patch.linkedUserId !== undefined) m.linkedUserId = patch.linkedUserId;
   }
 
   async deleteMember(id: string, spaceId: string): Promise<void> {
@@ -206,6 +211,9 @@ export class MockRepository implements Repository {
       deletedAt: null,
       settledAt: null,
       recurringId: input.recurringId ?? null,
+      approvalStatus: input.approvalStatus ?? null,
+      approverId: input.approverId ?? null,
+      submittedBy: input.submittedBy ?? null,
     };
     getStore().expenses.unshift(expense);
     return expense;
@@ -398,6 +406,36 @@ export class MockRepository implements Repository {
 
   async setUserPasswordHash(userId: string, hash: string): Promise<void> {
     getStore().passwords[userId] = hash;
+  }
+
+  async getAppUserByEmail(email: string): Promise<AppUser | null> {
+    const e = email.toLowerCase();
+    return getStore().appUsers.find((u) => u.email.toLowerCase() === e) ?? null;
+  }
+
+  async createAppUser(input: AppUser): Promise<void> {
+    const store = getStore();
+    if (!store.appUsers.some((u) => u.id === input.id)) store.appUsers.push({ ...input });
+  }
+
+  async deleteAppUser(id: string): Promise<void> {
+    const store = getStore();
+    store.appUsers = store.appUsers.filter((u) => u.id !== id);
+    delete store.passwords[id];
+  }
+
+  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
+    const e = getStore().expenses.find((x) => x.id === id);
+    if (e) {
+      e.approvalStatus = status === "approved" ? null : "rejected";
+      e.updatedAt = new Date().toISOString();
+    }
+  }
+
+  async countPendingApprovals(spaceId: string): Promise<number> {
+    return getStore().expenses.filter(
+      (e) => (e.spaceId ?? "casa") === spaceId && e.approvalStatus === "pending" && !e.deletedAt,
+    ).length;
   }
 
   async createContactMessage(input: CreateContactInput): Promise<void> {

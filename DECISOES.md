@@ -178,3 +178,34 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   saltar, terminar, eliminar — REQ-REC-4) e formulário de criação.
 - **Import de extratos** fica pendente até o utilizador partilhar exemplos de
   export dos bancos (Activo/Bankinter) para mapear colunas.
+
+## Fase 4 — UX + role de submissão
+
+### Melhorias de UX (lote de 11)
+- Filtro de despesas **ao vivo** (sem botão), lista **agrupada por data**,
+  removida a contagem/total do topo, **favicon**, **localização EU** (aceita
+  vírgula decimal nos valores), **sugestão de descrição** e **categoria
+  pesquisável** (datalist), e no Saldo as **datas da última despesa registada e
+  paga** pelo próprio. A divisão por percentagem mostra também o **valor (€)** de
+  cada parte.
+
+### Role de submissão com aprovação (#9) — assinalado (afeta dados/auth)
+- Migração 0008: `members.role` ('full' | 'submitter') e, em `expenses`,
+  `approval_status` ('pending'|'rejected'|null), `approver_id`, `submitted_by`.
+- **Allow-list passa a vir também da BD**: além dos 2 utilizadores base (env),
+  o login por palavra-chave aceita utilizadores de `app_users` criados quando o
+  admin dá acesso a um participante. Os utilizadores base resolvem-se sempre
+  primeiro, por isso o login do Tiago/Clara não muda.
+- Um **submitter** é um participante **não-pleno**: não entra no saldo. Ao criar
+  uma despesa escolhe pagador/divisão **entre os membros plenos** e um
+  **aprovador**; a despesa fica `pending` e só entra no saldo após aprovação
+  (`countsTowardsBalance` exclui pending/rejected — saldo continua explicável).
+- `getSpaceContext` expõe `fullMembers` e `viewerRole`. As páginas financeiras
+  usam `fullMembers`. Os submitters são redirecionados para /despesas e as ações
+  sensíveis (acertos, recorrentes, categorias, membros, edição) recusam-nos.
+- Gestão em **Ambiente**: dar/revogar acesso de submissão por email; fila de
+  **/aprovacoes** (aprovar/rejeitar) com aviso no Saldo e badge na navegação.
+
+### Notificações push (#10)
+- Adiadas a pedido do utilizador (precisam de chaves VAPID e, em iOS, da PWA
+  instalada). Ficam como trabalho futuro.

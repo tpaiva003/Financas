@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RecorrentesPage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   // Materialização preguiçosa: gera as ocorrências em atraso (idempotente).
   await generateDueRecurring(ctx.space.id);

@@ -12,7 +12,6 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
-import { isEmailAllowed } from "./env";
 import { userByEmail } from "./users";
 import { hashPassword, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
@@ -30,12 +29,14 @@ providers.push(
     authorize: async (raw) => {
       const email = typeof raw?.email === "string" ? raw.email.toLowerCase() : "";
       const password = typeof raw?.password === "string" ? raw.password : "";
-      if (!isEmailAllowed(email)) return null;
-      const u = userByEmail(email);
-      if (!u) return null;
       if (passwordIssue(password)) return null;
 
       const repo = getRepository();
+      // Allow-list: utilizadores base (env) OU utilizadores adicionais da BD
+      // (submitters a quem o admin deu acesso). Mais ninguém entra.
+      const u = userByEmail(email) ?? (await repo.getAppUserByEmail(email));
+      if (!u) return null;
+
       const existing = await repo.getUserPasswordHash(u.id);
       if (!existing) {
         // Primeira entrada: define a palavra-chave.

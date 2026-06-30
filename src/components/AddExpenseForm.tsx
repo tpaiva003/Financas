@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { createExpenseAction, type ActionState } from "@/app/(app)/actions";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { formatCents } from "@/lib/domain";
+import { parseMoneyToCents } from "@/lib/money-input";
 import type { Category } from "@/lib/data";
 
 interface MemberOpt {
@@ -17,11 +20,19 @@ export function AddExpenseForm({
   members,
   currentMemberId,
   today,
+  descriptions = [],
+  isSubmitter = false,
+  approvers = [],
 }: {
   categories: Category[];
   members: MemberOpt[];
   currentMemberId: string;
   today: string;
+  descriptions?: string[];
+  /** O autor é um "submitter": despesa fica pendente de aprovação. */
+  isSubmitter?: boolean;
+  /** Membros plenos que podem aprovar (quando submitter). */
+  approvers?: MemberOpt[];
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
@@ -29,6 +40,11 @@ export function AddExpenseForm({
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
+  const [amountStr, setAmountStr] = useState("");
+
+  const amountCents = parseMoneyToCents(amountStr);
+  const shareA = Math.round((amountCents * percentA) / 100);
+  const shareB = amountCents - shareA;
 
   const isPair = members.length === 2;
   const a = members[0];
@@ -53,6 +69,8 @@ export function AddExpenseForm({
             inputMode="decimal"
             required
             autoFocus
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
             placeholder="0,00"
             className="w-full border-0 bg-transparent p-0 font-display text-5xl font-semibold tracking-tight tnum text-fg placeholder:text-fg-faint/40 focus:outline-none focus:ring-0"
           />
@@ -65,7 +83,23 @@ export function AddExpenseForm({
       <div className="card space-y-5 p-6">
         <div>
           <label className="label" htmlFor="description">Descrição</label>
-          <input id="description" name="description" type="text" required placeholder="Ex.: Continente, jantar…" className="input" />
+          <input
+            id="description"
+            name="description"
+            type="text"
+            required
+            list="desc-suggestions"
+            autoComplete="off"
+            placeholder="Ex.: Continente, jantar…"
+            className="input"
+          />
+          {descriptions.length > 0 ? (
+            <datalist id="desc-suggestions">
+              {descriptions.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -75,14 +109,7 @@ export function AddExpenseForm({
           </div>
           <div>
             <label className="label" htmlFor="categoryId">Categoria</label>
-            <select id="categoryId" name="categoryId" className="select" defaultValue="">
-              <option value="">Sem categoria</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.icon ? `${c.icon} ` : ""}{c.name}
-                </option>
-              ))}
-            </select>
+            <CategoryCombobox categories={categories} />
           </div>
         </div>
 
@@ -120,16 +147,20 @@ export function AddExpenseForm({
       </div>
 
       <div className="card space-y-5 p-6">
-        <div>
-          <span className="label">Tipo</span>
-          <div className="grid grid-cols-2 gap-2">
-            <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>Partilhada</ToggleButton>
-            <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>Pessoal</ToggleButton>
+        {isSubmitter ? (
+          <input type="hidden" name="kind" value="shared" />
+        ) : (
+          <div>
+            <span className="label">Tipo</span>
+            <div className="grid grid-cols-2 gap-2">
+              <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>Partilhada</ToggleButton>
+              <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>Pessoal</ToggleButton>
+            </div>
+            <input type="hidden" name="kind" value={kind} />
           </div>
-          <input type="hidden" name="kind" value={kind} />
-        </div>
+        )}
 
-        {kind === "shared" ? (
+        {isSubmitter || kind === "shared" ? (
           <div>
             <span className="label">Como se divide</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -150,8 +181,8 @@ export function AddExpenseForm({
             {splitType === "PERCENT" && a && b ? (
               <div className="mt-4">
                 <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                  <span>{a.name}: {percentA}%</span>
-                  <span>{b.name}: {100 - percentA}%</span>
+                  <span>{a.name}: {percentA}%{amountCents ? ` · ${formatCents(shareA)}` : ""}</span>
+                  <span>{b.name}: {100 - percentA}%{amountCents ? ` · ${formatCents(shareB)}` : ""}</span>
                 </div>
                 <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                 <input type="hidden" name="percentA" value={percentA} />
@@ -178,6 +209,21 @@ export function AddExpenseForm({
             Tornar visível aos outros participantes
           </label>
         )}
+
+        {isSubmitter ? (
+          <div className="border-t border-hair pt-4">
+            <label className="label" htmlFor="approverId">Quem aprova</label>
+            <p className="mb-2 text-xs text-fg-muted">
+              A despesa fica pendente até este participante a aprovar.
+            </p>
+            <select id="approverId" name="approverId" required defaultValue="" className="select">
+              <option value="" disabled>Escolhe o aprovador…</option>
+              {approvers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       <SubmitButton />

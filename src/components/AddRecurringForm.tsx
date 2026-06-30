@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { createRecurringAction, type ActionState } from "@/app/(app)/actions";
+import { formatCents } from "@/lib/domain";
+import { parseMoneyToCents } from "@/lib/money-input";
 import type { Category } from "@/lib/data";
 
 interface MemberOpt {
@@ -30,6 +32,11 @@ export function AddRecurringForm({
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
+  const [amountStr, setAmountStr] = useState("");
+
+  const amountCents = parseMoneyToCents(amountStr);
+  const shareA = Math.round((amountCents * percentA) / 100);
+  const shareB = amountCents - shareA;
 
   const isPair = members.length === 2;
   const a = members[0];
@@ -42,6 +49,7 @@ export function AddRecurringForm({
       setValueType("fixed");
       setSplitType("EQUAL");
       setPercentA(50);
+      setAmountStr("");
     }
   }, [state]);
 
@@ -72,7 +80,7 @@ export function AddRecurringForm({
           <label className="label" htmlFor="r-amount">
             {valueType === "fixed" ? "Valor" : "Estimativa (opcional)"}
           </label>
-          <input id="r-amount" name="amount" inputMode="decimal" placeholder="0,00" className="input tnum" />
+          <input id="r-amount" name="amount" inputMode="decimal" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} placeholder="0,00" className="input tnum" />
         </div>
         <div>
           <label className="label" htmlFor="r-freq">Frequência</label>
@@ -138,8 +146,8 @@ export function AddRecurringForm({
         {splitType === "PERCENT" && a && b ? (
           <div className="mt-4">
             <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-              <span>{a.name}: {percentA}%</span>
-              <span>{b.name}: {100 - percentA}%</span>
+              <span>{a.name}: {percentA}%{amountCents ? ` · ${formatCents(shareA)}` : ""}</span>
+              <span>{b.name}: {100 - percentA}%{amountCents ? ` · ${formatCents(shareB)}` : ""}</span>
             </div>
             <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
             <input type="hidden" name="percentA" value={percentA} />

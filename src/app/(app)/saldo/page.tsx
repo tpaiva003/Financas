@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { formatCents } from "@/lib/domain";
@@ -8,9 +9,10 @@ export const dynamic = "force-dynamic";
 
 export default async function SaldoPage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const { balance, transfers } = await getSpaceBalance(
     ctx.space.id,
-    ctx.members,
+    ctx.fullMembers,
     ctx.viewerMemberId,
   );
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
@@ -53,7 +55,7 @@ export default async function SaldoPage() {
       <div>
         <h2 className="eyebrow mb-2">Posição de cada um</h2>
         <ul className="card divide-y divide-hair2 p-2">
-          {ctx.members.map((m) => {
+          {ctx.fullMembers.map((m) => {
             const net = balance.netByUser[m.id] ?? 0;
             return (
               <li key={m.id} className="flex items-center justify-between px-4 py-3">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const repo = getRepository();
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
@@ -18,17 +20,28 @@ export default async function DashboardPage() {
   await generateDueRecurring(ctx.space.id);
 
   const [{ transfers }, recent, categories] = await Promise.all([
-    getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId),
+    getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
     repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
     repo.listCategories(ctx.space.id),
   ]);
 
   const pending = recent.filter((e) => e.status === "pending");
+  const pendingApprovals = recent.filter((e) => e.approvalStatus === "pending");
   const confirmed = recent.filter((e) => e.status === "confirmed").slice(0, 6);
   const categoryName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
+
+  // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
+  const fmtDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+  const myRegistered = [...recent]
+    .filter((e) => e.createdBy === ctx.user.id)
+    .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+  const myPaid = [...recent]
+    .filter((e) => e.payerId === ctx.viewerMemberId && e.status === "confirmed")
+    .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1))[0];
 
   return (
     <div className="space-y-10">
@@ -37,6 +50,22 @@ export default async function DashboardPage() {
         totalToSettle={totalToSettle}
         nameOf={nameOf}
       />
+
+      {pendingApprovals.length > 0 ? (
+        <Link
+          href="/aprovacoes"
+          className="card flex items-center justify-between gap-4 border-debt/20 p-4 transition-colors hover:border-debt/40"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-debt/15 text-debt">✓</span>
+            <div>
+              <p className="text-sm font-medium">{pendingApprovals.length} despesa(s) por aprovar</p>
+              <p className="text-xs text-fg-muted">Submetidas que aguardam a tua aprovação.</p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
+      ) : null}
 
       {pending.length > 0 ? (
         <Link
@@ -53,6 +82,27 @@ export default async function DashboardPage() {
           <span className="text-fg-faint">→</span>
         </Link>
       ) : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card p-4">
+          <p className="eyebrow">Última que registaste</p>
+          <p className="mt-1 text-[15px] font-medium tnum text-fg">
+            {myRegistered ? fmtDate(myRegistered.transactionDate) : "—"}
+          </p>
+          {myRegistered ? (
+            <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
+          ) : null}
+        </div>
+        <div className="card p-4">
+          <p className="eyebrow">Última que pagaste</p>
+          <p className="mt-1 text-[15px] font-medium tnum text-fg">
+            {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
+          </p>
+          {myPaid ? (
+            <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
+          ) : null}
+        </div>
+      </div>
 
       <section>
         <div className="mb-2 flex items-center justify-between">

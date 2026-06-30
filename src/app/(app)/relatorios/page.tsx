@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { getSpaceReport, type Slice } from "@/lib/services/reports-service";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RelatoriosPage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const categories = await getRepository().listCategories(ctx.space.id);
   const report = await getSpaceReport(ctx.space.id, ctx.viewerMemberId, ctx.members, categories);
 
