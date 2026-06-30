@@ -112,3 +112,49 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - O **admin é o Tiago** (1.º email da allow-list): as mensagens de contacto
   caem numa tabela `contact_messages` e aparecem no inbox `/mensagens`, visível
   só ao admin.
+
+## Fase 3 — Backlog de melhorias (12 itens)
+
+### Divisão "só de um(a)" (#6)
+- Representada como `PERCENT` com 100% para o dono e 0% para os restantes.
+  Reutiliza o motor de divisão existente sem novo tipo de split. "Quem pagou"
+  continua independente de "de quem é" (o pagador pode ser outro). A edição
+  deteta este caso (PERCENT 100/0) e pré-seleciona "Só de um(a)".
+
+### Relatórios mês vs mês + média móvel (#2, #3)
+- Lógica pura e testada em `src/lib/domain/reports.ts` (`buildMonthComparison`),
+  com 9 testes. O "mês atual" é o **mês mais recente com dados** (não o mês
+  civil), para o relatório ser útil fora do mês corrente. Média móvel = média
+  dos últimos 3 meses **com dados**.
+
+### Mensagens — admin (#9, #10, #11)
+- Migração 0004: `archived_at` e `notes` em `contact_messages`.
+- Arquivar (separador Ativas | Arquivadas), badge de não lidas no topo (nav
+  desktop + atalho mobile, só admin) e notas internas por mensagem.
+- `countUnreadContactMessages` é tolerante caso a coluna ainda não exista.
+
+### Categorias por ambiente (#12) — assinalado (afeta dados)
+- Migração 0005: `space_id text` (FK `spaces`, `on delete cascade`) em
+  `categories`. `space_id NULL` = categoria **padrão** (em todos os ambientes);
+  não editável. Cada ambiente acrescenta as suas (ex.: Casamento, Férias).
+- `listCategories(spaceId)` devolve padrão + as do ambiente. Apagar uma
+  categoria deixa as despesas sem categoria (FK `set null`).
+
+### Editar/eliminar participantes (#7)
+- `updateMember` / `deleteMember` (só no próprio ambiente). Eliminar é
+  bloqueado quando o participante tem conta associada, é o único, ou tem
+  despesas/acertos (FK sem cascade) — preserva a explicabilidade do saldo.
+
+### Fecho de período: pagar/transitar + colapsar (#1, #4) — assinalado (afeta dados)
+- Migração 0006: `settled_at` em `expenses`. É **apenas um marcador de UI**: o
+  cálculo do saldo continua a considerar todas as despesas confirmadas, pelo que
+  o saldo permanece explicável. Reversível (`reopenExpenses`).
+- "Pagar e fechar" cria o(s) acerto(s) sugerido(s) e marca as despesas como
+  liquidadas; "Transitar" fecha sem pagar (o saldo segue para o mês seguinte).
+  As liquidadas ficam recolhidas na lista de despesas.
+
+### Acerto entre ambientes (#8)
+- Move o saldo de um ambiente de 2 pessoas para outro com os **mesmos
+  participantes** (mapeados por `linked_user_id`): zera aqui (acerto interno +
+  colapso) e recria a dívida no destino como despesa "Saldo transferido de X"
+  (paga pelo credor, 100% do devedor). Tudo continua explicável.
