@@ -4,6 +4,7 @@ import { getSpaceBalance } from "@/lib/services/balance-service";
 import { formatCents } from "@/lib/domain";
 import { SettlementForm } from "@/components/SettlementForm";
 import { ClosePeriodPanel } from "@/components/ClosePeriodPanel";
+import { TransferBalanceForm } from "@/components/TransferBalanceForm";
 
 export const metadata = { title: "Acertos · Finanças" };
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export default async function AcertosPage() {
   const openCount = sharedExpenses.filter((e) => !e.settledAt && e.status === "confirmed").length;
   const settledCount = sharedExpenses.filter((e) => e.settledAt).length;
   const transfersTotal = transfers.reduce((acc, t) => acc + t.amountCents, 0);
+
+  const otherSpaces = ctx.spaces.filter((s) => s.id !== ctx.space.id);
+  const canTransfer = ctx.members.length === 2 && transfers.length > 0 && otherSpaces.length > 0;
 
   const first = transfers[0];
   const suggested = first
@@ -64,6 +68,16 @@ export default async function AcertosPage() {
         openCount={openCount}
         settledCount={settledCount}
       />
+
+      {canTransfer ? (
+        <div className="card p-6">
+          <h2 className="label">Transferir saldo para outro ambiente</h2>
+          <TransferBalanceForm
+            spaces={otherSpaces.map((s) => ({ id: s.id, name: s.name }))}
+            balanceLabel={formatCents(transfersTotal)}
+          />
+        </div>
+      ) : null}
 
       <div className="card p-6">
         <h2 className="label">Registar acerto manual</h2>

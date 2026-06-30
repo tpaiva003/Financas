@@ -211,6 +211,82 @@ export async function reopenPeriodAction(): Promise<void> {
   redirect("/acertos");
 }
 
+/**
+ * Acerta o ambiente atual transferindo o saldo para outro ambiente: zera o
+ * saldo aqui (com um acerto interno) e recria a dívida no ambiente destino,
+ * entre os mesmos participantes (identificados pelo utilizador associado).
+ * Só para ambientes de 2 pessoas com participantes com conta em ambos.
+ */
+export async function transferBalanceToSpaceAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const targetId = String(formData.get("targetSpaceId") ?? "");
+  if (!targetId || targetId === ctx.space.id) return { error: "Escolhe o ambiente destino." };
+  if (!ctx.spaces.some((s) => s.id === targetId)) return { error: "Ambiente destino inválido." };
+  if (ctx.members.length !== 2) {
+    return { error: "A transferência entre ambientes só está disponível para ambientes de 2 pessoas." };
+  }
+
+  const repo = getRepository();
+  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId);
+  const t = transfers[0];
+  if (!t || t.amountCents <= 0) return { error: "Não há saldo para transferir." };
+
+  const debtorX = ctx.members.find((m) => m.id === t.fromUserId);
+  const creditorX = ctx.members.find((m) => m.id === t.toUserId);
+  if (!debtorX?.linkedUserId || !creditorX?.linkedUserId) {
+    return { error: "Os participantes têm de ter conta associada para transferir entre ambientes." };
+  }
+
+  const targetSpace = ctx.spaces.find((s) => s.id === targetId)!;
+  const targetMembers = await repo.listMembers(targetId);
+  const debtorY = targetMembers.find((m) => m.linkedUserId === debtorX.linkedUserId);
+  const creditorY = targetMembers.find((m) => m.linkedUserId === creditorX.linkedUserId);
+  if (!debtorY || !creditorY) {
+    return { error: `O ambiente "${targetSpace.name}" não tem os mesmos participantes.` };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Recria a dívida no destino: despesa paga por quem é credor, 100% do devedor.
+  const split: Split = { type: "PERCENT", weights: { [debtorY.id]: 100, [creditorY.id]: 0 } };
+  await repo.createExpense({
+    spaceId: targetId,
+    description: `Saldo transferido de ${ctx.space.name}`,
+    amountCents: t.amountCents,
+    currency: "EUR",
+    transactionDate: today,
+    categoryId: null,
+    payerId: creditorY.id,
+    kind: "shared",
+    split,
+    origin: "manual",
+    status: "confirmed",
+    ownerId: creditorY.id,
+    visibleToPartner: false,
+    createdBy: ctx.user.id,
+  });
+
+  // Zera o ambiente atual com um acerto interno e colapsa as despesas.
+  await repo.createSettlement({
+    spaceId: ctx.space.id,
+    fromUserId: debtorX.id,
+    toUserId: creditorX.id,
+    amountCents: t.amountCents,
+    currency: "EUR",
+    date: today,
+    note: `Saldo transferido para ${targetSpace.name}`,
+    createdBy: ctx.user.id,
+  });
+  await repo.settleOpenExpenses(ctx.space.id);
+
+  revalidatePeriod();
+  revalidatePath("/", "layout");
+  redirect("/acertos");
+}
+
 export async function updateExpenseAction(
   _prev: ActionState,
   formData: FormData,
