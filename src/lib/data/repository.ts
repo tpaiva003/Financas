@@ -99,12 +99,22 @@ export interface Space {
   createdAt: string;
 }
 
+export type MemberRole = "full" | "submitter";
+
 export interface Member {
   id: string;
   spaceId: string;
   name: string;
   linkedUserId?: string | null;
   email?: string | null;
+  /** "full" participa no saldo; "submitter" só submete (com aprovação). */
+  role?: MemberRole;
+}
+
+export interface AppUser {
+  id: string;
+  email: string;
+  name: string;
 }
 
 export interface CreateSpaceInput {
@@ -124,6 +134,8 @@ export interface AddMemberInput {
 export interface UpdateMemberInput {
   name?: string;
   email?: string | null;
+  role?: MemberRole;
+  linkedUserId?: string | null;
 }
 
 export interface ContactMessage {
@@ -176,6 +188,10 @@ export interface CreateExpenseInput {
   createdBy: string;
   /** Template recorrente que originou esta despesa (idempotência). */
   recurringId?: string | null;
+  /** Aprovação (despesas submetidas por um "submitter"). */
+  approvalStatus?: "pending" | "rejected" | null;
+  approverId?: string | null;
+  submittedBy?: string | null;
 }
 
 export interface UpdateExpenseInput {
@@ -249,6 +265,14 @@ export interface Repository {
   // Palavra-chave (login interim).
   getUserPasswordHash(userId: string): Promise<string | null>;
   setUserPasswordHash(userId: string, hash: string): Promise<void>;
+  /** Utilizadores adicionais (submitters) com login próprio. */
+  getAppUserByEmail(email: string): Promise<AppUser | null>;
+  createAppUser(input: AppUser): Promise<void>;
+  deleteAppUser(id: string): Promise<void>;
+  /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
+  setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
+  /** Nº de despesas por aprovar no ambiente. */
+  countPendingApprovals(spaceId: string): Promise<number>;
 
   // Mensagens de contacto da landing.
   createContactMessage(input: CreateContactInput): Promise<void>;

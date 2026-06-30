@@ -83,6 +83,10 @@ export interface Expense {
   settledAt?: string | null;
   /** Template recorrente que originou esta despesa, se aplicável. */
   recurringId?: string | null;
+  /** Aprovação: null/'approved' entra no saldo; 'pending'/'rejected' não. */
+  approvalStatus?: "pending" | "rejected" | null;
+  approverId?: string | null;
+  submittedBy?: string | null;
 }
 
 export interface Settlement {

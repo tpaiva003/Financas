@@ -9,12 +9,13 @@ export const dynamic = "force-dynamic";
 
 export default async function EditarDespesaPage({ params }: { params: { id: string } }) {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const repo = getRepository();
   const expense = await repo.getExpense(params.id, ctx.viewerMemberId);
   if (!expense) redirect("/despesas");
 
   const categories = await repo.listCategories(ctx.space.id);
-  const memberIds = ctx.members.map((m) => m.id);
+  const memberIds = ctx.fullMembers.map((m) => m.id);
 
   // Deteta divisão "só de um(a)": PERCENT em que um membro tem 100% e os restantes 0%.
   let splitType: "EQUAL" | "PERCENT" | "SOLE" = expense.split.type === "PERCENT" ? "PERCENT" : "EQUAL";
@@ -31,7 +32,7 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
 
   const percentA =
     expense.split.type === "PERCENT"
-      ? (expense.split.weights?.[ctx.members[0]?.id ?? ""] ?? 50)
+      ? (expense.split.weights?.[ctx.fullMembers[0]?.id ?? ""] ?? 50)
       : 50;
 
   return (
@@ -48,7 +49,7 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
         id={expense.id}
         hasReceipt={Boolean(expense.receiptPath)}
         categories={categories}
-        members={ctx.members.map((m) => ({ id: m.id, name: m.name }))}
+        members={ctx.fullMembers.map((m) => ({ id: m.id, name: m.name }))}
         initial={{
           description: expense.description,
           amount: (expense.amountCents / 100).toString().replace(".", ","),

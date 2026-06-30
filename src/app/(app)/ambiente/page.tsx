@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AddMemberForm } from "@/components/AddMemberForm";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AmbientePage() {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") redirect("/despesas");
   const categories = await getRepository().listCategories(ctx.space.id);
   const custom = categories.filter((c) => c.spaceId);
   const defaults = categories.filter((c) => !c.spaceId);
@@ -29,6 +31,7 @@ export default async function AmbientePage() {
             name: m.name,
             email: m.email,
             linkedUserId: m.linkedUserId,
+            role: m.role,
           }))}
         />
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">

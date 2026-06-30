@@ -9,7 +9,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const ctx = await getSpaceContext();
   const user = ctx.user;
   const admin = isAdmin(user.id);
-  const unreadMessages = admin ? await getRepository().countUnreadContactMessages() : 0;
+  const isSubmitter = ctx.viewerRole === "submitter";
+  const repo = getRepository();
+  const unreadMessages = admin ? await repo.countUnreadContactMessages() : 0;
+  const pendingApprovals = isSubmitter ? 0 : await repo.countPendingApprovals(ctx.space.id);
 
   return (
     <div className="min-h-[100dvh]">
@@ -27,7 +30,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               />
             ) : null}
           </div>
-          <AppNav userName={user.name} isAdmin={admin} unreadMessages={unreadMessages} />
+          <AppNav
+            userName={user.name}
+            isAdmin={admin}
+            isSubmitter={isSubmitter}
+            unreadMessages={unreadMessages}
+            pendingApprovals={pendingApprovals}
+          />
         </div>
       </header>
 
@@ -49,11 +58,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Navegação inferior (mobile). */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
         <div className="mx-auto flex max-w-3xl items-stretch justify-around">
-          <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
-          <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
-          <BottomLink href="/recorrentes" label="Recorr." icon={<IconRepeat />} />
-          <BottomLink href="/relatorios" label="Relatórios" icon={<IconChart />} />
-          <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />
+          {isSubmitter ? (
+            <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
+          ) : (
+            <>
+              <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
+              <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
+              <BottomLink href="/recorrentes" label="Recorr." icon={<IconRepeat />} />
+              <BottomLink href="/relatorios" label="Relatórios" icon={<IconChart />} />
+              <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />
+            </>
+          )}
         </div>
       </nav>
     </div>

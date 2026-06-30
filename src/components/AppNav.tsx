@@ -15,16 +15,25 @@ const BASE_LINKS = [
 export function AppNav({
   userName,
   isAdmin = false,
+  isSubmitter = false,
   unreadMessages = 0,
+  pendingApprovals = 0,
 }: {
   userName: string;
   isAdmin?: boolean;
+  isSubmitter?: boolean;
   unreadMessages?: number;
+  pendingApprovals?: number;
 }) {
   const pathname = usePathname();
-  const LINKS = isAdmin
-    ? [...BASE_LINKS, { href: "/mensagens", label: "Mensagens" }]
-    : BASE_LINKS;
+  // Submitters só veem as Despesas (submetem). Os restantes veem tudo.
+  let LINKS = isSubmitter ? [{ href: "/despesas", label: "Despesas" }] : [...BASE_LINKS];
+  if (!isSubmitter && pendingApprovals > 0) {
+    LINKS = [...LINKS, { href: "/aprovacoes", label: "Aprovações" }];
+  }
+  if (!isSubmitter && isAdmin) {
+    LINKS = [...LINKS, { href: "/mensagens", label: "Mensagens" }];
+  }
 
   return (
     <div className="flex items-center gap-1.5">
@@ -43,7 +52,8 @@ export function AppNav({
       <nav className="mr-2 hidden items-center gap-1 sm:flex">
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(`${l.href}/`);
-          const showBadge = l.href === "/mensagens" && unreadMessages > 0;
+          const badge =
+            l.href === "/mensagens" ? unreadMessages : l.href === "/aprovacoes" ? pendingApprovals : 0;
           return (
             <Link
               key={l.href}
@@ -53,9 +63,9 @@ export function AppNav({
               }`}
             >
               {l.label}
-              {showBadge ? (
+              {badge > 0 ? (
                 <span className="grid h-5 min-w-5 place-items-center rounded-full bg-credit px-1 text-[11px] font-semibold leading-none text-bg">
-                  {unreadMessages}
+                  {badge}
                 </span>
               ) : null}
             </Link>

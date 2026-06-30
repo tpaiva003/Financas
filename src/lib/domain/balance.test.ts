@@ -99,6 +99,15 @@ describe("computeBalance", () => {
     expect(netByUser[A]).toBe(0);
   });
 
+  it("despesas por aprovar/rejeitadas NÃO entram no saldo", () => {
+    const pendente = expense({ amountCents: 5000, payerId: A, approvalStatus: "pending" });
+    const rejeitada = expense({ amountCents: 5000, payerId: A, approvalStatus: "rejected" });
+    expect(countsTowardsBalance(pendente)).toBe(false);
+    expect(countsTowardsBalance(rejeitada)).toBe(false);
+    const { netByUser } = computeBalance({ users, expenses: [pendente, rejeitada], settlements: [] });
+    expect(netByUser[A]).toBe(0);
+  });
+
   it("despesas eliminadas (soft-delete) NÃO entram no saldo", () => {
     const e = expense({ amountCents: 5000, payerId: A, deletedAt: "2026-01-05T00:00:00Z" });
     expect(countsTowardsBalance(e)).toBe(false);

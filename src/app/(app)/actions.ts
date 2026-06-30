@@ -4,10 +4,12 @@ import { z } from "zod";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { isAdmin } from "@/lib/users";
+import { isAdmin, userByEmail } from "@/lib/users";
+import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { toCents, validateSplit, nextOccurrence, type Split } from "@/lib/domain";
@@ -95,7 +97,9 @@ export async function createExpenseAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
-  const memberIds = ctx.members.map((m) => m.id);
+  // O saldo/divisão é sempre entre os participantes plenos.
+  const memberIds = ctx.fullMembers.map((m) => m.id);
+  const isSubmitter = ctx.viewerRole === "submitter";
 
   const parsed = expenseSchema.safeParse({
     description: formData.get("description"),
@@ -103,7 +107,8 @@ export async function createExpenseAction(
     transactionDate: formData.get("transactionDate"),
     categoryId: formData.get("categoryId") || null,
     payerId: formData.get("payerId"),
-    kind: formData.get("kind"),
+    // Um submitter só cria despesas partilhadas (não tem despesas pessoais).
+    kind: isSubmitter ? "shared" : formData.get("kind"),
     splitType: formData.get("splitType") || "EQUAL",
     percentA: formData.get("percentA") ?? undefined,
     soleMemberId: formData.get("soleMemberId") ?? undefined,
@@ -113,6 +118,13 @@ export async function createExpenseAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   const data = parsed.data;
   if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
+
+  // Submitter: precisa de um aprovador (membro pleno) e a despesa fica pendente.
+  let approverId: string | null = null;
+  if (isSubmitter) {
+    approverId = String(formData.get("approverId") ?? "");
+    if (!memberIds.includes(approverId)) return { error: "Escolhe quem aprova a despesa." };
+  }
 
   const amountCents = toCents(data.amount);
 
@@ -135,6 +147,9 @@ export async function createExpenseAction(
     ownerId: data.kind === "personal" ? ctx.viewerMemberId : data.payerId,
     visibleToPartner: data.kind === "personal" ? Boolean(data.visibleToPartner) : false,
     createdBy: ctx.user.id,
+    approvalStatus: isSubmitter ? "pending" : null,
+    approverId,
+    submittedBy: isSubmitter ? ctx.viewerMemberId : null,
   });
   await handleReceipt(created.id, ctx.space.id, formData);
 
@@ -156,6 +171,7 @@ export async function createSettlementAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
 
   const parsed = settlementSchema.safeParse({
     fromUserId: formData.get("fromUserId"),
@@ -198,7 +214,8 @@ function revalidatePeriod() {
 /** Regista o(s) pagamento(s) sugerido(s) e fecha o período (colapsa despesas). */
 export async function settleAndPayAction(): Promise<void> {
   const ctx = await getSpaceContext();
-  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId);
+  if (ctx.viewerRole === "submitter") return;
+  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId);
   const today = new Date().toISOString().slice(0, 10);
 
   for (const t of transfers) {
@@ -222,6 +239,7 @@ export async function settleAndPayAction(): Promise<void> {
 /** Transita o saldo para o período seguinte: fecha sem registar pagamento. */
 export async function carryBalanceAction(): Promise<void> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   await getRepository().settleOpenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
@@ -230,9 +248,87 @@ export async function carryBalanceAction(): Promise<void> {
 /** Reabre o último fecho: volta a mostrar as despesas liquidadas. */
 export async function reopenPeriodAction(): Promise<void> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   await getRepository().reopenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
+}
+
+// ---- Aprovação de despesas submetidas -------------------------------------
+
+export async function approveExpenseAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return; // só membros plenos aprovam
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().setExpenseApproval(id, "approved");
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  revalidatePath("/aprovacoes");
+}
+
+export async function rejectExpenseAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().setExpenseApproval(id, "rejected");
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  revalidatePath("/aprovacoes");
+}
+
+// ---- Acesso de submissão (role submitter) ---------------------------------
+
+export async function grantSubmitterAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const memberId = String(formData.get("memberId") ?? "");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+
+  const member = ctx.members.find((m) => m.id === memberId);
+  if (!member) return { error: "Participante inválido." };
+  if (member.linkedUserId) return { error: "Este participante já tem acesso." };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email inválido." };
+  if (isEmailAllowed(email) || userByEmail(email)) {
+    return { error: "Esse email já pertence a um utilizador base." };
+  }
+
+  const repo = getRepository();
+  if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
+
+  const userId = `usr_${randomUUID()}`;
+  await repo.createAppUser({ id: userId, email, name: member.name });
+  await repo.updateMember(memberId, ctx.space.id, {
+    role: "submitter",
+    linkedUserId: userId,
+    email,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function revokeSubmitterAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const memberId = String(formData.get("memberId") ?? "");
+  const member = ctx.members.find((m) => m.id === memberId);
+  // Só revoga submitters (nunca utilizadores base).
+  if (!member || member.role !== "submitter" || !member.linkedUserId) return;
+
+  await getRepository().deleteAppUser(member.linkedUserId);
+  await getRepository().updateMember(memberId, ctx.space.id, {
+    role: "full",
+    linkedUserId: null,
+  });
+  revalidatePath("/ambiente");
+  revalidatePath("/", "layout");
 }
 
 /**
@@ -246,20 +342,21 @@ export async function transferBalanceToSpaceAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const targetId = String(formData.get("targetSpaceId") ?? "");
   if (!targetId || targetId === ctx.space.id) return { error: "Escolhe o ambiente destino." };
   if (!ctx.spaces.some((s) => s.id === targetId)) return { error: "Ambiente destino inválido." };
-  if (ctx.members.length !== 2) {
+  if (ctx.fullMembers.length !== 2) {
     return { error: "A transferência entre ambientes só está disponível para ambientes de 2 pessoas." };
   }
 
   const repo = getRepository();
-  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.members, ctx.viewerMemberId);
+  const { transfers } = await getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId);
   const t = transfers[0];
   if (!t || t.amountCents <= 0) return { error: "Não há saldo para transferir." };
 
-  const debtorX = ctx.members.find((m) => m.id === t.fromUserId);
-  const creditorX = ctx.members.find((m) => m.id === t.toUserId);
+  const debtorX = ctx.fullMembers.find((m) => m.id === t.fromUserId);
+  const creditorX = ctx.fullMembers.find((m) => m.id === t.toUserId);
   if (!debtorX?.linkedUserId || !creditorX?.linkedUserId) {
     return { error: "Os participantes têm de ter conta associada para transferir entre ambientes." };
   }
@@ -316,7 +413,8 @@ export async function updateExpenseAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
-  const memberIds = ctx.members.map((m) => m.id);
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const memberIds = ctx.fullMembers.map((m) => m.id);
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
 
@@ -361,10 +459,11 @@ export async function updateExpenseAction(
 }
 
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().softDeleteExpense(id, user.id);
+  await getRepository().softDeleteExpense(id, ctx.user.id);
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -423,7 +522,9 @@ export async function createSpaceAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const user = ctx.user;
   const parsed = spaceSchema.safeParse({
     name: formData.get("name"),
     members: formData.get("members") || undefined,
@@ -464,6 +565,7 @@ export async function createCategoryAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
     color: formData.get("color") || "",
@@ -484,6 +586,7 @@ export async function createCategoryAction(
 
 export async function updateCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const parsed = categorySchema.safeParse({
@@ -503,6 +606,7 @@ export async function updateCategoryAction(formData: FormData): Promise<void> {
 
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteCategory(id, ctx.space.id);
@@ -540,7 +644,8 @@ export async function createRecurringAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
-  const memberIds = ctx.members.map((m) => m.id);
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const memberIds = ctx.fullMembers.map((m) => m.id);
 
   const parsed = recurringSchema.safeParse({
     description: formData.get("description"),
@@ -596,6 +701,7 @@ export async function createRecurringAction(
 /** Pausar, retomar, saltar uma ocorrência, terminar ou eliminar (REQ-REC-4). */
 export async function recurringOpAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   const op = String(formData.get("op") ?? "");
   if (!id) return;
@@ -627,7 +733,8 @@ export async function confirmRecurringExpenseAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await getSpaceContext();
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
   const amountCents = parseAmountCents(formData.get("amount"));
@@ -652,7 +759,8 @@ export async function addMemberAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await requireUser();
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const parsed = memberSchema.safeParse({
     spaceId: formData.get("spaceId"),
     name: formData.get("name"),
@@ -680,6 +788,7 @@ export async function updateMemberAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
   const parsed = memberEditSchema.safeParse({
@@ -704,6 +813,7 @@ export async function deleteMemberAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
 

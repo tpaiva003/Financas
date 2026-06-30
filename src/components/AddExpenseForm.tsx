@@ -21,12 +21,18 @@ export function AddExpenseForm({
   currentMemberId,
   today,
   descriptions = [],
+  isSubmitter = false,
+  approvers = [],
 }: {
   categories: Category[];
   members: MemberOpt[];
   currentMemberId: string;
   today: string;
   descriptions?: string[];
+  /** O autor é um "submitter": despesa fica pendente de aprovação. */
+  isSubmitter?: boolean;
+  /** Membros plenos que podem aprovar (quando submitter). */
+  approvers?: MemberOpt[];
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
@@ -141,16 +147,20 @@ export function AddExpenseForm({
       </div>
 
       <div className="card space-y-5 p-6">
-        <div>
-          <span className="label">Tipo</span>
-          <div className="grid grid-cols-2 gap-2">
-            <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>Partilhada</ToggleButton>
-            <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>Pessoal</ToggleButton>
+        {isSubmitter ? (
+          <input type="hidden" name="kind" value="shared" />
+        ) : (
+          <div>
+            <span className="label">Tipo</span>
+            <div className="grid grid-cols-2 gap-2">
+              <ToggleButton active={kind === "shared"} onClick={() => setKind("shared")}>Partilhada</ToggleButton>
+              <ToggleButton active={kind === "personal"} onClick={() => setKind("personal")}>Pessoal</ToggleButton>
+            </div>
+            <input type="hidden" name="kind" value={kind} />
           </div>
-          <input type="hidden" name="kind" value={kind} />
-        </div>
+        )}
 
-        {kind === "shared" ? (
+        {isSubmitter || kind === "shared" ? (
           <div>
             <span className="label">Como se divide</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -199,6 +209,21 @@ export function AddExpenseForm({
             Tornar visível aos outros participantes
           </label>
         )}
+
+        {isSubmitter ? (
+          <div className="border-t border-hair pt-4">
+            <label className="label" htmlFor="approverId">Quem aprova</label>
+            <p className="mb-2 text-xs text-fg-muted">
+              A despesa fica pendente até este participante a aprovar.
+            </p>
+            <select id="approverId" name="approverId" required defaultValue="" className="select">
+              <option value="" disabled>Escolhe o aprovador…</option>
+              {approvers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       <SubmitButton />

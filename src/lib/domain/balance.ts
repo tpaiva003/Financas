@@ -39,7 +39,8 @@ export interface ComputeBalanceParams {
 
 /** Uma despesa entra no saldo? */
 export function countsTowardsBalance(e: Expense): boolean {
-  return e.kind === "shared" && e.status === "confirmed" && !e.deletedAt;
+  const approved = e.approvalStatus !== "pending" && e.approvalStatus !== "rejected";
+  return e.kind === "shared" && e.status === "confirmed" && !e.deletedAt && approved;
 }
 
 export function computeBalance(params: ComputeBalanceParams): BalanceResult {

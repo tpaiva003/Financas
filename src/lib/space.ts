@@ -9,7 +9,7 @@
 import { cookies } from "next/headers";
 import { requireUser } from "./session";
 import { getRepository } from "./data";
-import type { Space, Member } from "./data";
+import type { Space, Member, MemberRole } from "./data";
 import type { HouseholdUser } from "./users";
 
 export const SPACE_COOKIE = "fin_space";
@@ -18,9 +18,14 @@ export interface SpaceContext {
   user: HouseholdUser;
   spaces: Space[];
   space: Space;
+  /** Todos os participantes (inclui submitters). */
   members: Member[];
+  /** Participantes plenos — os que participam no saldo (pagam/dividem). */
+  fullMembers: Member[];
   /** Participante do ambiente atual ligado ao utilizador (p/ privacidade). */
   viewerMemberId: string;
+  /** Papel do utilizador no ambiente atual. */
+  viewerRole: MemberRole;
 }
 
 export async function getSpaceContext(): Promise<SpaceContext> {
@@ -37,8 +42,10 @@ export async function getSpaceContext(): Promise<SpaceContext> {
   const space = spaces.find((s) => s.id === wanted) ?? spaces[0]!;
 
   const members = space ? await repo.listMembers(space.id) : [];
-  const viewerMemberId =
-    members.find((m) => m.linkedUserId === user.id)?.id ?? members[0]?.id ?? user.id;
+  const fullMembers = members.filter((m) => (m.role ?? "full") !== "submitter");
+  const viewerMember = members.find((m) => m.linkedUserId === user.id);
+  const viewerMemberId = viewerMember?.id ?? members[0]?.id ?? user.id;
+  const viewerRole: MemberRole = viewerMember?.role ?? "full";
 
-  return { user, spaces, space, members, viewerMemberId };
+  return { user, spaces, space, members, fullMembers, viewerMemberId, viewerRole };
 }

@@ -10,6 +10,7 @@ import { normalizeText, stableUid } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   AddMemberInput,
+  AppUser,
   Category,
   ContactMessage,
   CreateCategoryInput,
@@ -74,6 +75,9 @@ function rowToExpense(r: any): Expense {
     deletedAt: r.deleted_at,
     settledAt: r.settled_at ?? null,
     recurringId: r.recurring_id ?? null,
+    approvalStatus: r.approval_status ?? null,
+    approverId: r.approver_id ?? null,
+    submittedBy: r.submitted_by ?? null,
   };
 }
 
@@ -157,6 +161,7 @@ export class SupabaseRepository implements Repository {
       name: r.name,
       linkedUserId: r.linked_user_id,
       email: r.email,
+      role: (r.role ?? "full") as Member["role"],
     }));
   }
 
@@ -188,6 +193,8 @@ export class SupabaseRepository implements Repository {
     const update: Record<string, unknown> = {};
     if (patch.name !== undefined) update.name = patch.name;
     if (patch.email !== undefined) update.email = patch.email;
+    if (patch.role !== undefined) update.role = patch.role;
+    if (patch.linkedUserId !== undefined) update.linked_user_id = patch.linkedUserId;
     if (Object.keys(update).length === 0) return;
     const { error } = await db
       .from("members")
@@ -285,6 +292,9 @@ export class SupabaseRepository implements Repository {
         visible_to_partner: input.visibleToPartner ?? false,
         created_by: input.createdBy,
         recurring_id: input.recurringId ?? null,
+        approval_status: input.approvalStatus ?? null,
+        approver_id: input.approverId ?? null,
+        submitted_by: input.submittedBy ?? null,
       })
       .select("*")
       .single();
@@ -578,6 +588,52 @@ export class SupabaseRepository implements Repository {
     const db = getSupabaseAdmin();
     const { error } = await db.from("app_users").update({ password_hash: hash }).eq("id", userId);
     if (error) throw new Error(error.message);
+  }
+
+  async getAppUserByEmail(email: string): Promise<AppUser | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("app_users")
+      .select("id, email, name")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? { id: data.id, email: data.email, name: data.name } : null;
+  }
+
+  async createAppUser(input: AppUser): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("app_users")
+      .upsert({ id: input.id, email: input.email.toLowerCase(), name: input.name }, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAppUser(id: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("app_users").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("expenses")
+      .update({ approval_status: status === "approved" ? null : "rejected" })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async countPendingApprovals(spaceId: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId)
+      .eq("approval_status", "pending")
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
   }
 
   async createContactMessage(input: CreateContactInput): Promise<void> {

@@ -30,8 +30,10 @@ export const authConfig: NextAuthConfig = {
     error: "/login",
   },
   callbacks: {
-    // Allow-list: barra qualquer email fora da lista, mesmo com SSO válido.
-    signIn: ({ user }) => isEmailAllowed(user.email),
+    // Allow-list: barra qualquer email fora da lista no SSO. O login por
+    // palavra-chave já é validado em `authorize()` (env + utilizadores da BD).
+    signIn: ({ user, account }) =>
+      account?.provider === "password" ? true : isEmailAllowed(user.email),
     jwt: ({ token }) => {
       if (token.email) {
         const u = userByEmail(token.email);
