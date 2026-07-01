@@ -42,8 +42,9 @@ export default async function AmbientePage() {
       <section className="card p-6">
         <h2 className="label">Adicionar participante</h2>
         <p className="mb-3 text-sm text-fg-muted">
-          Adiciona alguém para dividir despesas (ex.: a tua mãe nas viagens). Não
-          precisa de conta; o email é opcional, para mais tarde poder entrar.
+          Adiciona alguém para dividir despesas. Podes também dar-lhe acesso só
+          para <span className="text-fg">submeter despesas</span> (com aprovação),
+          marcando a opção e indicando o email com que vai entrar.
         </p>
         <AddMemberForm spaceId={ctx.space.id} />
       </section>
