@@ -6,7 +6,7 @@ import { AddMemberForm } from "@/components/AddMemberForm";
 import { CategoriesManager } from "@/components/CategoriesManager";
 import { MembersManager } from "@/components/MembersManager";
 
-export const metadata = { title: "Ambiente · Finanças" };
+export const metadata = { title: "Ambiente · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function AmbientePage() {

@@ -5,7 +5,7 @@ import { getRepository } from "@/lib/data";
 import { formatCents } from "@/lib/domain";
 import { approveExpenseAction, rejectExpenseAction } from "@/app/(app)/actions";
 
-export const metadata = { title: "Aprovações · Finanças" };
+export const metadata = { title: "Aprovações · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function AprovacoesPage() {

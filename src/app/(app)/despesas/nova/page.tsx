@@ -3,7 +3,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
 
-export const metadata = { title: "Nova despesa · Finanças" };
+export const metadata = { title: "Nova despesa · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function NovaDespesaPage() {

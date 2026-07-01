@@ -10,7 +10,7 @@ import {
   setMessageNotesAction,
 } from "@/app/(app)/actions";
 
-export const metadata = { title: "Mensagens · Finanças" };
+export const metadata = { title: "Mensagens · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function MensagensPage({

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/LoginForm";
 
-export const metadata = { title: "Entrar · Finanças" };
+export const metadata = { title: "Entrar · Rachar" };
 
 export default function LoginPage({
   searchParams,
@@ -12,7 +12,12 @@ export default function LoginPage({
     <main className="relative flex min-h-[100dvh] flex-col">
       {/* topo */}
       <header className="flex items-center justify-between px-6 py-6 sm:px-10">
-        <Link href="/" className="font-display text-sm font-semibold tracking-tight">Finanças</Link>
+        <Link href="/" className="flex items-baseline gap-2">
+          <span className="font-display text-sm font-semibold tracking-tight">Rachar</span>
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint sm:inline">
+            Contas à moda do Porto
+          </span>
+        </Link>
         <span className="eyebrow hidden sm:block">Acesso privado</span>
       </header>
 

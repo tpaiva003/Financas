@@ -1,4 +1,4 @@
-# Finanças — App de Despesas Partilhadas (Tiago & Clara)
+# Rachar — Contas à Moda do Porto
 
 App web privada (PWA) para registar e dividir despesas do agregado e manter o
 saldo entre dois utilizadores. Substitui o Tricount/Splitwise. Acesso restrito a

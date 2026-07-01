@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
           <div className="flex items-center gap-3">
             <Link href="/dashboard" className="font-display text-[15px] font-semibold tracking-tight">
-              Finanças
+              Rachar
             </Link>
             {ctx.space ? (
               <SpaceSwitcher

@@ -7,7 +7,7 @@ import { AddRecurringForm } from "@/components/AddRecurringForm";
 import { RecurringTemplates, type TemplateItem } from "@/components/RecurringTemplates";
 import { PendingRecurring, type PendingItem } from "@/components/PendingRecurring";
 
-export const metadata = { title: "Recorrentes · Finanças" };
+export const metadata = { title: "Recorrentes · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function RecorrentesPage() {

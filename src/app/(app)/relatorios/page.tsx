@@ -5,7 +5,7 @@ import { getRepository } from "@/lib/data";
 import { getSpaceReport, type Slice } from "@/lib/services/reports-service";
 import { formatCents, type CategoryDelta, type MonthComparison } from "@/lib/domain";
 
-export const metadata = { title: "Relatórios · Finanças" };
+export const metadata = { title: "Relatórios · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function RelatoriosPage() {

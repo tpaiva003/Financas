@@ -5,7 +5,7 @@ import { ExpenseRow } from "@/components/ExpenseRow";
 import { ExpensesFilter } from "@/components/ExpensesFilter";
 import type { Expense, ExpenseKind } from "@/lib/domain";
 
-export const metadata = { title: "Despesas · Finanças" };
+export const metadata = { title: "Despesas · Rachar" };
 export const dynamic = "force-dynamic";
 
 interface SearchParams {
