@@ -254,6 +254,16 @@ export interface Repository {
   deleteRecurring(id: string, spaceId: string): Promise<void>;
   /** Já existe uma despesa gerada para este template nesta data? (idempotência) */
   recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean>;
+  /**
+   * Aplica alterações do template às despesas JÁ geradas por ele (não eliminadas).
+   * O valor, se fornecido, é aplicado a todas ou só às pendentes (estimativas),
+   * para nunca reescrever valores reais confirmados de recorrentes variáveis.
+   */
+  updateExpensesForRecurring(
+    recurringId: string,
+    patch: { description: string; categoryId: string | null; payerId: string; split: Split },
+    amount?: { cents: number; onlyPending: boolean },
+  ): Promise<void>;
 
   /** Categorias disponíveis: padrão (space_id null) + as do ambiente indicado. */
   listCategories(spaceId?: string): Promise<Category[]>;

@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { stableUid } from "@/lib/domain";
-import type { Expense, Settlement, ClassificationRule } from "@/lib/domain";
+import type { Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -336,6 +336,25 @@ export class MockRepository implements Repository {
     return getStore().expenses.some(
       (e) => e.recurringId === recurringId && e.transactionDate === transactionDate && !e.deletedAt,
     );
+  }
+
+  async updateExpensesForRecurring(
+    recurringId: string,
+    patch: { description: string; categoryId: string | null; payerId: string; split: Split },
+    amount?: { cents: number; onlyPending: boolean },
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    for (const e of getStore().expenses) {
+      if (e.recurringId !== recurringId || e.deletedAt) continue;
+      e.description = patch.description;
+      e.categoryId = patch.categoryId;
+      e.payerId = patch.payerId;
+      e.split = patch.split;
+      if (amount && (!amount.onlyPending || e.status === "pending")) {
+        e.amountCents = amount.cents;
+      }
+      e.updatedAt = now;
+    }
   }
 
   async listSettlements(spaceId: string): Promise<Settlement[]> {
