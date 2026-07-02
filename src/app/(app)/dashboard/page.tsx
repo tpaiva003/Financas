@@ -7,7 +7,7 @@ import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
-export const metadata = { title: "Saldo · Finanças" };
+export const metadata = { title: "Saldo · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {

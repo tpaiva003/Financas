@@ -7,7 +7,7 @@ import { SettlementForm } from "@/components/SettlementForm";
 import { ClosePeriodPanel } from "@/components/ClosePeriodPanel";
 import { TransferBalanceForm } from "@/components/TransferBalanceForm";
 
-export const metadata = { title: "Acertos · Finanças" };
+export const metadata = { title: "Acertos · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function AcertosPage() {

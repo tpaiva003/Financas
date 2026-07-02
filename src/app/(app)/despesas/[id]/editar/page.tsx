@@ -4,7 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { EditExpenseForm } from "@/components/EditExpenseForm";
 
-export const metadata = { title: "Editar despesa · Finanças" };
+export const metadata = { title: "Editar despesa · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function EditarDespesaPage({ params }: { params: { id: string } }) {

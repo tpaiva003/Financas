@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { CreateSpaceForm } from "@/components/CreateSpaceForm";
 
-export const metadata = { title: "Novo ambiente · Finanças" };
+export const metadata = { title: "Novo ambiente · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function NovoAmbientePage() {

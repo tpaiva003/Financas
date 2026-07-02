@@ -2,9 +2,9 @@ import Link from "next/link";
 import { ContactForm } from "@/components/ContactForm";
 
 export const metadata = {
-  title: "Finanças · Despesas partilhadas, sem discussões",
+  title: "Rachar · Contas à Moda do Porto",
   description:
-    "Regista, divide e vê num instante quem deve a quem. Privado, rápido e feito para quem partilha casa.",
+    "Rachar é dividir a conta sem dramas: regista, divide e vê num instante quem deve a quem. Privado, rápido e nascido no Porto.",
 };
 
 export default function LandingPage() {
@@ -26,7 +26,12 @@ function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-hair bg-bg/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-        <span className="font-display text-[15px] font-semibold tracking-tight">Finanças</span>
+        <span className="flex items-baseline gap-2">
+          <span className="font-display text-[15px] font-semibold tracking-tight">Rachar</span>
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint sm:inline">
+            Contas à moda do Porto
+          </span>
+        </span>
         <div className="flex items-center gap-2">
           <a href="#contacto" className="btn-ghost hidden sm:inline-flex">Falar connosco</a>
           <Link href="/login" className="btn-secondary">Entrar</Link>
@@ -39,7 +44,7 @@ function SiteHeader() {
 function Hero() {
   return (
     <section className="mx-auto max-w-5xl px-6 pb-16 pt-20 sm:pt-28">
-      <p className="eyebrow animate-fade-in">Despesas partilhadas</p>
+      <p className="eyebrow animate-fade-in">Contas à moda do Porto</p>
       <h1 className="mt-5 max-w-3xl animate-fade-up font-display text-5xl font-semibold leading-[0.98] tracking-tightest text-balance sm:text-7xl">
         As contas da casa,
         <br />
@@ -49,8 +54,9 @@ function Hero() {
         className="mt-6 max-w-xl animate-fade-up text-lg leading-relaxed text-fg-muted"
         style={{ animationDelay: "60ms" }}
       >
-        Regista uma despesa em segundos, divide-a como fizer sentido e vê num
-        instante quem deve a quem. Sem folhas de cálculo, sem discussões ao fim
+        Rachar é dividir a conta sem dramas: registas uma despesa em segundos,
+        divides como fizer sentido e vês num instante quem deve a quem. Direto e
+        honesto, à moda do Porto. Sem folhas de cálculo, sem discussões ao fim
         do mês.
       </p>
       <div className="mt-9 flex animate-fade-up flex-wrap gap-3" style={{ animationDelay: "120ms" }}>
@@ -58,7 +64,7 @@ function Hero() {
         <Link href="/login" className="btn-secondary px-6 py-3 text-base">Já tenho acesso</Link>
       </div>
       <p className="mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-fg-faint">
-        Privado · Encriptado · Sem anúncios
+        Nascido no Porto · Privado · Sem anúncios
       </p>
     </section>
   );
@@ -217,7 +223,12 @@ function SiteFooter() {
   return (
     <footer className="border-t border-hair">
       <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-10 sm:flex-row sm:items-center sm:justify-between">
-        <span className="font-display text-sm font-semibold tracking-tight">Finanças</span>
+        <span className="flex items-baseline gap-2">
+          <span className="font-display text-sm font-semibold tracking-tight">Rachar</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+            Feito no Porto
+          </span>
+        </span>
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-fg-faint">
           Acesso por convite · Os teus dados são teus
         </p>

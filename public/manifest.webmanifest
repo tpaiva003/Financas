@@ -1,7 +1,7 @@
 {
-  "name": "Finanças — Despesas Partilhadas",
-  "short_name": "Finanças",
-  "description": "App privada para registar e dividir despesas (Tiago & Clara).",
+  "name": "Rachar — Contas à Moda do Porto",
+  "short_name": "Rachar",
+  "description": "Dividir contas partilhadas sem dramas. Privado, rápido e nascido no Porto.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",

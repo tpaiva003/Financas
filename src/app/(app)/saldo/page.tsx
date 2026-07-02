@@ -4,7 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { formatCents } from "@/lib/domain";
 
-export const metadata = { title: "Saldo explicado · Finanças" };
+export const metadata = { title: "Saldo explicado · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default async function SaldoPage() {
