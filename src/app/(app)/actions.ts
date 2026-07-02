@@ -698,6 +698,95 @@ export async function createRecurringAction(
   return { ok: true };
 }
 
+/**
+ * Edita um template recorrente. O campo `applyScope` decide o alcance:
+ *  - "future": só afeta despesas futuras (o template).
+ *  - "all": aplica também às despesas já geradas por este template. O valor
+ *    nunca reescreve valores reais confirmados de recorrentes variáveis (só
+ *    atualiza estimativas pendentes); num template fixo aplica-se a todas.
+ */
+export async function updateRecurringAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const memberIds = ctx.fullMembers.map((m) => m.id);
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Recorrente inválida." };
+  const repo = getRepository();
+  const existing = await repo.getRecurring(id, ctx.space.id);
+  if (!existing) return { error: "Recorrente não encontrada." };
+
+  const parsed = recurringSchema.safeParse({
+    description: formData.get("description"),
+    valueType: formData.get("valueType") || "fixed",
+    frequency: formData.get("frequency") || "monthly",
+    nextDate: formData.get("nextDate"),
+    endDate: formData.get("endDate") || undefined,
+    categoryId: formData.get("categoryId") || null,
+    payerId: formData.get("payerId"),
+    splitType: formData.get("splitType") || "EQUAL",
+    percentA: formData.get("percentA") ?? undefined,
+    soleMemberId: formData.get("soleMemberId") ?? undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const d = parsed.data;
+  if (!memberIds.includes(d.payerId)) return { error: "Pagador inválido." };
+
+  const amountCents = parseAmountCents(formData.get("amount"));
+  if (Number.isNaN(amountCents)) return { error: "Valor inválido." };
+  if (d.valueType === "fixed" && amountCents === null) {
+    return { error: "Indica o valor (recorrente de valor fixo)." };
+  }
+
+  const endDate = d.endDate && DATE_RE.test(d.endDate) ? d.endDate : null;
+  if (endDate && endDate < d.nextDate) return { error: "A data de fim é anterior à próxima data." };
+
+  const built = buildSplit(
+    { kind: "shared", splitType: d.splitType, percentA: d.percentA, soleMemberId: d.soleMemberId },
+    memberIds,
+    amountCents ?? 0,
+  );
+  if ("error" in built) return { error: built.error };
+
+  await repo.updateRecurring(id, ctx.space.id, {
+    description: d.description,
+    categoryId: d.categoryId ?? null,
+    payerId: d.payerId,
+    split: built.split,
+    amountCents,
+    valueType: d.valueType,
+    frequency: d.frequency,
+    nextDate: d.nextDate,
+    endDate,
+  });
+
+  // Aplicar também às despesas já registadas por este template?
+  const applyScope = String(formData.get("applyScope") ?? "future");
+  if (applyScope === "all") {
+    await repo.updateExpensesForRecurring(
+      id,
+      {
+        description: d.description,
+        categoryId: d.categoryId ?? null,
+        payerId: d.payerId,
+        split: built.split,
+      },
+      amountCents !== null
+        ? { cents: amountCents, onlyPending: d.valueType === "variable" }
+        : undefined,
+    );
+  }
+
+  revalidatePath("/recorrentes");
+  revalidatePath("/dashboard");
+  revalidatePath("/despesas");
+  revalidatePath("/saldo");
+  return { ok: true };
+}
+
 /** Pausar, retomar, saltar uma ocorrência, terminar ou eliminar (REQ-REC-4). */
 export async function recurringOpAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();

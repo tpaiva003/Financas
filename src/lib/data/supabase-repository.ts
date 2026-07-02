@@ -467,6 +467,40 @@ export class SupabaseRepository implements Repository {
     return (count ?? 0) > 0;
   }
 
+  async updateExpensesForRecurring(
+    recurringId: string,
+    patch: { description: string; categoryId: string | null; payerId: string; split: Split },
+    amount?: { cents: number; onlyPending: boolean },
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const base = {
+      description: patch.description,
+      category_id: patch.categoryId,
+      payer_id: patch.payerId,
+      split: patch.split,
+    };
+
+    // Campos comuns em todas as despesas geradas (não eliminadas).
+    const { error: e1 } = await db
+      .from("expenses")
+      .update(base)
+      .eq("recurring_id", recurringId)
+      .is("deleted_at", null);
+    if (e1) throw new Error(e1.message);
+
+    // Valor: todas, ou só as pendentes (estimativas de valor variável).
+    if (amount) {
+      let q = db
+        .from("expenses")
+        .update({ amount_cents: amount.cents })
+        .eq("recurring_id", recurringId)
+        .is("deleted_at", null);
+      if (amount.onlyPending) q = q.eq("status", "pending");
+      const { error: e2 } = await q;
+      if (e2) throw new Error(e2.message);
+    }
+  }
+
   async listSettlements(spaceId: string): Promise<Settlement[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
