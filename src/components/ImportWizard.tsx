@@ -46,8 +46,8 @@ export function ImportWizard({
         <div>
           <h2 className="label">1. Ficheiro do banco</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Exporta o extrato em Excel ou CSV e carrega-o aqui. As colunas são
-            detetadas automaticamente e nada é gravado antes de confirmares.
+            Carrega o extrato em Excel, CSV ou PDF (cartão Universo). As colunas
+            são detetadas automaticamente e nada é gravado antes de confirmares.
           </p>
         </div>
 
@@ -73,7 +73,7 @@ export function ImportWizard({
             name="file"
             type="file"
             required
-            accept=".xlsx,.xls,.csv,.txt,.tsv"
+            accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf"
             className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-panel2 file:px-3 file:py-2 file:text-sm file:text-fg hover:file:bg-panel2/70"
           />
         </div>

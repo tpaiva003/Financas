@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Ler PDFs (extratos do cartão) acontece só no servidor. Estas bibliotecas
+  // usam APIs de Node e não devem ser processadas pelo bundler.
+  experimental: {
+    serverComponentsExternalPackages: ["pdf-parse", "xlsx"],
+  },
   // Cabeçalhos de segurança base. A app é privada (atrás de auth); nada deve ser
   // indexado nem embebido. A landing pública (futura) é a única exceção e mesmo
   // essa não expõe dados.

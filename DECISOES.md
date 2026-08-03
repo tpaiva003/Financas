@@ -237,3 +237,20 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   a funcionar** (dedup intacto), perdendo-se apenas o "anular lote".
 - **PDF (Universo, Wizink) fica para a fase seguinte** — Tier 2, precisa de
   extração de texto de PDF.
+
+### Extratos em PDF — cartão Universo (Tier 2)
+- `pdf-parse` extrai o texto; o parsing das linhas fica em
+  `src/lib/import/pdf-universo.ts`, **puro e testado** (7 testes com linhas
+  reais). O PDF é convertido numa grelha [data, descrição, valor], reaproveitando
+  todo o pipeline dos ficheiros Excel/CSV (dedup, classificação, sobreposição).
+- As linhas do extrato **não têm ano**: é deduzido do período do extrato
+  ("Movimentos de: 15/06/2026 a 15/07/2026"), tratando a viragem de ano.
+- O espaço entre a data e a descrição é **opcional**: há extratos com
+  "16/0616/06 Compra …" e outros com "15/0516/05Compra …". Os dois formatos
+  aparecem em extratos reais do mesmo banco e ambos são suportados.
+- Importa-se `pdf-parse/lib/pdf-parse.js` (módulo interno) porque o index do
+  pacote tem um bloco de debug que tenta ler um ficheiro de teste quando
+  empacotado. `pdf-parse` e `xlsx` ficam em `serverComponentsExternalPackages`.
+- **Cartão de crédito e dupla contagem:** o extrato do cartão traz o pagamento
+  do cartão como entrada e o extrato do banco traz o débito direto como saída;
+  importando ambos, anulam-se e ficam só as compras. Explicado na UI.
