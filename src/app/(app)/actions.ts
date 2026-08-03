@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
-import { getSpaceContext, SPACE_COOKIE } from "@/lib/space";
+import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { isAdmin, userByEmail } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
@@ -637,14 +637,14 @@ export async function previewImportAction(
   const source = String(formData.get("source") || "outro");
   const account = String(formData.get("account") || "").trim() || null;
 
+  // O destino pode ser outro ambiente que não o ativo.
+  const targetId = String(formData.get("spaceId") || ctx.space.id);
+  const target = await getTargetSpace(ctx, targetId);
+  if (!target) return { error: "Ambiente inválido." };
+  if (target.viewerRole === "submitter") return { error: "Sem permissão nesse ambiente." };
+
   try {
-    const preview = await buildImportPreview({
-      file,
-      source,
-      account,
-      spaceId: ctx.space.id,
-      viewerMemberId: ctx.viewerMemberId,
-    });
+    const preview = await buildImportPreview({ file, source, account, target });
     return { preview };
   } catch (e) {
     if (e instanceof ImportError) return { error: e.message };
@@ -666,12 +666,16 @@ export async function commitImportAction(
     return { error: "Dados de importação inválidos." };
   }
 
+  const target = await getTargetSpace(ctx, payload.spaceId || ctx.space.id);
+  if (!target) return { error: "Ambiente inválido." };
+  if (target.viewerRole === "submitter") return { error: "Sem permissão nesse ambiente." };
+
   try {
     const { imported } = await commitImport({
       payload,
-      spaceId: ctx.space.id,
-      memberIds: ctx.fullMembers.map((m) => m.id),
-      viewerMemberId: ctx.viewerMemberId,
+      spaceId: target.space.id,
+      memberIds: target.fullMembers.map((m) => m.id),
+      viewerMemberId: target.viewerMemberId,
       userId: ctx.user.id,
     });
     revalidatePath("/importar");
@@ -688,10 +692,14 @@ export async function commitImportAction(
 /** Anula um lote de importação: as despesas que criou são eliminadas. */
 export async function undoImportBatchAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
-  if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().undoImportBatch(id, ctx.space.id, ctx.user.id);
+
+  // O lote pode pertencer a outro ambiente do utilizador.
+  const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
+  if (!target || target.viewerRole === "submitter") return;
+
+  await getRepository().undoImportBatch(id, target.space.id, ctx.user.id);
   revalidatePath("/importar");
   revalidatePath("/despesas");
   revalidatePath("/dashboard");

@@ -14,11 +14,19 @@ export default async function ImportarPage() {
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
-  const [categories, batches] = await Promise.all([
-    repo.listCategories(ctx.space.id),
-    // A tabela pode ainda não existir se a migração não estiver aplicada.
-    repo.listImportBatches(ctx.space.id).catch(() => []),
-  ]);
+  // Como se pode importar para qualquer ambiente, o histórico mostra todos.
+  const perSpace = await Promise.all(
+    ctx.spaces.map((s) =>
+      repo
+        .listImportBatches(s.id)
+        // A tabela pode não existir se a migração não estiver aplicada.
+        .catch(() => [])
+        .then((list) => list.map((b) => ({ batch: b, spaceName: s.name }))),
+    ),
+  );
+  const batches = perSpace
+    .flat()
+    .sort((a, b) => (a.batch.createdAt < b.batch.createdAt ? 1 : -1));
 
   const sourceLabel = (id: string) =>
     IMPORT_SOURCES.find((s) => s.id === id)?.label ?? id;
@@ -42,9 +50,8 @@ export default async function ImportarPage() {
       </div>
 
       <ImportWizard
-        categories={categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
-        members={ctx.fullMembers.map((m) => ({ id: m.id, name: m.name }))}
-        currentMemberId={ctx.viewerMemberId}
+        spaces={ctx.spaces.map((s) => ({ id: s.id, name: s.name }))}
+        currentSpaceId={ctx.space.id}
       />
 
       <section>
@@ -55,11 +62,12 @@ export default async function ImportarPage() {
           </p>
         ) : (
           <ul className="space-y-2">
-            {batches.map((b) => (
+            {batches.map(({ batch: b, spaceName }) => (
               <li key={b.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-fg">
                     {b.fileName || sourceLabel(b.source)}
+                    <span className="ml-2 chip border-hair text-fg-faint">{spaceName}</span>
                   </p>
                   <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
                     {new Date(b.createdAt).toLocaleDateString("pt-PT")} · {sourceLabel(b.source)} ·{" "}
@@ -69,6 +77,7 @@ export default async function ImportarPage() {
                 </div>
                 <form action={undoImportBatchAction}>
                   <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="spaceId" value={b.spaceId} />
                   <button type="submit" className="btn-ghost px-2.5 text-xs text-debt hover:text-debt">
                     Anular lote
                   </button>

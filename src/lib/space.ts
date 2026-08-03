@@ -28,6 +28,49 @@ export interface SpaceContext {
   viewerRole: MemberRole;
 }
 
+/** Ambiente de destino resolvido para uma operação (ex.: importar). */
+export interface TargetSpace {
+  space: Space;
+  members: Member[];
+  fullMembers: Member[];
+  viewerMemberId: string;
+  viewerRole: MemberRole;
+}
+
+/**
+ * Resolve um ambiente de destino diferente do ativo, garantindo que o
+ * utilizador pertence mesmo a ele. Devolve null se não pertencer.
+ */
+export async function getTargetSpace(
+  ctx: SpaceContext,
+  spaceId: string,
+): Promise<TargetSpace | null> {
+  if (spaceId === ctx.space.id) {
+    return {
+      space: ctx.space,
+      members: ctx.members,
+      fullMembers: ctx.fullMembers,
+      viewerMemberId: ctx.viewerMemberId,
+      viewerRole: ctx.viewerRole,
+    };
+  }
+
+  const space = ctx.spaces.find((s) => s.id === spaceId);
+  if (!space) return null; // não pertence a este ambiente
+
+  const members = await getRepository().listMembers(space.id);
+  const fullMembers = members.filter((m) => (m.role ?? "full") !== "submitter");
+  const viewerMember = members.find((m) => m.linkedUserId === ctx.user.id);
+
+  return {
+    space,
+    members,
+    fullMembers,
+    viewerMemberId: viewerMember?.id ?? members[0]?.id ?? ctx.user.id,
+    viewerRole: viewerMember?.role ?? "full",
+  };
+}
+
 export async function getSpaceContext(): Promise<SpaceContext> {
   const user = await requireUser();
   const repo = getRepository();

@@ -28,7 +28,20 @@ export interface ImportPreviewRow {
   inCoveredPeriod: boolean;
 }
 
+export interface ImportOption {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
 export interface ImportPreview {
+  /** Ambiente de destino escolhido (pode não ser o ativo na app). */
+  spaceId: string;
+  spaceName: string;
+  /** Categorias e participantes DESSE ambiente, para editar a pré-visualização. */
+  categories: ImportOption[];
+  members: ImportOption[];
+  defaultPayerId: string;
   source: string;
   fileName: string;
   rowCount: number;
@@ -56,6 +69,8 @@ export interface ImportCommitRow {
 }
 
 export interface ImportCommitPayload {
+  /** Ambiente onde as despesas vão ser criadas. */
+  spaceId: string;
   source: string;
   fileName: string;
   rowCount: number;

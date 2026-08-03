@@ -27,13 +27,11 @@ const emptyPreview: ImportPreviewState = {};
 const emptyCommit: ActionState = {};
 
 export function ImportWizard({
-  categories,
-  members,
-  currentMemberId,
+  spaces,
+  currentSpaceId,
 }: {
-  categories: Opt[];
-  members: Opt[];
-  currentMemberId: string;
+  spaces: Opt[];
+  currentSpaceId: string;
 }) {
   const [previewState, previewAction] = useFormState(previewImportAction, emptyPreview);
   const [commitState, commitAction] = useFormState(commitImportAction, emptyCommit);
@@ -48,6 +46,21 @@ export function ImportWizard({
           <p className="mt-1 text-sm text-fg-muted">
             Carrega o extrato em Excel, CSV ou PDF (cartão Universo). As colunas
             são detetadas automaticamente e nada é gravado antes de confirmares.
+          </p>
+        </div>
+
+        {/* O destino é explícito: importar não mexe no ambiente ativo por acidente. */}
+        <div>
+          <label className="label" htmlFor="imp-space">Ambiente de destino</label>
+          <select id="imp-space" name="spaceId" defaultValue={currentSpaceId} className="select">
+            {spaces.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-fg-faint">
+            As despesas entram neste ambiente. Para dividir um extrato por vários,
+            importa o mesmo ficheiro uma vez em cada um: as já importadas aparecem
+            como &ldquo;já existe&rdquo; e não duplicam.
           </p>
         </div>
 
@@ -90,11 +103,8 @@ export function ImportWizard({
       {/* Passo 2 — rever e confirmar */}
       {preview ? (
         <PreviewStep
-          key={`${preview.fileName}-${preview.rowCount}-${preview.newCount}`}
+          key={`${preview.spaceId}-${preview.fileName}-${preview.rowCount}-${preview.newCount}`}
           preview={preview}
-          categories={categories}
-          members={members}
-          currentMemberId={currentMemberId}
           action={commitAction}
           state={commitState}
         />
@@ -105,19 +115,16 @@ export function ImportWizard({
 
 function PreviewStep({
   preview,
-  categories,
-  members,
-  currentMemberId,
   action,
   state,
 }: {
   preview: NonNullable<ImportPreviewState["preview"]>;
-  categories: Opt[];
-  members: Opt[];
-  currentMemberId: string;
   action: (fd: FormData) => void;
   state: ActionState;
 }) {
+  // Categorias e participantes vêm do ambiente escolhido, não do ativo.
+  const categories = preview.categories;
+  const members = preview.members;
   // Só entra o que é seguro por omissão: nada de duplicados, nada de períodos já
   // registados na app e nada que pareça uma despesa manual já existente.
   const [fromDate, setFromDate] = useState(preview.suggestedFromDate ?? "");
@@ -144,7 +151,7 @@ function PreviewStep({
       prev.map((r, i) => ({ ...r, include: isEligible(preview.rows[i]!, value) })),
     );
   };
-  const [payerId, setPayerId] = useState(currentMemberId);
+  const [payerId, setPayerId] = useState(preview.defaultPayerId);
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
@@ -201,6 +208,7 @@ function PreviewStep({
   const personalCount = rows.filter((r) => r.include && r.kind === "personal").length;
 
   const payload: ImportCommitPayload = {
+    spaceId: preview.spaceId,
     source: preview.source,
     fileName: preview.fileName,
     rowCount: preview.rowCount,
@@ -227,7 +235,8 @@ function PreviewStep({
       <div className="card p-8 text-center">
         <p className="text-[15px] font-medium text-credit">{state.message ?? "Importado."}</p>
         <p className="mt-1 text-sm text-fg-muted">
-          Já aparecem nas despesas e no saldo. Podes anular este lote abaixo, se for preciso.
+          Entraram em <span className="font-medium text-fg">{preview.spaceName}</span>. Podes anular
+          este lote abaixo, se for preciso.
         </p>
       </div>
     );
@@ -240,7 +249,9 @@ function PreviewStep({
       <div>
         <h2 className="label">2. Rever e confirmar</h2>
         <p className="mt-1 text-sm text-fg-muted">
-          {preview.rowCount} transação(ões) lidas · <span className="text-fg">{preview.newCount} novas</span>
+          Vai entrar em <span className="font-medium text-fg">{preview.spaceName}</span> ·{" "}
+          {preview.rowCount} transação(ões) lidas ·{" "}
+          <span className="text-fg">{preview.newCount} novas</span>
           {preview.duplicateCount > 0 ? ` · ${preview.duplicateCount} já existiam` : ""}
         </p>
         <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">

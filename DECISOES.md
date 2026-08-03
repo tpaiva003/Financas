@@ -273,3 +273,23 @@ incompatível com os ids `imp_…` da app (e fazia o `create table if not exists
 ser um no-op, com o índice a falhar em `space_id`). Estava **vazia e sem
 referências** (0 linhas, 0 despesas associadas), por isso foi recriada limpa,
 incluindo a coluna `expenses.import_batch_id`, que passou de uuid para text.
+
+### Ambiente de destino na importação
+- O import deixou de usar silenciosamente o ambiente **ativo**: passa a haver um
+  **seletor de ambiente de destino** no passo 1. Isto importa porque o dedup, o
+  guard de sobreposição, as categorias e os participantes são **todos por
+  ambiente** — daí a escolha ter de ser feita ANTES da pré-visualização.
+- `getTargetSpace(ctx, spaceId)` resolve o ambiente pedido, garantindo que o
+  utilizador pertence a ele (e recusa submitters). A pré-visualização transporta
+  `spaceId`, `spaceName`, categorias e participantes DESSE ambiente, e o destino
+  é mostrado no passo 2 e na confirmação.
+- **Dividir um extrato por vários ambientes:** importa-se o mesmo ficheiro uma
+  vez por ambiente, escolhendo as linhas de cada um; o dedup por UID marca as já
+  importadas como "já existe". Um seletor de ambiente por linha ficaria confuso
+  (cada ambiente tem categorias, pagador e divisão próprios) e não foi feito.
+- O histórico de importações passa a mostrar os lotes de **todos** os ambientes
+  do utilizador, com etiqueta do ambiente, e o "Anular lote" valida o ambiente
+  do próprio lote.
+
+### Futuro (pedido do utilizador)
+- Visão **agregadora** de vários ambientes no ambiente pessoal.
