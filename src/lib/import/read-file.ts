@@ -13,6 +13,7 @@
 
 import * as XLSX from "xlsx";
 import type { Grid } from "./columns";
+import { universoLinesToGrid } from "./pdf-universo";
 
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024; // 8 MB
 
@@ -89,12 +90,28 @@ function readXlsx(buf: Buffer): Grid {
   );
 }
 
+/**
+ * Extrai o texto de um PDF e converte-o em grelha. Para já só o extrato do
+ * cartão Universo; outros PDFs devolvem vazio (a UI explica que não reconheceu).
+ */
+async function readPdf(buf: Buffer): Promise<Grid> {
+  // Import dinâmico: a biblioteca só é carregada quando há mesmo um PDF.
+  // Usamos o módulo interno porque o index de `pdf-parse` tem um bloco de debug
+  // que tenta ler um ficheiro de teste do próprio pacote quando empacotado.
+  const mod = await import("pdf-parse/lib/pdf-parse.js");
+  const pdfParse = (mod.default ?? mod) as (b: Buffer) => Promise<{ text: string }>;
+  const data = await pdfParse(buf);
+  const lines = data.text.split("\n").map((l) => l.trim());
+  return universoLinesToGrid(lines);
+}
+
 /** Lê o ficheiro carregado para uma grelha de células. */
 export async function readUploadToGrid(file: File): Promise<Grid> {
   const buf = Buffer.from(await file.arrayBuffer());
   const name = (file.name ?? "").toLowerCase();
   const isText = name.endsWith(".csv") || name.endsWith(".txt") || name.endsWith(".tsv");
-  const grid = isText ? readCsv(buf) : readXlsx(buf);
+  const isPdf = name.endsWith(".pdf");
+  const grid = isPdf ? await readPdf(buf) : isText ? readCsv(buf) : readXlsx(buf);
   // Remove linhas totalmente vazias, que baralham a deteção do cabeçalho.
   return grid.filter((r) => r.some((c) => (c ?? "").trim() !== ""));
 }

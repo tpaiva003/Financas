@@ -70,5 +70,6 @@ export interface ImportCommitPayload {
 export const IMPORT_SOURCES = [
   { id: "activo", label: "Activo Bank" },
   { id: "bankinter", label: "Bankinter (conta)" },
+  { id: "universo", label: "Universo (cartão, PDF)" },
   { id: "outro", label: "Outro banco / ficheiro" },
 ] as const;

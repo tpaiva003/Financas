@@ -29,8 +29,15 @@ export default async function ImportarPage() {
         <p className="eyebrow">{ctx.space.name}</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Importar extrato</h1>
         <p className="mt-1 text-sm text-fg-muted">
-          Põe semanas em dia de uma vez: carrega o extrato do banco, revê o que
-          entra e importa. Transações já registadas são detetadas e não duplicam.
+          Põe semanas em dia de uma vez: carrega o extrato do banco (Excel/CSV)
+          ou do cartão Universo (PDF), revê o que entra e importa. Transações já
+          registadas são detetadas e não duplicam.
+        </p>
+        <p className="mt-2 text-xs text-fg-faint">
+          Cartão de crédito: o extrato do cartão traz as compras uma a uma e o
+          pagamento do cartão como entrada. Se importares também o extrato do
+          banco, o débito direto do cartão e esse pagamento anulam-se, ficando só
+          as compras. Podes sempre desligar linhas na pré-visualização.
         </p>
       </div>
 
