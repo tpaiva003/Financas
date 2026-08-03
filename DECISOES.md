@@ -254,3 +254,14 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - **Cartão de crédito e dupla contagem:** o extrato do cartão traz o pagamento
   do cartão como entrada e o extrato do banco traz o débito direto como saída;
   importando ambos, anulam-se e ficam só as compras. Explicado na UI.
+
+### Import em períodos já registados: pessoal vs partilhada
+- Caso real: as contas partilhadas de um período já estão acertadas, mas falta o
+  histórico pessoal. O import passa a permitir **incluir esse período marcando
+  as despesas como pessoais** — entram na análise do próprio e **não mexem no
+  saldo** (`countsTowardsBalance` exige `kind === "shared"`).
+- Aviso **em tempo real** quando a seleção inclui linhas de período já coberto,
+  a distinguir o risco: partilhadas alteram o saldo desse período (destaque a
+  vermelho); pessoais não (aviso neutro).
+- Atalho "Incluir período já registado como despesas só minhas" e ações em massa
+  para marcar as selecionadas como pessoais/partilhadas.
