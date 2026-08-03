@@ -209,3 +209,31 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 ### Notificações push (#10)
 - Adiadas a pedido do utilizador (precisam de chaves VAPID e, em iOS, da PWA
   instalada). Ficam como trabalho futuro.
+
+## Fase 5 — Importação de extratos (REQ-IMP)
+
+- **Parser em TypeScript**, não Python: o repositório nunca teve a lógica Python
+  (ficou do lado do utilizador), por isso foi reimplementada em TS. O UID
+  estável (`stableUid`) mantém-se como fonte de verdade do dedup.
+- **Deteção de colunas genérica** (`src/lib/import/columns.ts`, puro e testado):
+  encontra a linha de cabeçalho, identifica data/descrição/valor (ou
+  débito/crédito) e converte para transações normalizadas. Suporta cabeçalhos PT
+  e EN. Testado com os cabeçalhos reais dos extratos do utilizador.
+  - Cada coluna tem **um só papel, por prioridade**: sem isto, "Data Valor" era
+    apanhada como coluna de valor (contém "valor") e o import falhava por
+    completo. O **saldo/balance é excluído explicitamente** de candidato a valor.
+  - Convenção: **gasto positivo, entrada negativa**. Extratos com sinal (gastos
+    negativos) são invertidos; colunas débito/crédito são normalizadas.
+- **Excel**: `xlsx@0.18.5` (a última publicada no npm). As folhas são lidas em
+  **modo de arrays** (`header: 1`), o que evita a via de prototype pollution
+  conhecida nessa versão; só os utilizadores autenticados carregam ficheiros.
+  Recomendado atualizar para 0.20.x a partir do CDN da SheetJS quando possível.
+- **Proteção contra sobreposição (crítico):** os dados já na app são "live". A
+  pré-visualização calcula a data da despesa mais recente e propõe importar só a
+  partir do dia seguinte; linhas em período já coberto, duplicados por UID e
+  linhas que parecem uma despesa manual existente vêm **desligadas por omissão**.
+- **Lotes reversíveis** (migração 0009): cada importação fica registada e pode
+  ser anulada. Se a migração ainda não estiver aplicada, a importação **continua
+  a funcionar** (dedup intacto), perdendo-se apenas o "anular lote".
+- **PDF (Universo, Wizink) fica para a fase seguinte** — Tier 2, precisa de
+  extração de texto de PDF.

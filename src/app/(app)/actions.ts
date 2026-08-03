@@ -11,12 +11,16 @@ import { getRepository } from "@/lib/data";
 import { isAdmin, userByEmail } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
+import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import type { ImportCommitPayload, ImportPreview } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { toCents, validateSplit, nextOccurrence, type Split } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
   ok?: boolean;
+  /** Mensagem de sucesso opcional (ex.: "12 despesas importadas"). */
+  message?: string;
 }
 
 async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
@@ -612,6 +616,86 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
   await getRepository().deleteCategory(id, ctx.space.id);
   revalidatePath("/ambiente");
   revalidatePath("/despesas");
+}
+
+// ---- Importação de extratos (REQ-IMP) -------------------------------------
+
+export interface ImportPreviewState {
+  error?: string;
+  preview?: ImportPreview;
+}
+
+export async function previewImportAction(
+  _prev: ImportPreviewState,
+  formData: FormData,
+): Promise<ImportPreviewState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "Escolhe um ficheiro." };
+  const source = String(formData.get("source") || "outro");
+  const account = String(formData.get("account") || "").trim() || null;
+
+  try {
+    const preview = await buildImportPreview({
+      file,
+      source,
+      account,
+      spaceId: ctx.space.id,
+      viewerMemberId: ctx.viewerMemberId,
+    });
+    return { preview };
+  } catch (e) {
+    if (e instanceof ImportError) return { error: e.message };
+    return { error: "Não consegui processar o ficheiro." };
+  }
+}
+
+export async function commitImportAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  let payload: ImportCommitPayload;
+  try {
+    payload = JSON.parse(String(formData.get("payload") ?? "")) as ImportCommitPayload;
+  } catch {
+    return { error: "Dados de importação inválidos." };
+  }
+
+  try {
+    const { imported } = await commitImport({
+      payload,
+      spaceId: ctx.space.id,
+      memberIds: ctx.fullMembers.map((m) => m.id),
+      viewerMemberId: ctx.viewerMemberId,
+      userId: ctx.user.id,
+    });
+    revalidatePath("/importar");
+    revalidatePath("/despesas");
+    revalidatePath("/dashboard");
+    revalidatePath("/saldo");
+    return { ok: true, message: `${imported} despesa(s) importada(s).` };
+  } catch (e) {
+    if (e instanceof ImportError) return { error: e.message };
+    return { error: "Não consegui importar as despesas." };
+  }
+}
+
+/** Anula um lote de importação: as despesas que criou são eliminadas. */
+export async function undoImportBatchAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().undoImportBatch(id, ctx.space.id, ctx.user.id);
+  revalidatePath("/importar");
+  revalidatePath("/despesas");
+  revalidatePath("/dashboard");
+  revalidatePath("/saldo");
 }
 
 // ---- Despesas recorrentes (REQ-REC) ---------------------------------------

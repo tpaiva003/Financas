@@ -13,6 +13,8 @@ import type {
   AppUser,
   Category,
   ContactMessage,
+  CreateImportBatchInput,
+  ImportBatch,
   CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
@@ -29,6 +31,20 @@ import type {
   UpdateRecurringInput,
 } from "./repository";
 import { randomUUID } from "node:crypto";
+
+function rowToImportBatch(r: any): ImportBatch {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    source: r.source,
+    fileName: r.file_name,
+    rowCount: r.row_count ?? 0,
+    importedCount: r.imported_count ?? 0,
+    duplicateCount: r.duplicate_count ?? 0,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  };
+}
 
 function rowToRecurring(r: any): RecurringTemplate {
   return {
@@ -75,6 +91,7 @@ function rowToExpense(r: any): Expense {
     deletedAt: r.deleted_at,
     settledAt: r.settled_at ?? null,
     recurringId: r.recurring_id ?? null,
+    importBatchId: r.import_batch_id ?? null,
     approvalStatus: r.approval_status ?? null,
     approverId: r.approver_id ?? null,
     submittedBy: r.submitted_by ?? null,
@@ -264,14 +281,18 @@ export class SupabaseRepository implements Repository {
 
   async createExpense(input: CreateExpenseInput): Promise<Expense> {
     const db = getSupabaseAdmin();
-    const uid = stableUid({
-      source: input.origin,
-      description: input.description,
-      amountCents: input.amountCents,
-      currency: input.currency,
-      transactionDate: input.transactionDate,
-      account: null,
-    });
+    // O import passa o UID calculado a partir da transação do extrato; nos
+    // restantes casos derivamos dos campos da despesa.
+    const uid =
+      input.uid ??
+      stableUid({
+        source: input.origin,
+        description: input.description,
+        amountCents: input.amountCents,
+        currency: input.currency,
+        transactionDate: input.transactionDate,
+        account: null,
+      });
     const { data, error } = await db
       .from("expenses")
       .insert({
@@ -292,6 +313,9 @@ export class SupabaseRepository implements Repository {
         visible_to_partner: input.visibleToPartner ?? false,
         created_by: input.createdBy,
         recurring_id: input.recurringId ?? null,
+        // Só enviamos a coluna quando há lote, para a app continuar a importar
+        // mesmo que a migração dos lotes ainda não esteja aplicada.
+        ...(input.importBatchId ? { import_batch_id: input.importBatchId } : {}),
         approval_status: input.approvalStatus ?? null,
         approver_id: input.approverId ?? null,
         submitted_by: input.submittedBy ?? null,
@@ -656,6 +680,69 @@ export class SupabaseRepository implements Repository {
       .update({ approval_status: status === "approved" ? null : "rejected" })
       .eq("id", id);
     if (error) throw new Error(error.message);
+  }
+
+  async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("expenses")
+      .select("id, uid")
+      .eq("space_id", spaceId)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({ id: r.id, uid: r.uid }));
+  }
+
+  async createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_batches")
+      .insert({
+        id: `imp_${randomUUID()}`,
+        space_id: input.spaceId,
+        source: input.source,
+        file_name: input.fileName ?? null,
+        row_count: input.rowCount,
+        imported_count: input.importedCount,
+        duplicate_count: input.duplicateCount,
+        created_by: input.createdBy ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return rowToImportBatch(data);
+  }
+
+  async listImportBatches(spaceId: string): Promise<ImportBatch[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_batches")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToImportBatch);
+  }
+
+  async undoImportBatch(batchId: string, spaceId: string, _userId: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("expenses")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("import_batch_id", batchId)
+      .eq("space_id", spaceId)
+      .is("deleted_at", null)
+      .select("id");
+    if (error) throw new Error(error.message);
+
+    const { error: e2 } = await db
+      .from("import_batches")
+      .delete()
+      .eq("id", batchId)
+      .eq("space_id", spaceId);
+    if (e2) throw new Error(e2.message);
+
+    return (data ?? []).length;
   }
 
   async countPendingApprovals(spaceId: string): Promise<number> {

@@ -20,6 +20,8 @@ import type {
   CreateExpenseInput,
   CreateSettlementInput,
   CreateSpaceInput,
+  CreateImportBatchInput,
+  ImportBatch,
   ExpenseFilters,
   CreateRecurringInput,
   Member,
@@ -50,6 +52,7 @@ interface Store {
   contacts: ContactMessage[];
   recurring: RecurringTemplate[];
   appUsers: AppUser[];
+  importBatches: ImportBatch[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -68,6 +71,7 @@ function getStore(): Store {
       contacts: [],
       recurring: [],
       appUsers: [],
+      importBatches: [],
     };
   }
   return globalForStore.__financasStore;
@@ -180,14 +184,18 @@ export class MockRepository implements Repository {
 
   async createExpense(input: CreateExpenseInput): Promise<Expense> {
     const now = new Date().toISOString();
-    const uid = stableUid({
-      source: input.origin,
-      description: input.description,
-      amountCents: input.amountCents,
-      currency: input.currency,
-      transactionDate: input.transactionDate,
-      account: null,
-    });
+    // O import passa o UID calculado a partir da transação do extrato; nos
+    // restantes casos derivamos dos campos da despesa.
+    const uid =
+      input.uid ??
+      stableUid({
+        source: input.origin,
+        description: input.description,
+        amountCents: input.amountCents,
+        currency: input.currency,
+        transactionDate: input.transactionDate,
+        account: null,
+      });
     const expense: Expense = {
       id: randomUUID(),
       spaceId: input.spaceId,
@@ -211,6 +219,7 @@ export class MockRepository implements Repository {
       deletedAt: null,
       settledAt: null,
       recurringId: input.recurringId ?? null,
+      importBatchId: input.importBatchId ?? null,
       approvalStatus: input.approvalStatus ?? null,
       approverId: input.approverId ?? null,
       submittedBy: input.submittedBy ?? null,
@@ -455,6 +464,50 @@ export class MockRepository implements Repository {
     return getStore().expenses.filter(
       (e) => (e.spaceId ?? "casa") === spaceId && e.approvalStatus === "pending" && !e.deletedAt,
     ).length;
+  }
+
+  async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
+    return getStore()
+      .expenses.filter((e) => (e.spaceId ?? "casa") === spaceId && !e.deletedAt)
+      .map((e) => ({ id: e.id, uid: e.uid }));
+  }
+
+  async createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch> {
+    const batch: ImportBatch = {
+      id: `imp_${randomUUID()}`,
+      spaceId: input.spaceId,
+      source: input.source,
+      fileName: input.fileName ?? null,
+      rowCount: input.rowCount,
+      importedCount: input.importedCount,
+      duplicateCount: input.duplicateCount,
+      createdBy: input.createdBy ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    getStore().importBatches.unshift(batch);
+    return batch;
+  }
+
+  async listImportBatches(spaceId: string): Promise<ImportBatch[]> {
+    return getStore()
+      .importBatches.filter((b) => b.spaceId === spaceId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async undoImportBatch(batchId: string, spaceId: string, _userId: string): Promise<number> {
+    const store = getStore();
+    const now = new Date().toISOString();
+    let removed = 0;
+    for (const e of store.expenses) {
+      if (e.importBatchId !== batchId || (e.spaceId ?? "casa") !== spaceId || e.deletedAt) continue;
+      e.deletedAt = now;
+      e.updatedAt = now;
+      removed += 1;
+    }
+    store.importBatches = store.importBatches.filter(
+      (b) => !(b.id === batchId && b.spaceId === spaceId),
+    );
+    return removed;
   }
 
   async createContactMessage(input: CreateContactInput): Promise<void> {

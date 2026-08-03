@@ -38,4 +38,6 @@ export type {
   RecurringStatus,
   CreateRecurringInput,
   UpdateRecurringInput,
+  ImportBatch,
+  CreateImportBatchInput,
 } from "./repository";
