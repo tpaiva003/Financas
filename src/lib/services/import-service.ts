@@ -17,6 +17,7 @@ import type { Expense, Split } from "@/lib/domain";
 import { detectMapping, rowsToTransactions } from "@/lib/import/columns";
 import { readUploadToGrid, MAX_IMPORT_BYTES } from "@/lib/import/read-file";
 import type { ImportCommitPayload, ImportPreview, ImportPreviewRow } from "@/lib/import/types";
+import type { TargetSpace } from "@/lib/space";
 
 export class ImportError extends Error {}
 
@@ -25,10 +26,12 @@ export async function buildImportPreview(params: {
   file: File;
   source: string;
   account?: string | null;
-  spaceId: string;
-  viewerMemberId: string;
+  /** Ambiente de destino já resolvido (pode não ser o ativo na app). */
+  target: TargetSpace;
 }): Promise<ImportPreview> {
-  const { file, source, account, spaceId, viewerMemberId } = params;
+  const { file, source, account, target } = params;
+  const spaceId = target.space.id;
+  const viewerMemberId = target.viewerMemberId;
 
   if (!file || file.size === 0) throw new ImportError("Escolhe um ficheiro.");
   if (file.size > MAX_IMPORT_BYTES) {
@@ -56,10 +59,11 @@ export async function buildImportPreview(params: {
   }
 
   const repo = getRepository();
-  const [existing, rules, expenses] = await Promise.all([
+  const [existing, rules, expenses, categories] = await Promise.all([
     repo.listExpenseUids(spaceId),
     repo.listClassificationRules(),
     repo.listExpenses({ spaceId, viewerId: viewerMemberId }),
+    repo.listCategories(spaceId),
   ]);
 
   const dedup = detectDuplicates(transactions, existing as Pick<Expense, "id" | "uid">[]);
@@ -106,6 +110,13 @@ export async function buildImportPreview(params: {
       : `débito: ${label(mapping.debitCol)} · crédito: ${label(mapping.creditCol)}`;
 
   return {
+    spaceId,
+    spaceName: target.space.name,
+    categories: categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon })),
+    members: target.fullMembers.map((m) => ({ id: m.id, name: m.name })),
+    defaultPayerId: target.fullMembers.some((m) => m.id === viewerMemberId)
+      ? viewerMemberId
+      : (target.fullMembers[0]?.id ?? viewerMemberId),
     source,
     fileName: file.name,
     rowCount: transactions.length,
