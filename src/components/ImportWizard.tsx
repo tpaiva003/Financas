@@ -171,6 +171,35 @@ function PreviewStep({
     setRows((prev) => prev.map((r) => (r.include ? { ...r, categoryId: bulkCategory } : r)));
   };
 
+  /** Marca todas as selecionadas como pessoais ou partilhadas. */
+  const applyBulkKind = (kind: "shared" | "personal") =>
+    setRows((prev) => prev.map((r) => (r.include ? { ...r, kind } : r)));
+
+  /**
+   * Atalho para o caso comum: as contas partilhadas desse período já estão
+   * acertadas, mas falta o histórico pessoal. Liga as linhas do período já
+   * coberto e marca-as como pessoais, para não mexer no saldo com ninguém.
+   */
+  const includeCoveredAsPersonal = () =>
+    setRows((prev) =>
+      prev.map((r, i) => {
+        const row = preview.rows[i]!;
+        if (row.isDuplicate || !row.inCoveredPeriod) return r;
+        return { ...r, include: true, kind: "personal" as const };
+      }),
+    );
+
+  // Quantas das selecionadas caem num período que já tem despesas registadas.
+  const overlapping = preview.rows.reduce(
+    (n, r, i) => (rows[i]?.include && r.inCoveredPeriod ? n + 1 : n),
+    0,
+  );
+  const overlappingShared = preview.rows.reduce(
+    (n, r, i) => (rows[i]?.include && r.inCoveredPeriod && rows[i]!.kind === "shared" ? n + 1 : n),
+    0,
+  );
+  const personalCount = rows.filter((r) => r.include && r.kind === "personal").length;
+
   const payload: ImportCommitPayload = {
     source: preview.source,
     fileName: preview.fileName,
@@ -255,7 +284,47 @@ function PreviewStep({
             Ainda não há despesas neste ambiente, por isso não há risco de sobreposição.
           </p>
         )}
+
+        {/* Atalho: recuperar o histórico pessoal de um período já acertado. */}
+        {preview.coveredCount > 0 ? (
+          <button
+            type="button"
+            onClick={includeCoveredAsPersonal}
+            className="btn-secondary mt-3 text-xs"
+          >
+            Incluir período já registado como despesas só minhas
+          </button>
+        ) : null}
       </div>
+
+      {/* Aviso em tempo real: estás mesmo a acrescentar a um período já coberto. */}
+      {overlapping > 0 ? (
+        <div
+          role="status"
+          className={`rounded-xl border p-4 text-sm ${
+            overlappingShared > 0
+              ? "border-debt/40 bg-debt/10 text-debt"
+              : "border-hair bg-panel2/40 text-fg-muted"
+          }`}
+        >
+          <p className="font-medium">
+            {overlapping} despesa(s) caem em período que já tem informação registada.
+          </p>
+          {overlappingShared > 0 ? (
+            <p className="mt-1">
+              Destas, <span className="font-medium">{overlappingShared} estão como partilhadas</span> e
+              vão <span className="font-medium">alterar o saldo</span> desse período, que podes já ter
+              acertado. Se o objetivo é só recuperar o teu histórico, marca-as como pessoais: contam
+              para a tua análise e não mexem no saldo.
+            </p>
+          ) : (
+            <p className="mt-1">
+              Estão todas marcadas como pessoais: entram na tua análise e não mexem no saldo
+              partilhado desse período.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/* Definições aplicadas a todas as despesas importadas */}
       <div className="grid gap-4 rounded-xl border border-hair bg-panel2/40 p-4 sm:grid-cols-2">
@@ -335,6 +404,13 @@ function PreviewStep({
         <button type="button" onClick={() => setAllIncluded(false)} className="btn-ghost text-xs">
           Nenhuma
         </button>
+        <span className="mx-1 hidden text-fg-faint sm:inline">·</span>
+        <button type="button" onClick={() => applyBulkKind("personal")} className="btn-ghost text-xs">
+          Marcar como pessoais
+        </button>
+        <button type="button" onClick={() => applyBulkKind("shared")} className="btn-ghost text-xs">
+          Como partilhadas
+        </button>
         <div className="ml-auto flex items-end gap-2">
           <div>
             <label className="label" htmlFor="bulk-cat">Categoria em massa</label>
@@ -377,7 +453,8 @@ function PreviewStep({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair pt-4">
         <p className="text-sm text-fg-muted">
-          <span className="text-fg">{selected}</span> selecionada(s) · total{" "}
+          <span className="text-fg">{selected}</span> selecionada(s)
+          {personalCount > 0 ? ` · ${personalCount} pessoal(is)` : ""} · total{" "}
           <span className="font-mono tnum text-fg">{formatCents(total)}</span>
         </p>
         <CommitButton disabled={selected === 0} />
@@ -443,6 +520,11 @@ function PreviewRowItem({
             <button
               type="button"
               onClick={() => onChange({ kind: state.kind === "shared" ? "personal" : "shared" })}
+              title={
+                state.kind === "personal"
+                  ? "Só tua: entra na tua análise e não mexe no saldo"
+                  : "Partilhada: entra no saldo com os outros participantes"
+              }
               className={`rounded-full border px-2.5 py-1 text-xs transition ${
                 state.kind === "personal"
                   ? "border-fg/40 bg-panel2 text-fg"
