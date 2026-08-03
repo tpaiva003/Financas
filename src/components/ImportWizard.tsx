@@ -9,7 +9,12 @@ import {
   type ImportPreviewState,
 } from "@/app/(app)/actions";
 import { formatCents } from "@/lib/domain";
-import { IMPORT_SOURCES, type ImportCommitPayload, type ImportPreviewRow } from "@/lib/import/types";
+import {
+  IMPORT_SOURCES,
+  type ImportCommitPayload,
+  type ImportPreviewRow,
+  type ImportSpaceInfo,
+} from "@/lib/import/types";
 
 interface Opt {
   id: string;
@@ -21,6 +26,15 @@ interface RowState {
   include: boolean;
   categoryId: string;
   kind: "shared" | "personal";
+  /** Ambiente para onde esta linha vai. */
+  spaceId: string;
+}
+
+/** Dia seguinte a uma data ISO (aaaa-mm-dd). */
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 const emptyPreview: ImportPreviewState = {};
@@ -51,16 +65,15 @@ export function ImportWizard({
 
         {/* O destino é explícito: importar não mexe no ambiente ativo por acidente. */}
         <div>
-          <label className="label" htmlFor="imp-space">Ambiente de destino</label>
+          <label className="label" htmlFor="imp-space">Ambiente por omissão</label>
           <select id="imp-space" name="spaceId" defaultValue={currentSpaceId} className="select">
             {spaces.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
           <p className="mt-1.5 text-xs text-fg-faint">
-            As despesas entram neste ambiente. Para dividir um extrato por vários,
-            importa o mesmo ficheiro uma vez em cada um: as já importadas aparecem
-            como &ldquo;já existe&rdquo; e não duplicam.
+            É onde as linhas entram por omissão. No passo seguinte podes mandar
+            cada despesa para outro ambiente, uma a uma ou em massa.
           </p>
         </div>
 
@@ -103,7 +116,7 @@ export function ImportWizard({
       {/* Passo 2 — rever e confirmar */}
       {preview ? (
         <PreviewStep
-          key={`${preview.spaceId}-${preview.fileName}-${preview.rowCount}-${preview.newCount}`}
+          key={`${preview.defaultSpaceId}-${preview.fileName}-${preview.rowCount}`}
           preview={preview}
           action={commitAction}
           state={commitState}
@@ -122,25 +135,42 @@ function PreviewStep({
   action: (fd: FormData) => void;
   state: ActionState;
 }) {
-  // Categorias e participantes vêm do ambiente escolhido, não do ativo.
-  const categories = preview.categories;
-  const members = preview.members;
+  const spaceById = useMemo(
+    () => new Map(preview.spaces.map((s) => [s.id, s])),
+    [preview.spaces],
+  );
+  const defaultSpace = spaceById.get(preview.defaultSpaceId) ?? preview.spaces[0]!;
+  const members = defaultSpace.members;
+
+  /** Estado de uma linha face ao ambiente que tem escolhido nesse momento. */
+  const rowFacts = (r: ImportPreviewRow, spaceId: string) => {
+    const space = spaceById.get(spaceId) ?? defaultSpace;
+    const isDuplicate = space.duplicateUids.includes(r.uid);
+    const inCoveredPeriod =
+      space.lastExpenseDate !== null && r.transactionDate <= space.lastExpenseDate;
+    return { space, isDuplicate, inCoveredPeriod };
+  };
+
   // Só entra o que é seguro por omissão: nada de duplicados, nada de períodos já
   // registados na app e nada que pareça uma despesa manual já existente.
-  const [fromDate, setFromDate] = useState(preview.suggestedFromDate ?? "");
-
-  const isEligible = (r: ImportPreviewRow, from: string) => {
-    if (r.isDuplicate) return false;
-    if (r.reconcileHint) return false;
-    if (from && r.transactionDate < from) return false;
+  const isEligible = (r: ImportPreviewRow, spaceId: string, from: string) => {
+    const { isDuplicate, inCoveredPeriod } = rowFacts(r, spaceId);
+    if (isDuplicate || r.reconcileHint) return false;
+    if (from ? r.transactionDate < from : inCoveredPeriod) return false;
     return true;
   };
 
+  const suggestedFrom = defaultSpace.lastExpenseDate
+    ? nextDay(defaultSpace.lastExpenseDate)
+    : "";
+  const [fromDate, setFromDate] = useState(suggestedFrom);
+
   const [rows, setRows] = useState<RowState[]>(() =>
     preview.rows.map((r) => ({
-      include: isEligible(r, preview.suggestedFromDate ?? ""),
+      include: isEligible(r, preview.defaultSpaceId, suggestedFrom),
       categoryId: r.suggestedCategoryId ?? "",
       kind: "shared" as const,
+      spaceId: preview.defaultSpaceId,
     })),
   );
 
@@ -148,14 +178,19 @@ function PreviewStep({
   const applyFromDate = (value: string) => {
     setFromDate(value);
     setRows((prev) =>
-      prev.map((r, i) => ({ ...r, include: isEligible(preview.rows[i]!, value) })),
+      prev.map((r, i) => ({ ...r, include: isEligible(preview.rows[i]!, r.spaceId, value) })),
     );
   };
-  const [payerId, setPayerId] = useState(preview.defaultPayerId);
+  const [payerId, setPayerId] = useState(
+    defaultSpace.members.some((m) => m.id === defaultSpace.viewerMemberId)
+      ? defaultSpace.viewerMemberId
+      : (defaultSpace.members[0]?.id ?? ""),
+  );
   const [splitType, setSplitType] = useState<"EQUAL" | "PERCENT" | "SOLE">("EQUAL");
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
   const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkSpace, setBulkSpace] = useState(preview.defaultSpaceId);
 
   const isPair = members.length === 2;
   const selected = rows.filter((r) => r.include).length;
@@ -167,16 +202,37 @@ function PreviewStep({
   const setRow = (i: number, patch: Partial<RowState>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
+  /**
+   * Mudar de ambiente muda o que é duplicado e o que já está coberto, e as
+   * categorias são de outro ambiente: por isso a categoria é reposta.
+   */
+  const setRowSpace = (i: number, spaceId: string) =>
+    setRows((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r;
+        const { isDuplicate } = rowFacts(preview.rows[i]!, spaceId);
+        return { ...r, spaceId, categoryId: "", include: isDuplicate ? false : r.include };
+      }),
+    );
+
   // "Selecionar todas" nunca liga duplicados: essa é uma garantia do produto.
   const setAllIncluded = (include: boolean) =>
     setRows((prev) =>
-      prev.map((r, i) => (preview.rows[i]?.isDuplicate ? r : { ...r, include })),
+      prev.map((r, i) =>
+        rowFacts(preview.rows[i]!, r.spaceId).isDuplicate ? r : { ...r, include },
+      ),
     );
 
   const applyBulkCategory = () => {
     if (!bulkCategory) return;
     setRows((prev) => prev.map((r) => (r.include ? { ...r, categoryId: bulkCategory } : r)));
   };
+
+  /** Envia as selecionadas para outro ambiente de uma vez. */
+  const applyBulkSpace = () =>
+    setRows((prev) =>
+      prev.map((r) => (r.include ? { ...r, spaceId: bulkSpace, categoryId: "" } : r)),
+    );
 
   /** Marca todas as selecionadas como pessoais ou partilhadas. */
   const applyBulkKind = (kind: "shared" | "personal") =>
@@ -190,29 +246,46 @@ function PreviewStep({
   const includeCoveredAsPersonal = () =>
     setRows((prev) =>
       prev.map((r, i) => {
-        const row = preview.rows[i]!;
-        if (row.isDuplicate || !row.inCoveredPeriod) return r;
+        const { isDuplicate, inCoveredPeriod } = rowFacts(preview.rows[i]!, r.spaceId);
+        if (isDuplicate || !inCoveredPeriod) return r;
         return { ...r, include: true, kind: "personal" as const };
       }),
     );
 
-  // Quantas das selecionadas caem num período que já tem despesas registadas.
+  // Contagens vivas, sempre face ao ambiente atual de cada linha.
+  const duplicateCount = preview.rows.reduce(
+    (n, r, i) => (rowFacts(r, rows[i]!.spaceId).isDuplicate ? n + 1 : n),
+    0,
+  );
+  const coveredCount = preview.rows.reduce(
+    (n, r, i) => (rowFacts(r, rows[i]!.spaceId).inCoveredPeriod ? n + 1 : n),
+    0,
+  );
   const overlapping = preview.rows.reduce(
-    (n, r, i) => (rows[i]?.include && r.inCoveredPeriod ? n + 1 : n),
+    (n, r, i) => (rows[i]!.include && rowFacts(r, rows[i]!.spaceId).inCoveredPeriod ? n + 1 : n),
     0,
   );
   const overlappingShared = preview.rows.reduce(
-    (n, r, i) => (rows[i]?.include && r.inCoveredPeriod && rows[i]!.kind === "shared" ? n + 1 : n),
+    (n, r, i) =>
+      rows[i]!.include &&
+      rows[i]!.kind === "shared" &&
+      rowFacts(r, rows[i]!.spaceId).inCoveredPeriod
+        ? n + 1
+        : n,
     0,
   );
   const personalCount = rows.filter((r) => r.include && r.kind === "personal").length;
+  // Resumo por ambiente das linhas que vão mesmo entrar.
+  const perSpaceCounts = preview.spaces
+    .map((s) => ({ name: s.name, count: rows.filter((r) => r.include && r.spaceId === s.id).length }))
+    .filter((s) => s.count > 0);
 
   const payload: ImportCommitPayload = {
-    spaceId: preview.spaceId,
+    defaultSpaceId: preview.defaultSpaceId,
     source: preview.source,
     fileName: preview.fileName,
     rowCount: preview.rowCount,
-    duplicateCount: preview.duplicateCount,
+    duplicateCount,
     payerId,
     splitType,
     percentA,
@@ -227,6 +300,7 @@ function PreviewStep({
         amountCents: r.amountCents,
         categoryId: s.categoryId || null,
         kind: s.kind,
+        spaceId: s.spaceId,
       })),
   };
 
@@ -235,8 +309,7 @@ function PreviewStep({
       <div className="card p-8 text-center">
         <p className="text-[15px] font-medium text-credit">{state.message ?? "Importado."}</p>
         <p className="mt-1 text-sm text-fg-muted">
-          Entraram em <span className="font-medium text-fg">{preview.spaceName}</span>. Podes anular
-          este lote abaixo, se for preciso.
+          Podes anular qualquer lote abaixo, se for preciso.
         </p>
       </div>
     );
@@ -249,10 +322,22 @@ function PreviewStep({
       <div>
         <h2 className="label">2. Rever e confirmar</h2>
         <p className="mt-1 text-sm text-fg-muted">
-          Vai entrar em <span className="font-medium text-fg">{preview.spaceName}</span> ·{" "}
           {preview.rowCount} transação(ões) lidas ·{" "}
-          <span className="text-fg">{preview.newCount} novas</span>
-          {preview.duplicateCount > 0 ? ` · ${preview.duplicateCount} já existiam` : ""}
+          <span className="text-fg">{preview.rowCount - duplicateCount} novas</span>
+          {duplicateCount > 0 ? ` · ${duplicateCount} já existiam` : ""}
+        </p>
+        <p className="mt-1 text-sm text-fg-muted">
+          Destino:{" "}
+          {perSpaceCounts.length === 0 ? (
+            <span className="text-fg-faint">nada selecionado</span>
+          ) : (
+            perSpaceCounts.map((s, i) => (
+              <span key={s.name}>
+                {i > 0 ? " · " : ""}
+                <span className="font-medium text-fg">{s.count}</span> em {s.name}
+              </span>
+            ))
+          )}
         </p>
         <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">
           {preview.mappingLabel}
@@ -278,26 +363,27 @@ function PreviewStep({
             </button>
           ) : null}
         </div>
-        {preview.lastExpenseDate ? (
+        {defaultSpace.lastExpenseDate ? (
           <p className="mt-2 text-xs text-fg-muted">
-            A despesa mais recente já registada é de{" "}
+            Em <span className="text-fg">{defaultSpace.name}</span>, a despesa mais recente já
+            registada é de{" "}
             <span className="text-fg">
-              {new Date(preview.lastExpenseDate).toLocaleDateString("pt-PT")}
+              {new Date(defaultSpace.lastExpenseDate).toLocaleDateString("pt-PT")}
             </span>
             . Para não sobrepor o que já lá está,{" "}
-            {preview.coveredCount > 0
-              ? `${preview.coveredCount} linha(s) desse período ficam desligadas`
+            {coveredCount > 0
+              ? `${coveredCount} linha(s) desse período ficam desligadas`
               : "nada desse período foi selecionado"}
             . Podes ligar caso a caso se faltar alguma.
           </p>
         ) : (
           <p className="mt-2 text-xs text-fg-muted">
-            Ainda não há despesas neste ambiente, por isso não há risco de sobreposição.
+            Ainda não há despesas em {defaultSpace.name}, por isso não há risco de sobreposição.
           </p>
         )}
 
         {/* Atalho: recuperar o histórico pessoal de um período já acertado. */}
-        {preview.coveredCount > 0 ? (
+        {coveredCount > 0 ? (
           <button
             type="button"
             onClick={includeCoveredAsPersonal}
@@ -422,6 +508,26 @@ function PreviewStep({
         <button type="button" onClick={() => applyBulkKind("shared")} className="btn-ghost text-xs">
           Como partilhadas
         </button>
+        {preview.spaces.length > 1 ? (
+          <div className="flex items-end gap-2">
+            <div>
+              <label className="label" htmlFor="bulk-space">Enviar para</label>
+              <select
+                id="bulk-space"
+                value={bulkSpace}
+                onChange={(e) => setBulkSpace(e.target.value)}
+                className="select"
+              >
+                {preview.spaces.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <button type="button" onClick={applyBulkSpace} className="btn-secondary text-xs">
+              Mover selecionadas
+            </button>
+          </div>
+        ) : null}
         <div className="ml-auto flex items-end gap-2">
           <div>
             <label className="label" htmlFor="bulk-cat">Categoria em massa</label>
@@ -432,7 +538,7 @@ function PreviewStep({
               className="select"
             >
               <option value="">Escolher…</option>
-              {categories.map((c) => (
+              {defaultSpace.categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ""}{c.name}</option>
               ))}
             </select>
@@ -445,15 +551,22 @@ function PreviewStep({
 
       {/* Lista de transações */}
       <ul className="divide-y divide-hair2 rounded-xl border border-hair">
-        {preview.rows.map((r, i) => (
-          <PreviewRowItem
-            key={`${r.uid}-${i}`}
-            row={r}
-            state={rows[i]!}
-            categories={categories}
-            onChange={(patch) => setRow(i, patch)}
-          />
-        ))}
+        {preview.rows.map((r, i) => {
+          const facts = rowFacts(r, rows[i]!.spaceId);
+          return (
+            <PreviewRowItem
+              key={`${r.uid}-${i}`}
+              row={r}
+              state={rows[i]!}
+              spaces={preview.spaces}
+              categories={facts.space.categories}
+              isDuplicate={facts.isDuplicate}
+              inCoveredPeriod={facts.inCoveredPeriod}
+              onChange={(patch) => setRow(i, patch)}
+              onSpaceChange={(spaceId) => setRowSpace(i, spaceId)}
+            />
+          );
+        })}
       </ul>
 
       {state.error ? (
@@ -477,13 +590,21 @@ function PreviewStep({
 function PreviewRowItem({
   row,
   state,
+  spaces,
   categories,
+  isDuplicate,
+  inCoveredPeriod,
   onChange,
+  onSpaceChange,
 }: {
   row: ImportPreviewRow;
   state: RowState;
+  spaces: ImportSpaceInfo[];
   categories: Opt[];
+  isDuplicate: boolean;
+  inCoveredPeriod: boolean;
   onChange: (patch: Partial<RowState>) => void;
+  onSpaceChange: (spaceId: string) => void;
 }) {
   const isRefund = row.amountCents < 0;
   return (
@@ -499,8 +620,8 @@ function PreviewRowItem({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium text-fg">{row.description}</p>
-            {row.isDuplicate ? <span className="chip border-hair text-fg-faint">já existe</span> : null}
-            {row.inCoveredPeriod && !row.isDuplicate ? (
+            {isDuplicate ? <span className="chip border-hair text-fg-faint">já existe</span> : null}
+            {inCoveredPeriod && !isDuplicate ? (
               <span className="chip border-hair text-fg-faint">período já registado</span>
             ) : null}
             {row.reconcileHint ? (
@@ -517,6 +638,19 @@ function PreviewRowItem({
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* Ambiente desta linha: o mesmo extrato pode alimentar vários. */}
+            {spaces.length > 1 ? (
+              <select
+                value={state.spaceId}
+                onChange={(e) => onSpaceChange(e.target.value)}
+                className="select h-9 py-1 text-xs"
+                aria-label={`Ambiente de ${row.description}`}
+              >
+                {spaces.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : null}
             <select
               value={state.categoryId}
               onChange={(e) => onChange({ categoryId: e.target.value })}
