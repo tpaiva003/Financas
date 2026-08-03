@@ -265,3 +265,11 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   vermelho); pessoais não (aviso neutro).
 - Atalho "Incluir período já registado como despesas só minhas" e ações em massa
   para marcar as selecionadas como pessoais/partilhadas.
+
+### Tabela `import_batches` legada (0001)
+Tal como aconteceu com `recurring_templates` em 0007, já existia uma
+`import_batches` do schema original: sem `space_id` e com `id` uuid, o que era
+incompatível com os ids `imp_…` da app (e fazia o `create table if not exists`
+ser um no-op, com o índice a falhar em `space_id`). Estava **vazia e sem
+referências** (0 linhas, 0 despesas associadas), por isso foi recriada limpa,
+incluindo a coluna `expenses.import_batch_id`, que passou de uuid para text.

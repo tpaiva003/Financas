@@ -1,5 +1,11 @@
 -- 0009 — Importação de extratos: lotes registados e reversíveis (REQ-IMP-7).
 
+-- A tabela original (0001) era anterior ao modelo de ambientes: sem space_id e
+-- com id uuid (incompatível com os ids "imp_…" da app). Estava vazia e sem
+-- referências, por isso é recriada limpa, tal como se fez em 0007.
+alter table expenses drop column if exists import_batch_id;
+drop table if exists import_batches cascade;
+
 create table if not exists import_batches (
   id              text primary key,
   space_id        text not null references spaces(id) on delete cascade,
