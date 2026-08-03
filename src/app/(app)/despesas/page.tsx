@@ -89,7 +89,10 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
           <p className="eyebrow">{ctx.space.name}</p>
           <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Despesas</h1>
         </div>
-        <Link href="/despesas/nova" className="btn-primary hidden sm:inline-flex">Adicionar</Link>
+        <div className="hidden items-center gap-2 sm:flex">
+          <Link href="/importar" className="btn-secondary">Importar extrato</Link>
+          <Link href="/despesas/nova" className="btn-primary">Adicionar</Link>
+        </div>
       </div>
 
       <ExpensesFilter

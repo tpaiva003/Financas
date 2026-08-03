@@ -92,6 +92,28 @@ export interface UpdateRecurringInput {
   status?: RecurringStatus;
 }
 
+export interface ImportBatch {
+  id: string;
+  spaceId: string;
+  source: string;
+  fileName?: string | null;
+  rowCount: number;
+  importedCount: number;
+  duplicateCount: number;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface CreateImportBatchInput {
+  spaceId: string;
+  source: string;
+  fileName?: string | null;
+  rowCount: number;
+  importedCount: number;
+  duplicateCount: number;
+  createdBy?: string | null;
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -186,6 +208,14 @@ export interface CreateExpenseInput {
   ownerId: string;
   visibleToPartner?: boolean;
   createdBy: string;
+  /**
+   * UID de deduplicação explícito. O import passa o UID calculado a partir da
+   * transação do extrato (com fonte/conta), para que reimportar o mesmo ficheiro
+   * seja detetado como duplicado. Sem isto, é derivado dos campos da despesa.
+   */
+  uid?: string;
+  /** Lote de importação que originou esta despesa (permite anular o lote). */
+  importBatchId?: string | null;
   /** Template recorrente que originou esta despesa (idempotência). */
   recurringId?: string | null;
   /** Aprovação (despesas submetidas por um "submitter"). */
@@ -283,6 +313,14 @@ export interface Repository {
   setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;
+
+  // Importação de extratos (REQ-IMP).
+  /** UIDs já existentes no ambiente, para deduplicação do import. */
+  listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]>;
+  createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch>;
+  listImportBatches(spaceId: string): Promise<ImportBatch[]>;
+  /** Anula um lote: elimina (soft-delete) as despesas que criou. */
+  undoImportBatch(batchId: string, spaceId: string, userId: string): Promise<number>;
 
   // Mensagens de contacto da landing.
   createContactMessage(input: CreateContactInput): Promise<void>;
