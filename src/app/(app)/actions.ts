@@ -625,6 +625,12 @@ export interface ImportPreviewState {
   preview?: ImportPreview;
 }
 
+/** Ambientes do utilizador onde ele pode criar despesas (exclui submitters). */
+async function resolveWritableSpaces(ctx: Awaited<ReturnType<typeof getSpaceContext>>) {
+  const resolved = await Promise.all(ctx.spaces.map((s) => getTargetSpace(ctx, s.id)));
+  return resolved.flatMap((t) => (t && t.viewerRole !== "submitter" ? [t] : []));
+}
+
 export async function previewImportAction(
   _prev: ImportPreviewState,
   formData: FormData,
@@ -637,14 +643,17 @@ export async function previewImportAction(
   const source = String(formData.get("source") || "outro");
   const account = String(formData.get("account") || "").trim() || null;
 
-  // O destino pode ser outro ambiente que não o ativo.
-  const targetId = String(formData.get("spaceId") || ctx.space.id);
-  const target = await getTargetSpace(ctx, targetId);
-  if (!target) return { error: "Ambiente inválido." };
-  if (target.viewerRole === "submitter") return { error: "Sem permissão nesse ambiente." };
+  // Cada linha pode ir para um ambiente diferente: resolvemos todos aqueles
+  // onde o utilizador pode mesmo escrever.
+  const targets = await resolveWritableSpaces(ctx);
+  if (targets.length === 0) return { error: "Não tens ambientes onde importar." };
+  const requested = String(formData.get("spaceId") || ctx.space.id);
+  const defaultSpaceId = targets.some((t) => t.space.id === requested)
+    ? requested
+    : targets[0]!.space.id;
 
   try {
-    const preview = await buildImportPreview({ file, source, account, target });
+    const preview = await buildImportPreview({ file, source, account, targets, defaultSpaceId });
     return { preview };
   } catch (e) {
     if (e instanceof ImportError) return { error: e.message };
@@ -666,23 +675,27 @@ export async function commitImportAction(
     return { error: "Dados de importação inválidos." };
   }
 
-  const target = await getTargetSpace(ctx, payload.spaceId || ctx.space.id);
-  if (!target) return { error: "Ambiente inválido." };
-  if (target.viewerRole === "submitter") return { error: "Sem permissão nesse ambiente." };
+  // As linhas podem ir para vários ambientes; só passam os que o utilizador tem.
+  const targets = await resolveWritableSpaces(ctx);
+  if (targets.length === 0) return { error: "Não tens ambientes onde importar." };
+  const requested = payload.defaultSpaceId || ctx.space.id;
+  const defaultSpaceId = targets.some((t) => t.space.id === requested)
+    ? requested
+    : targets[0]!.space.id;
 
   try {
-    const { imported } = await commitImport({
+    const { imported, perSpace } = await commitImport({
       payload,
-      spaceId: target.space.id,
-      memberIds: target.fullMembers.map((m) => m.id),
-      viewerMemberId: target.viewerMemberId,
+      targets,
+      defaultSpaceId,
       userId: ctx.user.id,
     });
     revalidatePath("/importar");
     revalidatePath("/despesas");
     revalidatePath("/dashboard");
     revalidatePath("/saldo");
-    return { ok: true, message: `${imported} despesa(s) importada(s).` };
+    const detalhe = perSpace.map((s) => `${s.count} em ${s.spaceName}`).join(" · ");
+    return { ok: true, message: `${imported} despesa(s) importada(s): ${detalhe}.` };
   } catch (e) {
     if (e instanceof ImportError) return { error: e.message };
     return { error: "Não consegui importar as despesas." };

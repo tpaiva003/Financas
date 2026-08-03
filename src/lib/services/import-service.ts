@@ -12,11 +12,16 @@
  */
 
 import { getRepository } from "@/lib/data";
-import { classify, detectDuplicates, suggestReconciliation } from "@/lib/domain";
-import type { Expense, Split } from "@/lib/domain";
+import { classify, stableUid, suggestReconciliation } from "@/lib/domain";
+import type { Split } from "@/lib/domain";
 import { detectMapping, rowsToTransactions } from "@/lib/import/columns";
 import { readUploadToGrid, MAX_IMPORT_BYTES } from "@/lib/import/read-file";
-import type { ImportCommitPayload, ImportPreview, ImportPreviewRow } from "@/lib/import/types";
+import type {
+  ImportCommitPayload,
+  ImportPreview,
+  ImportPreviewRow,
+  ImportSpaceInfo,
+} from "@/lib/import/types";
 import type { TargetSpace } from "@/lib/space";
 
 export class ImportError extends Error {}
@@ -26,12 +31,13 @@ export async function buildImportPreview(params: {
   file: File;
   source: string;
   account?: string | null;
-  /** Ambiente de destino já resolvido (pode não ser o ativo na app). */
-  target: TargetSpace;
+  /** Ambientes a que o utilizador pertence e onde pode escrever. */
+  targets: TargetSpace[];
+  /** Ambiente sugerido por omissão para as linhas. */
+  defaultSpaceId: string;
 }): Promise<ImportPreview> {
-  const { file, source, account, target } = params;
-  const spaceId = target.space.id;
-  const viewerMemberId = target.viewerMemberId;
+  const { file, source, account, targets, defaultSpaceId } = params;
+  if (targets.length === 0) throw new ImportError("Não tens ambientes onde importar.");
 
   if (!file || file.size === 0) throw new ImportError("Escolhe um ficheiro.");
   if (file.size > MAX_IMPORT_BYTES) {
@@ -59,36 +65,56 @@ export async function buildImportPreview(params: {
   }
 
   const repo = getRepository();
-  const [existing, rules, expenses, categories] = await Promise.all([
-    repo.listExpenseUids(spaceId),
-    repo.listClassificationRules(),
-    repo.listExpenses({ spaceId, viewerId: viewerMemberId }),
-    repo.listCategories(spaceId),
-  ]);
+  const rules = await repo.listClassificationRules();
 
-  const dedup = detectDuplicates(transactions, existing as Pick<Expense, "id" | "uid">[]);
-  const reconciliations = suggestReconciliation(transactions, expenses);
-  const byUid = new Map(reconciliations.map((r) => [r.uid, r.candidateExpenseId]));
-  const expenseById = new Map(expenses.map((e) => [e.id, e]));
-
-  // Proteção contra sobreposição: o que já está registado na app é "live" e não
-  // pode ser duplicado por um extrato que cobre esses mesmos dias.
-  const lastExpenseDate = expenses.reduce<string | null>(
-    (max, e) => (!e.deletedAt && (max === null || e.transactionDate > max) ? e.transactionDate : max),
-    null,
+  // Recolhe o estado de TODOS os ambientes do utilizador: como cada linha pode
+  // ir para um ambiente diferente, o dedup e o aviso de período têm de ser
+  // avaliados por ambiente.
+  const uidsInFile = new Set(transactions.map((t) => stableUid(t)));
+  const spaces: ImportSpaceInfo[] = await Promise.all(
+    targets.map(async (t) => {
+      const [uids, cats, expenses] = await Promise.all([
+        repo.listExpenseUids(t.space.id),
+        repo.listCategories(t.space.id),
+        repo.listExpenses({ spaceId: t.space.id, viewerId: t.viewerMemberId }),
+      ]);
+      const lastExpenseDate = expenses.reduce<string | null>(
+        (max, e) =>
+          !e.deletedAt && (max === null || e.transactionDate > max) ? e.transactionDate : max,
+        null,
+      );
+      return {
+        id: t.space.id,
+        name: t.space.name,
+        categories: cats.map((c) => ({ id: c.id, name: c.name, icon: c.icon })),
+        members: t.fullMembers.map((m) => ({ id: m.id, name: m.name })),
+        viewerMemberId: t.viewerMemberId,
+        lastExpenseDate,
+        // Só a interseção com este ficheiro: mantém o payload pequeno.
+        duplicateUids: uids.filter((u) => uidsInFile.has(u.uid)).map((u) => u.uid),
+      };
+    }),
   );
-  const suggestedFromDate = lastExpenseDate ? nextDay(lastExpenseDate) : null;
 
-  const rows: ImportPreviewRow[] = dedup.rows.map((row) => {
-    const hintId = row.isDuplicate ? undefined : byUid.get(row.uid);
-    const hintExpense = hintId ? expenseById.get(hintId) : undefined;
+  // Sugestão de reconciliação com entradas manuais, no ambiente por omissão.
+  const defaultTarget = targets.find((t) => t.space.id === defaultSpaceId) ?? targets[0]!;
+  const defaultExpenses = await repo.listExpenses({
+    spaceId: defaultTarget.space.id,
+    viewerId: defaultTarget.viewerMemberId,
+  });
+  const reconciliations = suggestReconciliation(transactions, defaultExpenses);
+  const byUid = new Map(reconciliations.map((r) => [r.uid, r.candidateExpenseId]));
+  const expenseById = new Map(defaultExpenses.map((e) => [e.id, e]));
+
+  const rows: ImportPreviewRow[] = transactions.map((tx) => {
+    const uid = stableUid(tx);
+    const hintExpense = expenseById.get(byUid.get(uid) ?? "");
     return {
-      uid: row.uid,
-      description: row.transaction.description,
-      transactionDate: row.transaction.transactionDate,
-      amountCents: row.transaction.amountCents,
-      isDuplicate: row.isDuplicate,
-      suggestedCategoryId: classify(row.transaction.description, rules).categoryId ?? null,
+      uid,
+      description: tx.description,
+      transactionDate: tx.transactionDate,
+      amountCents: tx.amountCents,
+      suggestedCategoryId: classify(tx.description, rules).categoryId ?? null,
       reconcileHint: hintExpense
         ? {
             expenseId: hintExpense.id,
@@ -96,11 +122,8 @@ export async function buildImportPreview(params: {
             date: hintExpense.transactionDate,
           }
         : null,
-      inCoveredPeriod: lastExpenseDate !== null && row.transaction.transactionDate <= lastExpenseDate,
     };
   });
-
-  const coveredCount = rows.filter((r) => r.inCoveredPeriod).length;
 
   const header = grid[mapping.headerRow];
   const label = (i: number) => (i >= 0 ? (header?.[i] ?? `coluna ${i + 1}`) : null);
@@ -110,95 +133,116 @@ export async function buildImportPreview(params: {
       : `débito: ${label(mapping.debitCol)} · crédito: ${label(mapping.creditCol)}`;
 
   return {
-    spaceId,
-    spaceName: target.space.name,
-    categories: categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon })),
-    members: target.fullMembers.map((m) => ({ id: m.id, name: m.name })),
-    defaultPayerId: target.fullMembers.some((m) => m.id === viewerMemberId)
-      ? viewerMemberId
-      : (target.fullMembers[0]?.id ?? viewerMemberId),
+    defaultSpaceId: defaultTarget.space.id,
+    spaces,
     source,
     fileName: file.name,
     rowCount: transactions.length,
-    newCount: dedup.newCount,
-    duplicateCount: dedup.duplicateCount,
     rows,
     mappingLabel: `data: ${label(mapping.dateCol)} · descrição: ${label(mapping.descriptionCol)} · ${amountLabel}`,
-    lastExpenseDate,
-    suggestedFromDate,
-    coveredCount,
   };
 }
 
-/** Dia seguinte a uma data ISO (aaaa-mm-dd). */
-function nextDay(iso: string): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Cria as despesas escolhidas, dentro de um lote reversível. */
+/**
+ * Cria as despesas escolhidas. As linhas podem ir para ambientes diferentes:
+ * agrupa-se por ambiente e cria-se um lote reversível em cada um.
+ */
 export async function commitImport(params: {
   payload: ImportCommitPayload;
-  spaceId: string;
-  memberIds: string[];
-  viewerMemberId: string;
+  /** Ambientes onde o utilizador pode escrever, já validados. */
+  targets: TargetSpace[];
+  defaultSpaceId: string;
   userId: string;
-}): Promise<{ imported: number; batchId: string | null }> {
-  const { payload, spaceId, memberIds, viewerMemberId, userId } = params;
+}): Promise<{ imported: number; perSpace: { spaceName: string; count: number }[] }> {
+  const { payload, targets, defaultSpaceId, userId } = params;
 
-  if (!memberIds.includes(payload.payerId)) throw new ImportError("Pagador inválido.");
   const rows = payload.rows.filter((r) => r.amountCents !== 0);
   if (rows.length === 0) throw new ImportError("Não escolheste nenhuma despesa para importar.");
 
-  const split = buildImportSplit(payload, memberIds);
-  const repo = getRepository();
+  const byId = new Map(targets.map((t) => [t.space.id, t]));
+  const defaultTarget = byId.get(defaultSpaceId) ?? targets[0];
+  if (!defaultTarget) throw new ImportError("Ambiente inválido.");
 
-  // O lote serve para poder anular a importação. Se a tabela ainda não existir
-  // (migração por aplicar), importamos na mesma: a dedução por UID continua a
-  // proteger contra duplicados; só se perde o "anular lote".
-  let batchId: string | null = null;
-  try {
-    const batch = await repo.createImportBatch({
-      spaceId,
-      source: payload.source,
-      fileName: payload.fileName,
-      rowCount: payload.rowCount,
-      importedCount: rows.length,
-      duplicateCount: payload.duplicateCount,
-      createdBy: userId,
-    });
-    batchId = batch.id;
-  } catch {
-    batchId = null;
+  const defaultMemberIds = defaultTarget.fullMembers.map((m) => m.id);
+  if (!defaultMemberIds.includes(payload.payerId)) throw new ImportError("Pagador inválido.");
+  const defaultSplit = buildImportSplit(payload, defaultMemberIds);
+
+  // O pagador é uma pessoa, não um id: noutro ambiente é o participante ligado
+  // ao mesmo utilizador.
+  const payerUserId = defaultTarget.fullMembers.find((m) => m.id === payload.payerId)?.linkedUserId;
+
+  const repo = getRepository();
+  const grouped = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const id = byId.has(row.spaceId) ? row.spaceId : defaultTarget.space.id;
+    const list = grouped.get(id) ?? [];
+    list.push(row);
+    grouped.set(id, list);
   }
 
   let imported = 0;
-  for (const row of rows) {
-    const kind = row.kind === "personal" ? "personal" : "shared";
-    await repo.createExpense({
-      spaceId,
-      description: row.description,
-      amountCents: row.amountCents,
-      currency: "EUR",
-      transactionDate: row.transactionDate,
-      categoryId: row.categoryId || null,
-      payerId: payload.payerId,
-      kind,
-      split: kind === "personal" ? { type: "EQUAL" } : split,
-      origin: "import",
-      status: "confirmed",
-      ownerId: kind === "personal" ? viewerMemberId : payload.payerId,
-      visibleToPartner: false,
-      createdBy: userId,
-      // UID do extrato: garante que reimportar o ficheiro não duplica.
-      uid: row.uid,
-      importBatchId: batchId,
-    });
-    imported += 1;
+  const perSpace: { spaceName: string; count: number }[] = [];
+
+  for (const [spaceId, spaceRows] of grouped) {
+    const target = byId.get(spaceId)!;
+    const isDefault = spaceId === defaultTarget.space.id;
+
+    const payerId = isDefault
+      ? payload.payerId
+      : (target.fullMembers.find((m) => m.linkedUserId && m.linkedUserId === payerUserId)?.id ??
+        target.viewerMemberId);
+
+    // A divisão em percentagem é definida para participantes concretos, por isso
+    // não se transfere entre ambientes: fora do ambiente por omissão, é igual.
+    const split: Split = isDefault ? defaultSplit : { type: "EQUAL" };
+
+    // O lote permite anular a importação. Se a tabela ainda não existir
+    // (migração por aplicar), importamos na mesma: o dedup por UID continua a
+    // proteger contra duplicados; só se perde o "anular lote".
+    let batchId: string | null = null;
+    try {
+      const batch = await repo.createImportBatch({
+        spaceId,
+        source: payload.source,
+        fileName: payload.fileName,
+        rowCount: payload.rowCount,
+        importedCount: spaceRows.length,
+        duplicateCount: payload.duplicateCount,
+        createdBy: userId,
+      });
+      batchId = batch.id;
+    } catch {
+      batchId = null;
+    }
+
+    for (const row of spaceRows) {
+      const kind = row.kind === "personal" ? "personal" : "shared";
+      await repo.createExpense({
+        spaceId,
+        description: row.description,
+        amountCents: row.amountCents,
+        currency: "EUR",
+        transactionDate: row.transactionDate,
+        categoryId: row.categoryId || null,
+        payerId,
+        kind,
+        split: kind === "personal" ? { type: "EQUAL" } : split,
+        origin: "import",
+        status: "confirmed",
+        ownerId: kind === "personal" ? target.viewerMemberId : payerId,
+        visibleToPartner: false,
+        createdBy: userId,
+        // UID do extrato: garante que reimportar o ficheiro não duplica.
+        uid: row.uid,
+        importBatchId: batchId,
+      });
+      imported += 1;
+    }
+
+    perSpace.push({ spaceName: target.space.name, count: spaceRows.length });
   }
 
-  return { imported, batchId };
+  return { imported, perSpace };
 }
 
 function buildImportSplit(payload: ImportCommitPayload, memberIds: string[]): Split {

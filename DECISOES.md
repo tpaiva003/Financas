@@ -293,3 +293,25 @@ incluindo a coluna `expenses.import_batch_id`, que passou de uuid para text.
 
 ### Futuro (pedido do utilizador)
 - Visão **agregadora** de vários ambientes no ambiente pessoal.
+
+### Ambiente por linha na importação
+Substitui a decisão anterior (um ambiente por importação), a pedido do
+utilizador: um extrato pessoal contém despesas de Casa E pessoais, e obrigar a
+importar o mesmo ficheiro várias vezes era trabalho a mais.
+
+- Cada linha tem o seu **ambiente de destino**; o do passo 1 é só o valor por
+  omissão. Há também uma ação em massa ("Mover selecionadas").
+- A pré-visualização traz o estado de **todos** os ambientes do utilizador
+  (`ImportSpaceInfo`): categorias, participantes, data da última despesa e os
+  UIDs já existentes. Enviamos só a **interseção** dos UIDs com o ficheiro, por
+  isso o payload não cresce com o histórico.
+- Duplicados e "período já registado" passam a ser avaliados **face ao ambiente
+  atual de cada linha**, e recalculados quando se muda o ambiente. Mudar de
+  ambiente **repõe a categoria**, porque as categorias são por ambiente.
+- Na gravação, as linhas são **agrupadas por ambiente** e cada um recebe o seu
+  lote reversível.
+- **Pagador:** é uma pessoa, não um id. Fora do ambiente por omissão,
+  reencontra-se o participante ligado ao mesmo `linkedUserId`.
+- **Divisão:** as percentagens são definidas para participantes concretos e não
+  se transferem entre ambientes; linhas enviadas para outro ambiente ficam em
+  partes iguais. Documentado no tipo do payload.
