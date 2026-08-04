@@ -338,3 +338,20 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
   transferência de saldo entre ambientes. Antes, a única forma de ligar uma
   conta era "Dar acesso", que tornava a pessoa um *submitter* — não servia para
   participantes plenos. Impede associar a mesma conta a dois participantes.
+
+## Fase 7 — Relatórios, ruído e ordem dos ambientes
+
+- **Relatórios com período** (3/6/12 meses ou tudo, por omissão 12): sem isto os
+  totais misturavam anos e não diziam nada. Passam a excluir despesas pendentes
+  de aprovação, que ainda não são despesas para efeitos de análise.
+- **"A tua parte"**: quota do utilizador nas partilhadas (via `computeShares`)
+  mais as pessoais dele. É o primeiro passo da visão pessoal pedida.
+- **Partilhadas vs pessoais** e **"Onde gastas mais"** (top comerciantes),
+  reaproveitando o `similarityKey` do import para agrupar o mesmo comerciante.
+- **Despesas liquidadas fora de vista:** já acertadas, só faziam ruído. Passam a
+  estar escondidas por omissão, com um link discreto "N liquidada(s) · mostrar"
+  (`?liquidadas=1`) em vez de um bloco sempre presente.
+- **Ordem dos ambientes** (migração 0010, `spaces.position`): setas ↑/↓ em
+  Ambiente. Escolhidas setas em vez de arrastar por funcionarem bem no telemóvel
+  e por teclado. A leitura tolera a coluna não existir (fallback para a ordem de
+  criação), e a ação falha em silêncio se a migração não estiver aplicada.

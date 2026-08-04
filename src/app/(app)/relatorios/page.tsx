@@ -2,17 +2,35 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { getSpaceReport, type Slice } from "@/lib/services/reports-service";
+import {
+  getSpaceReport,
+  REPORT_PERIODS,
+  type ReportPeriodId,
+  type Slice,
+} from "@/lib/services/reports-service";
 import { formatCents, type CategoryDelta, type MonthComparison } from "@/lib/domain";
 
 export const metadata = { title: "Relatórios · Rachar" };
 export const dynamic = "force-dynamic";
 
-export default async function RelatoriosPage() {
+export default async function RelatoriosPage({
+  searchParams,
+}: {
+  searchParams: { periodo?: string };
+}) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
   const categories = await getRepository().listCategories(ctx.space.id);
-  const report = await getSpaceReport(ctx.space.id, ctx.viewerMemberId, ctx.members, categories);
+
+  const periodo = (REPORT_PERIODS.find((p) => p.id === searchParams.periodo)?.id ??
+    "12m") as ReportPeriodId;
+  const report = await getSpaceReport(
+    ctx.space.id,
+    ctx.viewerMemberId,
+    ctx.members,
+    categories,
+    periodo,
+  );
 
   return (
     <div className="space-y-9">
@@ -24,17 +42,58 @@ export default async function RelatoriosPage() {
         <a href="/api/export" className="btn-secondary">⬇ CSV</a>
       </div>
 
-      <div className="card p-6">
-        <p className="eyebrow">Total registado</p>
-        <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum sm:text-5xl">
-          {formatCents(report.totalCents)}
-        </p>
-        <p className="mt-1 text-sm text-fg-muted">{report.count} despesa(s) confirmada(s)</p>
+      {/* Período: sem isto os totais misturavam anos e não diziam nada. */}
+      <div className="flex flex-wrap items-center gap-1 rounded-full border border-hair p-1 text-sm">
+        {REPORT_PERIODS.map((p) => (
+          <Link
+            key={p.id}
+            href={p.id === "12m" ? "/relatorios" : `/relatorios?periodo=${p.id}`}
+            className={`rounded-full px-3.5 py-1.5 transition-colors ${
+              p.id === periodo ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
+            }`}
+          >
+            {p.label}
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="card p-6">
+          <p className="eyebrow">Total do ambiente · {report.periodLabel}</p>
+          <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum">
+            {formatCents(report.totalCents)}
+          </p>
+          <p className="mt-1 text-sm text-fg-muted">{report.count} despesa(s)</p>
+        </div>
+        <div className="card p-6">
+          <p className="eyebrow">A tua parte</p>
+          <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum text-credit">
+            {formatCents(report.myShareCents)}
+          </p>
+          <p className="mt-1 text-sm text-fg-muted">
+            a tua quota nas partilhadas + as tuas pessoais
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="card p-5">
+          <p className="eyebrow">Partilhadas</p>
+          <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
+            {formatCents(report.sharedCents)}
+          </p>
+        </div>
+        <div className="card p-5">
+          <p className="eyebrow">Pessoais (tuas)</p>
+          <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
+            {formatCents(report.personalCents)}
+          </p>
+        </div>
       </div>
 
       {report.count === 0 ? (
         <p className="card p-10 text-center text-sm text-fg-muted">
-          Ainda não há despesas para relatar.
+          Não há despesas confirmadas neste período.
         </p>
       ) : (
         <>
@@ -50,6 +109,11 @@ export default async function RelatoriosPage() {
           <Section title="Por mês">
             <BarList slices={report.byMonth} />
           </Section>
+          {report.byMerchant.length > 0 ? (
+            <Section title="Onde gastas mais">
+              <BarList slices={report.byMerchant} />
+            </Section>
+          ) : null}
         </>
       )}
 

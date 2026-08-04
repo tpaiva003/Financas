@@ -5,7 +5,8 @@
 
 import { getRepository } from "@/lib/data";
 import type { Member, Category } from "@/lib/data";
-import { buildMonthComparison, type MonthComparison } from "@/lib/domain";
+import { buildMonthComparison, computeShares, type MonthComparison } from "@/lib/domain";
+import { similarityKey } from "@/lib/import/similar";
 
 export interface Slice {
   key: string;
@@ -16,11 +17,38 @@ export interface Slice {
 
 export interface SpaceReport {
   totalCents: number;
+  /** Quanto do total é partilhado e quanto é pessoal (do próprio). */
+  sharedCents: number;
+  personalCents: number;
+  /** A parte do utilizador: quota nas partilhadas + as pessoais dele. */
+  myShareCents: number;
   byCategory: Slice[];
   byMonth: Slice[];
   byPayer: Slice[];
+  /** Onde se gasta mais, agrupado por comerciante. */
+  byMerchant: Slice[];
   count: number;
   comparison: MonthComparison;
+  periodLabel: string;
+}
+
+/** Períodos disponíveis no seletor dos relatórios. */
+export const REPORT_PERIODS = [
+  { id: "3m", label: "3 meses", months: 3 },
+  { id: "6m", label: "6 meses", months: 6 },
+  { id: "12m", label: "12 meses", months: 12 },
+  { id: "tudo", label: "Tudo", months: 0 },
+] as const;
+
+export type ReportPeriodId = (typeof REPORT_PERIODS)[number]["id"];
+
+/** Primeira data incluída no período (ISO), ou null se for "tudo". */
+function periodStart(months: number): string | null {
+  if (months <= 0) return null;
+  const d = new Date();
+  d.setUTCMonth(d.getUTCMonth() - (months - 1));
+  d.setUTCDate(1);
+  return d.toISOString().slice(0, 10);
 }
 
 const MONTHS_PT = [
@@ -33,11 +61,27 @@ export async function getSpaceReport(
   viewerMemberId: string,
   members: Member[],
   categories: Category[],
+  periodId: ReportPeriodId = "12m",
 ): Promise<SpaceReport> {
   const repo = getRepository();
+  const period = REPORT_PERIODS.find((p) => p.id === periodId) ?? REPORT_PERIODS[2];
+  const from = periodStart(period.months);
+
   const expenses = (await repo.listExpenses({ spaceId, viewerId: viewerMemberId })).filter(
-    (e) => e.status === "confirmed",
+    (e) =>
+      e.status === "confirmed" &&
+      // As pendentes de aprovação ainda não são despesas para efeitos de análise.
+      e.approvalStatus !== "pending" &&
+      e.approvalStatus !== "rejected" &&
+      (from === null || e.transactionDate >= from),
   );
+
+  // A "minha parte": quota nas partilhadas mais as pessoais do próprio.
+  const participantIds = members.map((m) => m.id);
+  let sharedCents = 0;
+  let personalCents = 0;
+  let myShareCents = 0;
+  const merchantTotals = new Map<string, { label: string; cents: number }>();
 
   const catMap = new Map(categories.map((c) => [c.id, c]));
   const memberMap = new Map(members.map((m) => [m.id, m]));
@@ -49,6 +93,24 @@ export async function getSpaceReport(
 
   for (const e of expenses) {
     total += e.amountCents;
+
+    if (e.kind === "shared") {
+      sharedCents += e.amountCents;
+      try {
+        myShareCents += computeShares(e.amountCents, e.split, participantIds)[viewerMemberId] ?? 0;
+      } catch {
+        // Divisão inconsistente com os participantes atuais: não conta.
+      }
+    } else if (e.ownerId === viewerMemberId) {
+      personalCents += e.amountCents;
+      myShareCents += e.amountCents;
+    }
+
+    // Agrupa por comerciante, reaproveitando a normalização do import.
+    const mKey = similarityKey(e.description) || e.description.toLowerCase();
+    const cur = merchantTotals.get(mKey);
+    if (cur) cur.cents += e.amountCents;
+    else merchantTotals.set(mKey, { label: e.description, cents: e.amountCents });
     const cat = e.categoryId ?? "outros";
     catTotals.set(cat, (catTotals.get(cat) ?? 0) + e.amountCents);
     const ym = e.transactionDate.slice(0, 7); // YYYY-MM
@@ -96,5 +158,22 @@ export async function getSpaceReport(
     categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
   );
 
-  return { totalCents: total, byCategory, byMonth, byPayer, count: expenses.length, comparison };
+  const byMerchant: Slice[] = [...merchantTotals.entries()]
+    .map(([key, v]) => ({ key, label: v.label, color: "#7c3aed", amountCents: v.cents }))
+    .sort((a, b) => b.amountCents - a.amountCents)
+    .slice(0, 8);
+
+  return {
+    totalCents: total,
+    sharedCents,
+    personalCents,
+    myShareCents,
+    byCategory,
+    byMonth,
+    byPayer,
+    byMerchant,
+    count: expenses.length,
+    comparison,
+    periodLabel: period.label,
+  };
 }

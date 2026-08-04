@@ -1020,6 +1020,28 @@ export async function renameSpaceAction(
   return { ok: true };
 }
 
+/** Sobe ou desce um ambiente na lista, guardando a nova ordem. */
+export async function moveSpaceAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const spaceId = String(formData.get("spaceId") ?? "");
+  const dir = String(formData.get("dir") ?? "");
+  const ids = ctx.spaces.map((s) => s.id);
+  const from = ids.indexOf(spaceId);
+  if (from < 0) return;
+
+  const to = dir === "up" ? from - 1 : from + 1;
+  if (to < 0 || to >= ids.length) return;
+  [ids[from], ids[to]] = [ids[to]!, ids[from]!];
+
+  try {
+    await getRepository().reorderSpaces(ids);
+  } catch {
+    // A coluna de ordem pode não existir (migração 0010 por aplicar).
+  }
+  revalidatePath("/", "layout");
+  revalidatePath("/ambiente");
+}
+
 /**
  * Associa um participante a uma conta existente, sem lhe mudar o papel.
  * É isto que permite reconhecer a MESMA pessoa em ambientes diferentes (e, por

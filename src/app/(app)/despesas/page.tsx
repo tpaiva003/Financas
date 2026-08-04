@@ -16,6 +16,7 @@ interface SearchParams {
   from?: string;
   to?: string;
   status?: string;
+  liquidadas?: string;
 }
 
 function byDateDesc(a: Expense, b: Expense): number {
@@ -82,6 +83,16 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
   const settledExpenses = expenses.filter((e) => e.settledAt).sort(byDateDesc);
   const groups = groupByDate(openExpenses);
 
+  // As liquidadas ficam escondidas por omissão: já foram acertadas, só fazem
+  // ruído. Ficam a um clique, sem sair da página.
+  const showSettled = searchParams.liquidadas === "1";
+  const qs = new URLSearchParams(
+    Object.entries(searchParams).filter(([k, v]) => v && k !== "liquidadas") as [string, string][],
+  );
+  const hideSettledHref = `/despesas${qs.toString() ? `?${qs}` : ""}`;
+  qs.set("liquidadas", "1");
+  const showSettledHref = `/despesas?${qs}`;
+
   return (
     <div className="space-y-7">
       <div className="flex items-end justify-between">
@@ -136,26 +147,46 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
             </div>
           ) : (
             <div className="card p-8 text-center text-sm text-fg-muted">
-              Sem despesas abertas. As liquidadas estão recolhidas abaixo.
+              Tudo acertado. Não há despesas em aberto.
             </div>
           )}
 
           {settledExpenses.length > 0 ? (
-            <details className="mt-4 rounded-2xl border border-hair bg-panel/40">
-              <summary className="cursor-pointer list-none px-4 py-3 font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint transition-colors hover:text-fg-muted">
-                ▸ {settledExpenses.length} despesa(s) liquidada(s) · período fechado
-              </summary>
-              <ul className="px-1 pb-1 opacity-60">
-                {settledExpenses.map((e) => (
-                  <ExpenseRow
-                    key={e.id}
-                    expense={e}
-                    categoryName={categoryName(e.categoryId)}
-                    payerName={nameOf(e.payerId)}
-                  />
-                ))}
-              </ul>
-            </details>
+            showSettled ? (
+              <section className="mt-6">
+                <div className="mb-1.5 flex items-center justify-between px-1">
+                  <h2 className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint">
+                    {settledExpenses.length} liquidada(s) · período fechado
+                  </h2>
+                  <Link
+                    href={hideSettledHref}
+                    className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint hover:text-fg"
+                  >
+                    ocultar
+                  </Link>
+                </div>
+                <ul className="opacity-50">
+                  {settledExpenses.map((e) => (
+                    <ExpenseRow
+                      key={e.id}
+                      expense={e}
+                      categoryName={categoryName(e.categoryId)}
+                      payerName={nameOf(e.payerId)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ) : (
+              /* Já acertadas: fora de vista por omissão, a um clique de distância. */
+              <p className="pt-2 text-center">
+                <Link
+                  href={showSettledHref}
+                  className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint transition-colors hover:text-fg-muted"
+                >
+                  {settledExpenses.length} liquidada(s) · mostrar
+                </Link>
+              </p>
+            )
           ) : null}
         </>
       )}

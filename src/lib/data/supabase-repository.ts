@@ -123,11 +123,25 @@ export class SupabaseRepository implements Repository {
     if (e1) throw new Error(e1.message);
     const ids = [...new Set((mem ?? []).map((m: any) => m.space_id))];
     if (ids.length === 0) return [];
-    const { data, error } = await db.from("spaces").select("*").in("id", ids).order("created_at");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    // A coluna `position` pode não existir se a migração 0010 ainda não correu.
+    let rows: any[] | null = null;
+    const ordered = await db
+      .from("spaces")
+      .select("*")
+      .in("id", ids)
+      .order("position")
+      .order("created_at");
+    if (ordered.error) {
+      const fallback = await db.from("spaces").select("*").in("id", ids).order("created_at");
+      if (fallback.error) throw new Error(fallback.error.message);
+      rows = fallback.data;
+    } else {
+      rows = ordered.data;
+    }
+    return (rows ?? []).map((r: any) => ({
       id: r.id,
       name: r.name,
+      position: r.position ?? 0,
       createdBy: r.created_by,
       createdAt: r.created_at,
     }));
@@ -680,6 +694,14 @@ export class SupabaseRepository implements Repository {
       .update({ approval_status: status === "approved" ? null : "rejected" })
       .eq("id", id);
     if (error) throw new Error(error.message);
+  }
+
+  async reorderSpaces(spaceIds: string[]): Promise<void> {
+    const db = getSupabaseAdmin();
+    for (let i = 0; i < spaceIds.length; i++) {
+      const { error } = await db.from("spaces").update({ position: i }).eq("id", spaceIds[i]!);
+      if (error) throw new Error(error.message);
+    }
   }
 
   async renameSpace(spaceId: string, name: string): Promise<void> {

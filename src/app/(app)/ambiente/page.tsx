@@ -7,6 +7,7 @@ import { AddMemberForm } from "@/components/AddMemberForm";
 import { CategoriesManager } from "@/components/CategoriesManager";
 import { MembersManager } from "@/components/MembersManager";
 import { RenameSpaceForm } from "@/components/RenameSpaceForm";
+import { SpaceOrderManager } from "@/components/SpaceOrderManager";
 
 export const metadata = { title: "Ambiente · Rachar" };
 export const dynamic = "force-dynamic";
@@ -31,6 +32,19 @@ export default async function AmbientePage() {
       <section className="card p-6">
         <RenameSpaceForm currentName={ctx.space.name} />
       </section>
+
+      {ctx.spaces.length > 1 ? (
+        <section className="card p-6">
+          <h2 className="label">Ordem dos ambientes</h2>
+          <p className="mb-3 text-sm text-fg-muted">
+            Define a ordem em que aparecem no seletor lá em cima.
+          </p>
+          <SpaceOrderManager
+            spaces={ctx.spaces.map((s) => ({ id: s.id, name: s.name }))}
+            currentId={ctx.space.id}
+          />
+        </section>
+      ) : null}
 
       <section>
         <h2 className="eyebrow mb-2">Participantes ({ctx.members.length})</h2>
