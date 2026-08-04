@@ -9,6 +9,7 @@ import {
   type ImportPreviewState,
 } from "@/app/(app)/actions";
 import { formatCents } from "@/lib/domain";
+import { findSimilar } from "@/lib/import/similar";
 import {
   IMPORT_SOURCES,
   type ImportCommitPayload,
@@ -58,8 +59,9 @@ export function ImportWizard({
         <div>
           <h2 className="label">1. Ficheiro do banco</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Carrega o extrato em Excel, CSV ou PDF (cartão Universo). As colunas
-            são detetadas automaticamente e nada é gravado antes de confirmares.
+            Carrega um ou vários extratos em Excel, CSV ou PDF (cartão Universo).
+            As colunas são detetadas automaticamente e nada é gravado antes de
+            confirmares.
           </p>
         </div>
 
@@ -99,6 +101,7 @@ export function ImportWizard({
             name="file"
             type="file"
             required
+            multiple
             accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf"
             className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-panel2 file:px-3 file:py-2 file:text-sm file:text-fg hover:file:bg-panel2/70"
           />
@@ -155,10 +158,12 @@ function PreviewStep({
   // registados na app e nada que pareça uma despesa manual já existente.
   const isEligible = (r: ImportPreviewRow, spaceId: string, from: string) => {
     const { isDuplicate, inCoveredPeriod } = rowFacts(r, spaceId);
-    if (isDuplicate || r.reconcileHint) return false;
+    if (isDuplicate || r.repeatedInFile || r.reconcileHint) return false;
     if (from ? r.transactionDate < from : inCoveredPeriod) return false;
     return true;
   };
+
+  const descriptions = useMemo(() => preview.rows.map((r) => r.description), [preview.rows]);
 
   const suggestedFrom = defaultSpace.lastExpenseDate
     ? nextDay(defaultSpace.lastExpenseDate)
@@ -201,6 +206,36 @@ function PreviewStep({
 
   const setRow = (i: number, patch: Partial<RowState>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  /**
+   * Ao classificar uma linha, propõe aplicar a mesma categoria às despesas do
+   * mesmo comerciante que ainda não a têm. Fica uma proposta, nunca automático.
+   */
+  const [similarPrompt, setSimilarPrompt] = useState<{
+    index: number;
+    categoryId: string;
+    targets: number[];
+  } | null>(null);
+
+  const setRowCategory = (i: number, categoryId: string) => {
+    setRow(i, { categoryId });
+    if (!categoryId) {
+      setSimilarPrompt(null);
+      return;
+    }
+    const spaceId = rows[i]!.spaceId;
+    const targets = findSimilar(descriptions, i).filter(
+      (idx) => idx !== i && rows[idx]!.spaceId === spaceId && rows[idx]!.categoryId !== categoryId,
+    );
+    setSimilarPrompt(targets.length > 0 ? { index: i, categoryId, targets } : null);
+  };
+
+  const applySimilar = () => {
+    if (!similarPrompt) return;
+    const { categoryId, targets } = similarPrompt;
+    setRows((prev) => prev.map((r, idx) => (targets.includes(idx) ? { ...r, categoryId } : r)));
+    setSimilarPrompt(null);
+  };
 
   /**
    * Mudar de ambiente muda o que é duplicado e o que já está coberto, e as
@@ -563,7 +598,20 @@ function PreviewStep({
               isDuplicate={facts.isDuplicate}
               inCoveredPeriod={facts.inCoveredPeriod}
               onChange={(patch) => setRow(i, patch)}
+              onCategoryChange={(categoryId) => setRowCategory(i, categoryId)}
               onSpaceChange={(spaceId) => setRowSpace(i, spaceId)}
+              similarPrompt={
+                similarPrompt?.index === i
+                  ? {
+                      count: similarPrompt.targets.length,
+                      categoryName:
+                        facts.space.categories.find((c) => c.id === similarPrompt.categoryId)?.name ??
+                        "esta categoria",
+                      onApply: applySimilar,
+                      onDismiss: () => setSimilarPrompt(null),
+                    }
+                  : null
+              }
             />
           );
         })}
@@ -595,7 +643,9 @@ function PreviewRowItem({
   isDuplicate,
   inCoveredPeriod,
   onChange,
+  onCategoryChange,
   onSpaceChange,
+  similarPrompt,
 }: {
   row: ImportPreviewRow;
   state: RowState;
@@ -604,7 +654,14 @@ function PreviewRowItem({
   isDuplicate: boolean;
   inCoveredPeriod: boolean;
   onChange: (patch: Partial<RowState>) => void;
+  onCategoryChange: (categoryId: string) => void;
   onSpaceChange: (spaceId: string) => void;
+  similarPrompt: {
+    count: number;
+    categoryName: string;
+    onApply: () => void;
+    onDismiss: () => void;
+  } | null;
 }) {
   const isRefund = row.amountCents < 0;
   return (
@@ -621,6 +678,9 @@ function PreviewRowItem({
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium text-fg">{row.description}</p>
             {isDuplicate ? <span className="chip border-hair text-fg-faint">já existe</span> : null}
+            {row.repeatedInFile && !isDuplicate ? (
+              <span className="chip border-hair text-fg-faint">repetida nos ficheiros</span>
+            ) : null}
             {inCoveredPeriod && !isDuplicate ? (
               <span className="chip border-hair text-fg-faint">período já registado</span>
             ) : null}
@@ -653,7 +713,7 @@ function PreviewRowItem({
             ) : null}
             <select
               value={state.categoryId}
-              onChange={(e) => onChange({ categoryId: e.target.value })}
+              onChange={(e) => onCategoryChange(e.target.value)}
               className="select h-9 py-1 text-xs"
               aria-label={`Categoria de ${row.description}`}
             >

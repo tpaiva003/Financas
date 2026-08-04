@@ -252,6 +252,10 @@ export interface Repository {
   listSpacesForUser(userId: string): Promise<Space[]>;
   getSpace(spaceId: string): Promise<Space | null>;
   createSpace(input: CreateSpaceInput): Promise<Space>;
+  /** Muda o nome de um ambiente. */
+  renameSpace(spaceId: string, name: string): Promise<void>;
+  /** Contas existentes (utilizadores base + adicionais), para associar a participantes. */
+  listAppUsers(): Promise<AppUser[]>;
   listMembers(spaceId: string): Promise<Member[]>;
   addMember(input: AddMemberInput): Promise<Member>;
   updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void>;

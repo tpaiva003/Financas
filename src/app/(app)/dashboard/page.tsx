@@ -27,7 +27,12 @@ export default async function DashboardPage() {
 
   const pending = recent.filter((e) => e.status === "pending");
   const pendingApprovals = recent.filter((e) => e.approvalStatus === "pending");
-  const confirmed = recent.filter((e) => e.status === "confirmed").slice(0, 6);
+  // Depois de fechar o período, as liquidadas saem daqui: o objetivo do fecho é
+  // precisamente reduzir o ruído. Continuam visíveis em Despesas, recolhidas.
+  const confirmed = recent
+    .filter((e) => e.status === "confirmed" && !e.settledAt)
+    .slice(0, 6);
+  const settledCount = recent.filter((e) => e.settledAt).length;
   const categoryName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 
@@ -112,7 +117,11 @@ export default async function DashboardPage() {
           </Link>
         </div>
         {confirmed.length === 0 ? (
-          <EmptyState />
+          settledCount > 0 ? (
+            <SettledState count={settledCount} />
+          ) : (
+            <EmptyState />
+          )
         ) : (
           <ul>
             {confirmed.map((e) => (
@@ -182,6 +191,20 @@ function BalanceHero({
         <span className="ml-1 text-xs text-fg-faint">· ver detalhe →</span>
       </p>
     </Link>
+  );
+}
+
+/** Período fechado: as despesas estão recolhidas, não desaparecidas. */
+function SettledState({ count }: { count: number }) {
+  return (
+    <div className="card flex flex-col items-center gap-2 p-8 text-center">
+      <p className="text-sm text-fg-muted">
+        Período fechado. {count} despesa(s) liquidada(s) estão recolhidas.
+      </p>
+      <Link href="/despesas" className="text-xs text-fg-muted underline-offset-4 hover:text-fg hover:underline">
+        Ver em Despesas →
+      </Link>
+    </div>
   );
 }
 

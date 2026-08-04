@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
+import { listKnownAccounts } from "@/app/(app)/actions";
 import { AddMemberForm } from "@/components/AddMemberForm";
 import { CategoriesManager } from "@/components/CategoriesManager";
 import { MembersManager } from "@/components/MembersManager";
+import { RenameSpaceForm } from "@/components/RenameSpaceForm";
 
 export const metadata = { title: "Ambiente · Rachar" };
 export const dynamic = "force-dynamic";
@@ -12,7 +14,10 @@ export const dynamic = "force-dynamic";
 export default async function AmbientePage() {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
-  const categories = await getRepository().listCategories(ctx.space.id);
+  const [categories, accounts] = await Promise.all([
+    getRepository().listCategories(ctx.space.id),
+    listKnownAccounts(),
+  ]);
   const custom = categories.filter((c) => c.spaceId);
   const defaults = categories.filter((c) => !c.spaceId);
 
@@ -22,6 +27,10 @@ export default async function AmbientePage() {
         <p className="eyebrow">Ambiente</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">{ctx.space.name}</h1>
       </div>
+
+      <section className="card p-6">
+        <RenameSpaceForm currentName={ctx.space.name} />
+      </section>
 
       <section>
         <h2 className="eyebrow mb-2">Participantes ({ctx.members.length})</h2>
@@ -33,6 +42,7 @@ export default async function AmbientePage() {
             linkedUserId: m.linkedUserId,
             role: m.role,
           }))}
+          accounts={accounts}
         />
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
           Participantes com despesas ou acertos não podem ser eliminados.

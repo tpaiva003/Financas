@@ -13,8 +13,9 @@
 
 import { getRepository } from "@/lib/data";
 import { classify, stableUid, suggestReconciliation } from "@/lib/domain";
-import type { Split } from "@/lib/domain";
+import type { Split, NormalizedTransaction } from "@/lib/domain";
 import { detectMapping, rowsToTransactions } from "@/lib/import/columns";
+import type { ColumnMapping, Grid } from "@/lib/import/columns";
 import { readUploadToGrid, MAX_IMPORT_BYTES } from "@/lib/import/read-file";
 import type {
   ImportCommitPayload,
@@ -28,7 +29,8 @@ export class ImportError extends Error {}
 
 /** Lê o ficheiro e devolve a pré-visualização já deduplicada e classificada. */
 export async function buildImportPreview(params: {
-  file: File;
+  /** Um ou vários extratos, lidos de uma só vez. */
+  files: File[];
   source: string;
   account?: string | null;
   /** Ambientes a que o utilizador pertence e onde pode escrever. */
@@ -36,32 +38,48 @@ export async function buildImportPreview(params: {
   /** Ambiente sugerido por omissão para as linhas. */
   defaultSpaceId: string;
 }): Promise<ImportPreview> {
-  const { file, source, account, targets, defaultSpaceId } = params;
+  const { files, source, account, targets, defaultSpaceId } = params;
   if (targets.length === 0) throw new ImportError("Não tens ambientes onde importar.");
 
-  if (!file || file.size === 0) throw new ImportError("Escolhe um ficheiro.");
-  if (file.size > MAX_IMPORT_BYTES) {
-    throw new ImportError("Ficheiro demasiado grande (máximo 8 MB).");
+  const usable = files.filter((f) => f && f.size > 0);
+  if (usable.length === 0) throw new ImportError("Escolhe pelo menos um ficheiro.");
+  if (usable.some((f) => f.size > MAX_IMPORT_BYTES)) {
+    throw new ImportError("Há um ficheiro demasiado grande (máximo 8 MB por ficheiro).");
   }
 
-  let grid;
-  try {
-    grid = await readUploadToGrid(file);
-  } catch {
-    throw new ImportError("Não consegui ler o ficheiro. Exporta em Excel (.xlsx) ou CSV.");
-  }
-  if (grid.length === 0) throw new ImportError("O ficheiro está vazio.");
+  const transactions: NormalizedTransaction[] = [];
+  const failed: string[] = [];
+  let mappingLabel = "";
 
-  const mapping = detectMapping(grid);
-  if (!mapping) {
-    throw new ImportError(
-      "Não reconheci as colunas do ficheiro. Precisa de ter data, descrição e valor.",
-    );
+  for (const file of usable) {
+    let grid;
+    try {
+      grid = await readUploadToGrid(file);
+    } catch {
+      failed.push(file.name);
+      continue;
+    }
+    const mapping = grid.length > 0 ? detectMapping(grid) : null;
+    if (!mapping) {
+      failed.push(file.name);
+      continue;
+    }
+
+    const txs = rowsToTransactions(grid, mapping, source, account ?? null);
+    if (txs.length === 0) {
+      failed.push(file.name);
+      continue;
+    }
+    transactions.push(...txs);
+    if (!mappingLabel) mappingLabel = describeMapping(grid, mapping);
   }
 
-  const transactions = rowsToTransactions(grid, mapping, source, account ?? null);
   if (transactions.length === 0) {
-    throw new ImportError("Não encontrei transações neste ficheiro.");
+    throw new ImportError(
+      usable.length === 1
+        ? "Não reconheci as colunas do ficheiro. Precisa de ter data, descrição e valor."
+        : "Não consegui ler nenhum dos ficheiros.",
+    );
   }
 
   const repo = getRepository();
@@ -106,8 +124,14 @@ export async function buildImportPreview(params: {
   const byUid = new Map(reconciliations.map((r) => [r.uid, r.candidateExpenseId]));
   const expenseById = new Map(defaultExpenses.map((e) => [e.id, e]));
 
+  // Repetições DENTRO do próprio lote (o mesmo movimento em dois ficheiros que
+  // se sobrepõem). Só a primeira ocorrência conta como nova.
+  const seen = new Set<string>();
+
   const rows: ImportPreviewRow[] = transactions.map((tx) => {
     const uid = stableUid(tx);
+    const repeatedInFile = seen.has(uid);
+    seen.add(uid);
     const hintExpense = expenseById.get(byUid.get(uid) ?? "");
     return {
       uid,
@@ -115,6 +139,7 @@ export async function buildImportPreview(params: {
       transactionDate: tx.transactionDate,
       amountCents: tx.amountCents,
       suggestedCategoryId: classify(tx.description, rules).categoryId ?? null,
+      repeatedInFile,
       reconcileHint: hintExpense
         ? {
             expenseId: hintExpense.id,
@@ -125,22 +150,28 @@ export async function buildImportPreview(params: {
     };
   });
 
+  return {
+    defaultSpaceId: defaultTarget.space.id,
+    spaces,
+    source,
+    fileName: usable.map((f) => f.name).join(", "),
+    fileCount: usable.length,
+    failedFiles: failed,
+    rowCount: transactions.length,
+    rows,
+    mappingLabel,
+  };
+}
+
+/** Descrição legível do mapeamento detetado, para o utilizador confirmar. */
+function describeMapping(grid: Grid, mapping: ColumnMapping): string {
   const header = grid[mapping.headerRow];
   const label = (i: number) => (i >= 0 ? (header?.[i] ?? `coluna ${i + 1}`) : null);
   const amountLabel =
     mapping.amountCol >= 0
       ? `valor: ${label(mapping.amountCol)}${mapping.invertSign ? " (sinal invertido)" : ""}`
       : `débito: ${label(mapping.debitCol)} · crédito: ${label(mapping.creditCol)}`;
-
-  return {
-    defaultSpaceId: defaultTarget.space.id,
-    spaces,
-    source,
-    fileName: file.name,
-    rowCount: transactions.length,
-    rows,
-    mappingLabel: `data: ${label(mapping.dateCol)} · descrição: ${label(mapping.descriptionCol)} · ${amountLabel}`,
-  };
+  return `data: ${label(mapping.dateCol)} · descrição: ${label(mapping.descriptionCol)} · ${amountLabel}`;
 }
 
 /**

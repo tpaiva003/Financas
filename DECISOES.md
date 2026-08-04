@@ -315,3 +315,26 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
 - **Divisão:** as percentagens são definidas para participantes concretos e não
   se transferem entre ambientes; linhas enviadas para outro ambiente ficam em
   partes iguais. Documentado no tipo do payload.
+
+## Fase 6 — Usabilidade do import e gestão de contas
+
+- **Legibilidade dos dropdowns:** as `option` são desenhadas pelo sistema e, mesmo
+  com `color-scheme: dark`, saíam cinzentas e ilegíveis. Passam a ter as cores da
+  app (`globals.css`). Corrige todas as listas da app, não só o import.
+- **Aplicar categoria a semelhantes:** `similarityKey` (puro, 7 testes) reduz a
+  descrição ao comerciante, ignorando o tipo de operação ("Compra", "DD", "Trf"),
+  números e referências. Ao classificar uma linha, a app **propõe** aplicar às
+  semelhantes — nunca o faz sozinha (invariante REQ-CLF-3).
+- **Vários extratos de uma vez:** o import aceita múltiplos ficheiros. Ficheiros
+  não reconhecidos são reportados sem bloquear os restantes, e movimentos
+  repetidos entre ficheiros que se sobrepõem são marcados "repetida nos
+  ficheiros" e ficam desligados.
+- **Saldo respeita o fecho de período:** o Dashboard mostrava as despesas mesmo
+  depois de fechadas, o que anulava o propósito do fecho (reduzir ruído). Agora
+  as liquidadas saem de "Despesas recentes" e é indicado que estão recolhidas.
+- **Renomear ambientes** (`renameSpace`).
+- **Associar conta a um participante** (`linkMemberAccountAction`): é o que
+  identifica a MESMA pessoa em ambientes diferentes e desbloqueia a
+  transferência de saldo entre ambientes. Antes, a única forma de ligar uma
+  conta era "Dar acesso", que tornava a pessoa um *submitter* — não servia para
+  participantes plenos. Impede associar a mesma conta a dois participantes.

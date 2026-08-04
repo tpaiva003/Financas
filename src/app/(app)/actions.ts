@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { isAdmin, userByEmail } from "@/lib/users";
+import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
@@ -638,8 +638,8 @@ export async function previewImportAction(
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { error: "Escolhe um ficheiro." };
+  const files = formData.getAll("file").filter((f): f is File => f instanceof File);
+  if (files.length === 0) return { error: "Escolhe pelo menos um ficheiro." };
   const source = String(formData.get("source") || "outro");
   const account = String(formData.get("account") || "").trim() || null;
 
@@ -653,7 +653,7 @@ export async function previewImportAction(
     : targets[0]!.space.id;
 
   try {
-    const preview = await buildImportPreview({ file, source, account, targets, defaultSpaceId });
+    const preview = await buildImportPreview({ files, source, account, targets, defaultSpaceId });
     return { preview };
   } catch (e) {
     if (e instanceof ImportError) return { error: e.message };
@@ -1001,6 +1001,76 @@ export async function addMemberAction(
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/** Muda o nome do ambiente atual. */
+export async function renameSpaceAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Indica um nome." };
+  if (name.length > 80) return { error: "Nome demasiado longo." };
+
+  await getRepository().renameSpace(ctx.space.id, name);
+  revalidatePath("/", "layout");
+  revalidatePath("/ambiente");
+  return { ok: true };
+}
+
+/**
+ * Associa um participante a uma conta existente, sem lhe mudar o papel.
+ * É isto que permite reconhecer a MESMA pessoa em ambientes diferentes (e, por
+ * isso, transferir saldos entre ambientes).
+ */
+export async function linkMemberAccountAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const memberId = String(formData.get("memberId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
+  const member = ctx.members.find((m) => m.id === memberId);
+  if (!member) return { error: "Participante inválido." };
+
+  if (!userId) {
+    // Desassociar só faz sentido em participantes sem acesso próprio.
+    if (member.role === "submitter") {
+      return { error: "Este participante tem acesso próprio: usa Revogar." };
+    }
+    await getRepository().updateMember(memberId, ctx.space.id, { linkedUserId: null });
+  } else {
+    const known = await listKnownAccounts();
+    const account = known.find((a) => a.id === userId);
+    if (!account) return { error: "Conta desconhecida." };
+    // Duas pessoas diferentes não podem partilhar a mesma conta no ambiente.
+    const taken = ctx.members.find((m) => m.id !== memberId && m.linkedUserId === userId);
+    if (taken) return { error: `Essa conta já está associada a ${taken.name}.` };
+
+    await getRepository().updateMember(memberId, ctx.space.id, {
+      linkedUserId: userId,
+      email: account.email,
+    });
+  }
+
+  revalidatePath("/ambiente");
+  revalidatePath("/acertos");
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Contas conhecidas: os utilizadores base (env) mais os criados na app. */
+export async function listKnownAccounts(): Promise<{ id: string; name: string; email: string }[]> {
+  const base = householdUsers().map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const extra = await getRepository()
+    .listAppUsers()
+    .catch(() => []);
+  const seen = new Set(base.map((b) => b.id));
+  return [...base, ...extra.filter((a) => !seen.has(a.id))];
 }
 
 const memberEditSchema = z.object({

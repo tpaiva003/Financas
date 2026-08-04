@@ -15,6 +15,8 @@ export interface ImportPreviewRow {
   /** Já existe uma despesa com este UID (ou repetida no próprio ficheiro). */
   /** Categoria sugerida pelo motor de classificação (sobreponível). */
   suggestedCategoryId: string | null;
+  /** Já apareceu antes no próprio lote (ficheiros que se sobrepõem). */
+  repeatedInFile: boolean;
   /**
    * Possível correspondência com uma despesa metida à mão (REQ-IMP-5):
    * mesmo valor e data próxima. Serve para avisar antes de duplicar.
@@ -55,7 +57,11 @@ export interface ImportPreview {
   /** Todos os ambientes do utilizador, com o que é preciso para editar linhas. */
   spaces: ImportSpaceInfo[];
   source: string;
+  /** Nomes dos ficheiros lidos, para o lote e para mostrar. */
   fileName: string;
+  fileCount: number;
+  /** Ficheiros que não foram reconhecidos (avisamos sem bloquear os outros). */
+  failedFiles: string[];
   rowCount: number;
   rows: ImportPreviewRow[];
   /** Descrição do mapeamento detetado, para o utilizador confirmar. */
