@@ -7,6 +7,7 @@ import {
   deleteMemberAction,
   grantSubmitterAction,
   revokeSubmitterAction,
+  linkMemberAccountAction,
   type ActionState,
 } from "@/app/(app)/actions";
 
@@ -18,11 +19,28 @@ interface MemberOpt {
   role?: "full" | "submitter";
 }
 
-export function MembersManager({ members }: { members: MemberOpt[] }) {
+export interface AccountOpt {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export function MembersManager({
+  members,
+  accounts = [],
+}: {
+  members: MemberOpt[];
+  accounts?: AccountOpt[];
+}) {
   return (
     <ul className="card divide-y divide-hair2 p-2">
       {members.map((m) => (
-        <MemberRow key={m.id} member={m} canDelete={members.length > 1} />
+        <MemberRow
+          key={m.id}
+          member={m}
+          accounts={accounts}
+          canDelete={members.length > 1}
+        />
       ))}
     </ul>
   );
@@ -30,12 +48,21 @@ export function MembersManager({ members }: { members: MemberOpt[] }) {
 
 const empty: ActionState = {};
 
-function MemberRow({ member, canDelete }: { member: MemberOpt; canDelete: boolean }) {
+function MemberRow({
+  member,
+  accounts,
+  canDelete,
+}: {
+  member: MemberOpt;
+  accounts: AccountOpt[];
+  canDelete: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [granting, setGranting] = useState(false);
   const [editState, editAction] = useFormState(updateMemberAction, empty);
   const [delState, delAction] = useFormState(deleteMemberAction, empty);
   const [grantState, grantAction] = useFormState(grantSubmitterAction, empty);
+  const [linkState, linkAction] = useFormState(linkMemberAccountAction, empty);
 
   useEffect(() => {
     if (editState.ok) setEditing(false);
@@ -106,6 +133,35 @@ function MemberRow({ member, canDelete }: { member: MemberOpt; canDelete: boolea
         </div>
       </div>
 
+      {/*
+        Conta associada: é o que identifica a MESMA pessoa em vários ambientes.
+        Sem isto não é possível transferir saldos entre ambientes.
+      */}
+      {accounts.length > 0 && member.role !== "submitter" ? (
+        <form action={linkAction} className="mt-2 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="memberId" value={member.id} />
+          <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint" htmlFor={`acc-${member.id}`}>
+            Conta
+          </label>
+          <select
+            id={`acc-${member.id}`}
+            name="userId"
+            defaultValue={member.linkedUserId ?? ""}
+            className="select h-9 w-auto py-1 text-xs"
+          >
+            <option value="">Sem conta associada</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+            ))}
+          </select>
+          <LinkButton />
+          {linkState.error ? (
+            <span role="alert" className="text-[11px] text-debt">{linkState.error}</span>
+          ) : null}
+          {linkState.ok ? <span className="text-[11px] text-credit">Associada.</span> : null}
+        </form>
+      ) : null}
+
       {granting && !member.linkedUserId ? (
         <form action={grantAction} className="mt-3 rounded-xl border border-hair bg-panel2/40 p-3">
           <input type="hidden" name="memberId" value={member.id} />
@@ -127,6 +183,15 @@ function MemberRow({ member, canDelete }: { member: MemberOpt; canDelete: boolea
 function SaveButton() {
   const { pending } = useFormStatus();
   return <button type="submit" disabled={pending} className="btn-secondary text-xs">{pending ? "A guardar…" : "Guardar"}</button>;
+}
+
+function LinkButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="btn-ghost px-2.5 text-xs">
+      {pending ? "…" : "Guardar"}
+    </button>
+  );
 }
 
 function GrantButton() {

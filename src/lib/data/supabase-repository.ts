@@ -682,6 +682,19 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async renameSpace(spaceId: string, name: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("spaces").update({ name }).eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listAppUsers(): Promise<AppUser[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.from("app_users").select("id, email, name").order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

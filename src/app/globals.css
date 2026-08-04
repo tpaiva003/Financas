@@ -36,6 +36,21 @@
     background: rgba(243, 242, 238, 0.18);
   }
 
+  /*
+   * As opções de um <select> são desenhadas pelo sistema e, mesmo com
+   * color-scheme: dark, saíam cinzentas e com pouco contraste. Damos-lhes as
+   * cores da app para a lista ficar legível.
+   */
+  option,
+  optgroup {
+    background-color: #14141a;
+    color: #f3f2ee;
+  }
+  option:checked {
+    background-color: #2a2a35;
+    font-weight: 600;
+  }
+
   /* Números tabulares e mono onde fizer sentido. */
   .tnum {
     font-variant-numeric: tabular-nums;

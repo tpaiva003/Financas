@@ -466,6 +466,15 @@ export class MockRepository implements Repository {
     ).length;
   }
 
+  async renameSpace(spaceId: string, name: string): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.name = name;
+  }
+
+  async listAppUsers(): Promise<AppUser[]> {
+    return [...getStore().appUsers];
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     return getStore()
       .expenses.filter((e) => (e.spaceId ?? "casa") === spaceId && !e.deletedAt)
