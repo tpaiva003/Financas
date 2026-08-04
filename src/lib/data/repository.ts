@@ -117,6 +117,8 @@ export interface CreateImportBatchInput {
 export interface Space {
   id: string;
   name: string;
+  /** Ordem escolhida pelo utilizador (menor primeiro). */
+  position?: number;
   createdBy?: string | null;
   createdAt: string;
 }
@@ -254,6 +256,8 @@ export interface Repository {
   createSpace(input: CreateSpaceInput): Promise<Space>;
   /** Muda o nome de um ambiente. */
   renameSpace(spaceId: string, name: string): Promise<void>;
+  /** Guarda a ordem escolhida pelo utilizador (índice na lista dada). */
+  reorderSpaces(spaceIds: string[]): Promise<void>;
   /** Contas existentes (utilizadores base + adicionais), para associar a participantes. */
   listAppUsers(): Promise<AppUser[]>;
   listMembers(spaceId: string): Promise<Member[]>;

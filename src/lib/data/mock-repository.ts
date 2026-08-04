@@ -90,7 +90,9 @@ export class MockRepository implements Repository {
     const spaceIds = new Set(
       store.members.filter((m) => m.linkedUserId === userId).map((m) => m.spaceId),
     );
-    return store.spaces.filter((s) => spaceIds.has(s.id));
+    return store.spaces
+      .filter((s) => spaceIds.has(s.id))
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   }
 
   async getSpace(spaceId: string): Promise<Space | null> {
@@ -464,6 +466,14 @@ export class MockRepository implements Repository {
     return getStore().expenses.filter(
       (e) => (e.spaceId ?? "casa") === spaceId && e.approvalStatus === "pending" && !e.deletedAt,
     ).length;
+  }
+
+  async reorderSpaces(spaceIds: string[]): Promise<void> {
+    const store = getStore();
+    spaceIds.forEach((id, i) => {
+      const s = store.spaces.find((x) => x.id === id);
+      if (s) s.position = i;
+    });
   }
 
   async renameSpace(spaceId: string, name: string): Promise<void> {
