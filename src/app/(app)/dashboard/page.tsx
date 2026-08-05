@@ -36,6 +36,8 @@ export default async function DashboardPage() {
   const settledCount = recent.filter((e) => e.settledAt).length;
   const categoryName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
+  // O ícone vem da categoria: as criadas em cada ambiente têm o seu.
+  const categoryIcon = (id?: string | null) => categories.find((c) => c.id === id)?.icon ?? null;
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
 
@@ -180,6 +182,7 @@ export default async function DashboardPage() {
                 key={e.id}
                 expense={e}
                 categoryName={categoryName(e.categoryId)}
+                        categoryIcon={categoryIcon(e.categoryId)}
                 payerName={nameOf(e.payerId)}
               />
             ))}

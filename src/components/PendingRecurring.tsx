@@ -52,6 +52,7 @@ function PendingRow({ item }: { item: PendingItem }) {
             name="amount"
             inputMode="decimal"
             required
+            key={`est:${item.id}:${item.estimate}`}
             defaultValue={item.estimate}
             placeholder="0,00"
             className="input tnum"

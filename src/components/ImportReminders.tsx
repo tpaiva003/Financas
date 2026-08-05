@@ -93,6 +93,7 @@ export function ImportReminders({ spaces }: { spaces: SpaceReminders[] }) {
                       Periodicidade de {r.label || r.source}
                     </label>
                     <select
+                      key={`freq:${space.spaceId}:${r.source}:${r.frequency}`}
                       id={`freq-${space.spaceId}-${r.source}`}
                       name="frequency"
                       defaultValue={r.frequency}

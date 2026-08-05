@@ -185,6 +185,7 @@ function AssetRow({ asset: a }: { asset: AssetView }) {
               Preço atual de {a.name}
             </label>
             <input
+              key={`price:${a.id}:${a.unitPriceCents ?? ""}`}
               id={`price-${a.id}`}
               name="unitPrice"
               inputMode="decimal"

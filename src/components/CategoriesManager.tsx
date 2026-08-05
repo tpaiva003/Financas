@@ -89,6 +89,7 @@ function CategoryRow({ category }: { category: Category }) {
         <input
           name="icon"
           maxLength={4}
+          key={`icon:${category.id}:${category.icon ?? ""}`}
           defaultValue={category.icon ?? ""}
           placeholder="—"
           className="input w-12 shrink-0 px-2 text-center"
@@ -98,6 +99,7 @@ function CategoryRow({ category }: { category: Category }) {
           name="name"
           required
           maxLength={40}
+          key={`name:${category.id}:${category.name}`}
           defaultValue={category.name}
           className="input min-w-0 flex-1"
           aria-label="Nome"
@@ -105,6 +107,7 @@ function CategoryRow({ category }: { category: Category }) {
         <input
           name="color"
           type="color"
+          key={`color:${category.id}:${category.color}`}
           defaultValue={category.color}
           className="h-10 w-11 shrink-0 cursor-pointer rounded-lg border border-hair bg-panel2 p-1"
           aria-label="Cor"

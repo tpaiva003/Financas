@@ -240,6 +240,7 @@ function BarRow({
             </label>
             <div className="relative">
               <input
+                key={`goal:${row.key}:${row.goalCents ?? ""}`}
                 id={`goal-${row.key}`}
                 name="amount"
                 inputMode="decimal"
