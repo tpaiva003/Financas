@@ -5,18 +5,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Tema escuro editorial. Quase-preto quente + off-white.
-        bg: "#08080a",
-        panel: "#101012",
-        panel2: "#16161a",
-        hair: "rgba(255,255,255,0.09)",
-        hair2: "rgba(255,255,255,0.06)",
-        fg: "#f3f2ee",
-        "fg-muted": "#a3a29c",
-        "fg-faint": "#6d6c67",
-        credit: "#62d196",
-        debt: "#f0746f",
-        accent: "#f3f2ee",
+        // As cores vivem em variáveis CSS (ver globals.css) para haver tema de
+        // noite e de dia. O `<alpha-value>` mantém os modificadores de opacidade
+        // do Tailwind a funcionar (ex.: bg-panel/80, border-fg/30).
+        bg: "rgb(var(--c-bg) / <alpha-value>)",
+        panel: "rgb(var(--c-panel) / <alpha-value>)",
+        panel2: "rgb(var(--c-panel2) / <alpha-value>)",
+        // Linhas de separação: já trazem alfa próprio, não levam modificador.
+        hair: "var(--c-hair)",
+        hair2: "var(--c-hair2)",
+        fg: "rgb(var(--c-fg) / <alpha-value>)",
+        "fg-muted": "rgb(var(--c-fg-muted) / <alpha-value>)",
+        "fg-faint": "rgb(var(--c-fg-faint) / <alpha-value>)",
+        credit: "rgb(var(--c-credit) / <alpha-value>)",
+        debt: "rgb(var(--c-debt) / <alpha-value>)",
+        accent: "rgb(var(--c-fg) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],

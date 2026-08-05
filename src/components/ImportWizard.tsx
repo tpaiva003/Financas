@@ -5,6 +5,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import {
   previewImportAction,
   commitImportAction,
+  reportMissingBankAction,
   type ActionState,
   type ImportPreviewState,
 } from "@/app/(app)/actions";
@@ -15,6 +16,7 @@ import {
   type ImportCommitPayload,
   type ImportPreviewRow,
   type ImportSpaceInfo,
+  type ImportUnknownSample,
 } from "@/lib/import/types";
 
 interface Opt {
@@ -113,6 +115,9 @@ export function ImportWizard({
           </p>
         ) : null}
 
+        {/* Banco desconhecido: o utilizador indica as colunas e a app aprende. */}
+        {previewState.sample ? <ManualMappingPanel sample={previewState.sample} /> : null}
+
         <PreviewButton hasPreview={Boolean(preview)} />
       </form>
 
@@ -125,7 +130,237 @@ export function ImportWizard({
           state={commitState}
         />
       ) : null}
+
+      <MissingBankReport sample={previewState.sample ?? null} />
     </div>
+  );
+}
+
+/**
+ * Mapeamento manual de colunas (REQ-IMP-7).
+ *
+ * Quando não reconhecemos o ficheiro, mostramos as primeiras linhas e pedimos
+ * ao utilizador para apontar as colunas. É isto que dispensa qualquer análise
+ * automática: quem tem o ficheiro à frente sabe ler a tabela melhor do que nós.
+ * Fica dentro do formulário do passo 1, por isso o ficheiro já escolhido é
+ * reenviado tal como está.
+ */
+function ManualMappingPanel({ sample }: { sample: ImportUnknownSample }) {
+  const width = sample.rows.reduce((max, r) => Math.max(max, r.length), 0);
+  const [headerRow, setHeaderRow] = useState(0);
+  const [hasSingleAmount, setHasSingleAmount] = useState(true);
+
+  const columnName = (i: number) => {
+    const label = (sample.rows[headerRow]?.[i] ?? "").trim();
+    return label ? `${i + 1}. ${label}` : `Coluna ${i + 1}`;
+  };
+  const options = Array.from({ length: width }, (_, i) => (
+    <option key={i} value={i}>{columnName(i)}</option>
+  ));
+
+  return (
+    <div className="space-y-4 rounded-xl border border-hair bg-panel2/40 p-4">
+      <input type="hidden" name="manual" value="1" />
+      <div>
+        <h3 className="label">Ensinar este banco</h3>
+        <p className="text-sm text-fg-muted">
+          Não conhecemos o formato de <span className="text-fg">{sample.fileName}</span>. Diz-nos
+          onde estão a data, a descrição e o valor. Depois de confirmares que os
+          dados saíram certos, guardamos o formato — deste banco fica aprendido
+          para a próxima, para ti e para quem usar a app.
+        </p>
+      </div>
+
+      {/* As primeiras linhas do ficheiro, com o número de cada coluna. */}
+      <div className="-mx-1 overflow-x-auto px-1">
+        <table className="w-full min-w-[36rem] border-collapse text-left text-xs">
+          <thead>
+            <tr>
+              <th className="w-10 pb-1 font-mono text-[10px] text-fg-faint">#</th>
+              {Array.from({ length: width }, (_, i) => (
+                <th key={i} className="px-2 pb-1 font-mono text-[10px] text-fg-faint">{i + 1}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sample.rows.map((row, r) => (
+              <tr
+                key={r}
+                className={`border-t border-hair2 ${r === headerRow ? "bg-panel2 text-fg" : "text-fg-muted"}`}
+              >
+                <td className="py-1">
+                  <label className="flex cursor-pointer items-center gap-1 font-mono text-[10px]">
+                    <input
+                      type="radio"
+                      name="headerRow"
+                      value={r}
+                      checked={headerRow === r}
+                      onChange={() => setHeaderRow(r)}
+                      className="h-3 w-3 accent-fg"
+                      aria-label={`Linha ${r + 1} é o cabeçalho`}
+                    />
+                    {r + 1}
+                  </label>
+                </td>
+                {Array.from({ length: width }, (_, c) => (
+                  <td key={c} className="max-w-[10rem] truncate px-2 py-1">{row[c] ?? ""}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-fg-faint">
+        Escolhe à esquerda a linha com os nomes das colunas (o cabeçalho).
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="map-date">Coluna da data</label>
+          <select id="map-date" name="dateCol" className="select" defaultValue="">
+            <option value="">Escolher…</option>
+            {options}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="map-desc">Coluna da descrição</label>
+          <select id="map-desc" name="descriptionCol" className="select" defaultValue="">
+            <option value="">Escolher…</option>
+            {options}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setHasSingleAmount(true)}
+          className={`rounded-xl border px-3 py-2 text-sm transition ${
+            hasSingleAmount ? "border-fg/40 bg-panel2 text-fg" : "border-hair text-fg-muted hover:text-fg"
+          }`}
+        >
+          Uma coluna de valor
+        </button>
+        <button
+          type="button"
+          onClick={() => setHasSingleAmount(false)}
+          className={`rounded-xl border px-3 py-2 text-sm transition ${
+            !hasSingleAmount ? "border-fg/40 bg-panel2 text-fg" : "border-hair text-fg-muted hover:text-fg"
+          }`}
+        >
+          Débito e crédito separados
+        </button>
+      </div>
+
+      {hasSingleAmount ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="map-amount">Coluna do valor</label>
+            <select id="map-amount" name="amountCol" className="select" defaultValue="">
+              <option value="">Escolher…</option>
+              {options}
+            </select>
+            <p className="mt-1 text-xs text-fg-faint">Cuidado: o saldo não é o valor do movimento.</p>
+          </div>
+          <label className="flex items-end gap-2 pb-2 text-sm text-fg-muted">
+            <input type="checkbox" name="invertSign" className="h-4 w-4 accent-fg" defaultChecked />
+            Os gastos vêm com sinal negativo
+          </label>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="map-debit">Coluna do débito (gastos)</label>
+            <select id="map-debit" name="debitCol" className="select" defaultValue="">
+              <option value="">Escolher…</option>
+              {options}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="map-credit">Coluna do crédito (entradas)</label>
+            <select id="map-credit" name="creditCol" className="select" defaultValue="">
+              <option value="">Escolher…</option>
+              {options}
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Reportar um banco em falta. Só vai o que está escrito no formulário — as
+ * colunas que o utilizador vê e pode apagar. Nunca seguem valores nem saldos.
+ */
+function MissingBankReport({ sample }: { sample: ImportUnknownSample | null }) {
+  const [state, action] = useFormState(reportMissingBankAction, emptyCommit);
+  const header = sample?.rows[0]?.filter((c) => c.trim().length > 0).join(" | ") ?? "";
+
+  if (state.ok) {
+    return (
+      <p className="card p-4 text-center text-sm text-credit">
+        {state.message ?? "Pedido enviado."}
+      </p>
+    );
+  }
+
+  return (
+    <details className="card p-4" open={Boolean(sample)}>
+      <summary className="cursor-pointer text-sm font-medium text-fg">
+        O teu banco não é reconhecido? Diz-nos qual é.
+      </summary>
+      <form action={action} className="mt-4 space-y-3">
+        <p className="text-sm text-fg-muted">
+          Enviamos só o que está aqui escrito: o nome do banco e os nomes das
+          colunas. Nunca seguem montantes, saldos nem movimentos.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="rep-bank">Banco</label>
+            <input id="rep-bank" name="bank" required placeholder="ex.: Millennium bcp" className="input" />
+          </div>
+          <div>
+            <label className="label" htmlFor="rep-type">Tipo de ficheiro</label>
+            <input
+              id="rep-type"
+              name="fileType"
+              placeholder="ex.: Excel, CSV, PDF"
+              defaultValue={sample ? (sample.fileName.split(".").pop() ?? "") : ""}
+              className="input"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="label" htmlFor="rep-structure">Colunas do ficheiro (podes editar)</label>
+          <textarea
+            id="rep-structure"
+            name="structure"
+            rows={2}
+            defaultValue={header}
+            placeholder="ex.: Data | Descrição | Débito | Crédito | Saldo"
+            className="input min-h-[56px] resize-y"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="rep-note">Nota (opcional)</label>
+          <textarea id="rep-note" name="note" rows={2} className="input min-h-[56px] resize-y" />
+        </div>
+        {state.error ? (
+          <p role="alert" className="text-sm text-debt">{state.error}</p>
+        ) : null}
+        <ReportButton />
+      </form>
+    </details>
+  );
+}
+
+function ReportButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="btn-secondary text-sm">
+      {pending ? "A enviar…" : "Reportar banco em falta"}
+    </button>
   );
 }
 
@@ -196,6 +431,12 @@ function PreviewStep({
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkSpace, setBulkSpace] = useState(preview.defaultSpaceId);
+
+  // Guardar o formato: só faz sentido se foi o utilizador a indicar as colunas
+  // e ainda não conhecíamos esta estrutura.
+  const canSaveTemplate = preview.manualMapping && Boolean(preview.fingerprint && preview.mapping);
+  const [saveTemplate, setSaveTemplate] = useState(true);
+  const [templateLabel, setTemplateLabel] = useState("");
 
   const isPair = members.length === 2;
   const selected = rows.filter((r) => r.include).length;
@@ -337,6 +578,15 @@ function PreviewStep({
         kind: s.kind,
         spaceId: s.spaceId,
       })),
+    saveTemplate:
+      canSaveTemplate && saveTemplate && templateLabel.trim()
+        ? {
+            fingerprint: preview.fingerprint!,
+            label: templateLabel.trim(),
+            header: preview.header,
+            mapping: preview.mapping!,
+          }
+        : null,
   };
 
   if (state.ok) {
@@ -377,7 +627,53 @@ function PreviewStep({
         <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">
           {preview.mappingLabel}
         </p>
+        {preview.knownTemplate ? (
+          <p className="mt-2 text-xs text-credit">
+            Formato conhecido: <span className="font-medium">{preview.knownTemplate}</span>. Foi
+            alguém que o ensinou à app — as colunas vieram já certas.
+          </p>
+        ) : null}
       </div>
+
+      {/* Aprender este banco: guarda-se o formato, nunca os movimentos. */}
+      {canSaveTemplate ? (
+        <div className="rounded-xl border border-hair bg-panel2/40 p-4">
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={saveTemplate}
+              onChange={(e) => setSaveTemplate(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-fg"
+            />
+            <span>
+              Guardar este formato para a próxima
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Confirma primeiro, em baixo, que as datas e os valores estão certos.
+                Guardamos só os nomes das colunas e a que servem — nunca movimentos,
+                montantes ou saldos. Fica disponível para quem importar o mesmo banco.
+              </span>
+            </span>
+          </label>
+          {saveTemplate ? (
+            <div className="mt-3 max-w-sm">
+              <label className="label" htmlFor="tpl-label">Nome deste formato</label>
+              <input
+                id="tpl-label"
+                value={templateLabel}
+                onChange={(e) => setTemplateLabel(e.target.value)}
+                placeholder="ex.: Millennium bcp (conta)"
+                className="input"
+                maxLength={60}
+              />
+              {!templateLabel.trim() ? (
+                <p className="mt-1 text-xs text-fg-faint">
+                  Sem nome, importamos à mesma — só não fica guardado.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Proteção contra sobreposição com o que já está registado. */}
       <div className="rounded-xl border border-hair bg-panel2/40 p-4">

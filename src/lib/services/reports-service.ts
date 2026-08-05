@@ -6,10 +6,13 @@
 import { getRepository } from "@/lib/data";
 import type { Member, Category } from "@/lib/data";
 import {
+  buildAverages,
   buildMonthComparison,
   computeShares,
+  type AveragesResult,
   type BaselineMode,
   type MonthComparison,
+  type MonthlyAmount,
 } from "@/lib/domain";
 import { similarityKey } from "@/lib/import/similar";
 
@@ -35,7 +38,16 @@ export interface SpaceReport {
   count: number;
   comparison: MonthComparison;
   periodLabel: string;
+  /** Média mensal por categoria + metas, para o mês em análise. */
+  categoryAverages: AveragesResult;
+  /** O mesmo, mas por comerciante ("média do supermercado X"). */
+  merchantAverages: AveragesResult;
+  /** Quantos meses entram nas médias. */
+  averageWindowMonths: number;
 }
+
+/** Chave usada para a meta do ambiente inteiro (a categoria é nula na BD). */
+export const TOTAL_GOAL_KEY = "__total__";
 
 /** Períodos disponíveis no seletor dos relatórios. */
 export const REPORT_PERIODS = [
@@ -68,6 +80,8 @@ export async function getSpaceReport(
   categories: Category[],
   periodId: ReportPeriodId = "12m",
   baseline: BaselineMode = "previous",
+  /** Nº de meses anteriores que entram nas médias por categoria. */
+  averageWindow = 3,
 ): Promise<SpaceReport> {
   const repo = getRepository();
   const period = REPORT_PERIODS.find((p) => p.id === periodId) ?? REPORT_PERIODS[2];
@@ -175,7 +189,56 @@ export async function getSpaceReport(
     .sort((a, b) => b.amountCents - a.amountCents)
     .slice(0, 8);
 
+  // Médias mensais e metas. Usam todo o histórico (a média precisa dos meses
+  // anteriores ao atual, que podem cair fora do período escolhido).
+  const goals = await repo.listSpendingGoals(spaceId).catch(() => []);
+  const goalsByKey: Record<string, number> = {};
+  for (const g of goals) {
+    goalsByKey[g.categoryId ?? TOTAL_GOAL_KEY] = g.amountCents;
+  }
+
+  const monthlyByCategory: MonthlyAmount[] = allExpenses.map((e) => {
+    const key = e.categoryId ?? "outros";
+    return {
+      key,
+      label: catMap.get(key)?.name ?? "Sem categoria",
+      color: catMap.get(key)?.color ?? "#64748b",
+      date: e.transactionDate,
+      amountCents: e.amountCents,
+    };
+  });
+
+  const monthlyByMerchant: MonthlyAmount[] = allExpenses.map((e) => ({
+    key: similarityKey(e.description) || e.description.toLowerCase(),
+    label: e.description,
+    color: "#7c3aed",
+    date: e.transactionDate,
+    amountCents: e.amountCents,
+  }));
+
+  // Se o mês em análise é o mês corrente, ainda vai a meio: corta-se no dia de
+  // hoje para o homólogo comparar os mesmos dias. Meses passados contam
+  // inteiros.
+  const today = new Date();
+  const todayYm = today.toISOString().slice(0, 7);
+  const analysedMonth =
+    [...new Set(allExpenses.map((e) => e.transactionDate.slice(0, 7)))].sort().at(-1) ?? null;
+  const throughDay = analysedMonth === todayYm ? today.getUTCDate() : null;
+
+  const categoryAverages = buildAverages(monthlyByCategory, {
+    windowMonths: averageWindow,
+    goals: goalsByKey,
+    throughDay,
+  });
+  const merchantAverages = buildAverages(monthlyByMerchant, {
+    windowMonths: averageWindow,
+    throughDay,
+  });
+
   return {
+    categoryAverages,
+    merchantAverages,
+    averageWindowMonths: averageWindow,
     totalCents: total,
     sharedCents,
     personalCents,

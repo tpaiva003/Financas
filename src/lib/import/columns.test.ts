@@ -4,6 +4,7 @@ import {
   parseDate,
   detectMapping,
   rowsToTransactions,
+  headerFingerprint,
   type Grid,
 } from "./columns";
 
@@ -183,5 +184,40 @@ describe("detectMapping + rowsToTransactions", () => {
     const a = rowsToTransactions(grid, m, "activo");
     const b = rowsToTransactions(grid, m, "activo");
     expect(a[0]).toEqual(b[0]);
+  });
+});
+
+describe("headerFingerprint", () => {
+  const bankinter: Grid = [
+    ["Bankinter", "", ""],
+    ["Data Movimento", "Data Valor", "Descrição", "Montante", "Saldo"],
+    ["04-07-2026", "04-07-2026", "COMPRA", "-10.00", "100.00"],
+  ];
+
+  it("é igual para dois extratos do mesmo banco, com dados diferentes", () => {
+    const outroMes: Grid = [
+      ["Bankinter", "", ""],
+      ["Data Movimento", "Data Valor", "Descrição", "Montante", "Saldo"],
+      ["11-09-2026", "11-09-2026", "OUTRA COISA", "-99.00", "1.00"],
+    ];
+    expect(headerFingerprint(bankinter, 1)).toBe(headerFingerprint(outroMes, 1));
+  });
+
+  it("ignora maiúsculas e acentos nos nomes das colunas", () => {
+    const semAcentos: Grid = [
+      ["Bankinter", "", ""],
+      ["DATA MOVIMENTO", "DATA VALOR", "DESCRICAO", "MONTANTE", "SALDO"],
+    ];
+    expect(headerFingerprint(semAcentos, 1)).toBe(headerFingerprint(bankinter, 1));
+  });
+
+  it("difere entre bancos com colunas diferentes", () => {
+    const outroBanco: Grid = [["Launch Date", "Value Date", "Description", "Value", "Balance"]];
+    expect(headerFingerprint(outroBanco, 0)).not.toBe(headerFingerprint(bankinter, 1));
+  });
+
+  it("devolve null quando o cabeçalho é pobre demais para identificar", () => {
+    expect(headerFingerprint([["Data", "Valor"]], 0)).toBeNull();
+    expect(headerFingerprint([], 0)).toBeNull();
   });
 });

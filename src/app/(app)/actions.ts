@@ -12,9 +12,20 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
-import type { ImportCommitPayload, ImportPreview } from "@/lib/import/types";
+import type {
+  ImportCommitPayload,
+  ImportPreview,
+  ImportUnknownSample,
+  ManualMapping,
+} from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { toCents, validateSplit, nextOccurrence, type Split } from "@/lib/domain";
+import {
+  toCents,
+  validateSplit,
+  nextOccurrence,
+  accountsVisibleTo,
+  type Split,
+} from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -618,11 +629,79 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
   revalidatePath("/despesas");
 }
 
+// ---- Metas de despesa ------------------------------------------------------
+
+/**
+ * Define ou apaga a meta mensal de uma categoria (ou do ambiente inteiro,
+ * quando não vem categoria). Valor vazio apaga a meta.
+ */
+export async function saveSpendingGoalAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+
+  const raw = String(formData.get("amount") ?? "").trim();
+  // "__total__" é a meta do ambiente: na base de dados fica com categoria nula.
+  const categoryValue = String(formData.get("categoryId") ?? "").trim();
+  const categoryId = categoryValue && categoryValue !== "__total__" ? categoryValue : null;
+
+  const repo = getRepository();
+  if (!raw) {
+    await repo.deleteSpendingGoal(ctx.space.id, categoryId).catch(() => {});
+    revalidatePath("/relatorios");
+    return;
+  }
+
+  const cents = parseAmountCents(raw);
+  if (cents === null || Number.isNaN(cents)) return;
+  await repo
+    .upsertSpendingGoal({
+      spaceId: ctx.space.id,
+      categoryId,
+      amountCents: cents,
+      createdBy: ctx.user.id,
+    })
+    .catch(() => {
+      // Tabela por criar: os relatórios continuam a funcionar sem metas.
+    });
+  revalidatePath("/relatorios");
+}
+
 // ---- Importação de extratos (REQ-IMP) -------------------------------------
 
 export interface ImportPreviewState {
   error?: string;
   preview?: ImportPreview;
+  /**
+   * Primeiras linhas de um ficheiro que não foi reconhecido, para o utilizador
+   * indicar as colunas à mão (e a app aprender o banco).
+   */
+  sample?: ImportUnknownSample | null;
+}
+
+/**
+ * Colunas indicadas à mão na UI. Só são usadas se vier a linha de cabeçalho e,
+ * pelo menos, data + descrição + (valor OU débito/crédito).
+ */
+function readManualMapping(formData: FormData): ManualMapping | null {
+  if (String(formData.get("manual") ?? "") !== "1") return null;
+  const num = (name: string, fallback = -1) => {
+    const raw = String(formData.get(name) ?? "").trim();
+    if (raw === "") return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const mapping: ManualMapping = {
+    headerRow: Math.max(0, num("headerRow", 0)),
+    dateCol: num("dateCol"),
+    descriptionCol: num("descriptionCol"),
+    amountCol: num("amountCol"),
+    debitCol: num("debitCol"),
+    creditCol: num("creditCol"),
+    invertSign: String(formData.get("invertSign") ?? "") === "on",
+  };
+  if (mapping.dateCol < 0 || mapping.descriptionCol < 0) return null;
+  if (mapping.amountCol < 0 && mapping.debitCol < 0 && mapping.creditCol < 0) return null;
+  return mapping;
 }
 
 /** Ambientes do utilizador onde ele pode criar despesas (exclui submitters). */
@@ -653,12 +732,102 @@ export async function previewImportAction(
     : targets[0]!.space.id;
 
   try {
-    const preview = await buildImportPreview({ files, source, account, targets, defaultSpaceId });
+    const preview = await buildImportPreview({
+      files,
+      source,
+      account,
+      targets,
+      defaultSpaceId,
+      manualMapping: readManualMapping(formData),
+    });
     return { preview };
   } catch (e) {
-    if (e instanceof ImportError) return { error: e.message };
+    // Ficheiro por reconhecer: devolvemos a amostra para o utilizador mapear.
+    if (e instanceof ImportError) return { error: e.message, sample: e.sample ?? null };
     return { error: "Não consegui processar o ficheiro." };
   }
+}
+
+/**
+ * Reportar um banco que ainda não sabemos ler. Cai na caixa de mensagens, com o
+ * que o utilizador escolheu partilhar sobre a estrutura do ficheiro.
+ */
+export async function reportMissingBankAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  const bank = String(formData.get("bank") ?? "").trim();
+  if (!bank) return { error: "Diz-nos qual é o banco." };
+
+  const note = String(formData.get("note") ?? "").trim();
+  // Só as colunas, e só as que o utilizador viu no ecrã antes de enviar.
+  const structure = String(formData.get("structure") ?? "").trim().slice(0, 2000);
+  const fileType = String(formData.get("fileType") ?? "").trim().slice(0, 40);
+
+  const message = [
+    `Banco em falta: ${bank}`,
+    fileType ? `Tipo de ficheiro: ${fileType}` : null,
+    note ? `Nota: ${note}` : null,
+    structure ? `Colunas do ficheiro:\n${structure}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    await getRepository().createContactMessage({
+      name: ctx.user.name ?? null,
+      email: ctx.user.email,
+      message,
+    });
+  } catch {
+    return { error: "Não consegui enviar o pedido. Tenta outra vez." };
+  }
+  return { ok: true, message: "Pedido enviado. Vamos ver esse banco." };
+}
+
+// ---- Lembretes de importação ----------------------------------------------
+
+/** Define (ou atualiza) a periodicidade de importação de um banco. */
+export async function saveImportReminderAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
+  if (!target || target.viewerRole === "submitter") return;
+
+  const source = String(formData.get("source") ?? "").trim();
+  if (!source) return;
+  const raw = String(formData.get("frequency") ?? "monthly");
+  const frequency = (["weekly", "monthly", "quarterly"] as const).includes(
+    raw as "weekly" | "monthly" | "quarterly",
+  )
+    ? (raw as "weekly" | "monthly" | "quarterly")
+    : "monthly";
+
+  await getRepository()
+    .upsertImportReminder({
+      spaceId: target.space.id,
+      source,
+      label: String(formData.get("label") ?? "").trim() || null,
+      frequency,
+      active: true,
+      createdBy: ctx.user.id,
+    })
+    .catch(() => {
+      // Tabela por criar: o resto da app continua a funcionar.
+    });
+  revalidatePath("/importar");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteImportReminderAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
+  if (!target || target.viewerRole === "submitter") return;
+  const source = String(formData.get("source") ?? "").trim();
+  if (!source) return;
+  await getRepository().deleteImportReminder(target.space.id, source).catch(() => {});
+  revalidatePath("/importar");
+  revalidatePath("/dashboard");
 }
 
 export async function commitImportAction(
@@ -1044,9 +1213,29 @@ export async function inviteUserAction(
   const repo = getRepository();
   if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
 
-  await repo.createAppUser({ id: `usr_${randomUUID()}`, email, name });
+  const userId = `usr_${randomUUID()}`;
+  await repo.createAppUser({ id: userId, email, name });
+
+  // O ambiente é criado já com a pessoa lá dentro — e SÓ com ela. O dono da
+  // plataforma nunca entra como participante no ambiente de um cliente: gere a
+  // plataforma, não participa nas contas de quem a usa (ver domain/tenancy.ts).
+  const spaceName = String(formData.get("spaceName") ?? "").trim() || "Pessoal";
+  try {
+    await repo.createSpace({
+      name: spaceName.slice(0, 80),
+      createdBy: userId,
+      members: [{ name, linkedUserId: userId, email }],
+    });
+  } catch {
+    // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
+  }
+
   revalidatePath("/mensagens");
-  return { ok: true, message: `${name} já pode entrar com ${email}.` };
+  revalidatePath("/plataforma");
+  return {
+    ok: true,
+    message: `${name} já pode entrar com ${email}. Ambiente "${spaceName}" criado, só com ela.`,
+  };
 }
 
 /** Sobe ou desce um ambiente na lista, guardando a nova ordem. */
@@ -1114,14 +1303,29 @@ export async function linkMemberAccountAction(
   return { ok: true };
 }
 
-/** Contas conhecidas: os utilizadores base (env) mais os criados na app. */
+/**
+ * Contas que o utilizador atual pode ver: só as que partilham com ele pelo
+ * menos um ambiente (ver `domain/tenancy.ts`).
+ *
+ * Isto era, antes, a lista de TODAS as contas da plataforma — o que mostrava o
+ * nome e o email de gente de outro inquilino a quem abrisse o ecrã de
+ * participantes. Numa app multi-inquilino ninguém pode sequer descobrir que as
+ * outras contas existem.
+ */
 export async function listKnownAccounts(): Promise<{ id: string; name: string; email: string }[]> {
-  const base = householdUsers().map((u) => ({ id: u.id, name: u.name, email: u.email }));
-  const extra = await getRepository()
-    .listAppUsers()
+  const ctx = await getSpaceContext();
+  const repo = getRepository();
+
+  const memberships = await repo
+    .listMembershipsInSpaces(ctx.spaces.map((s) => s.id))
     .catch(() => []);
+  const allowed = new Set(accountsVisibleTo(ctx.user.id, memberships));
+
+  const base = householdUsers().map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const extra = await repo.listAppUsers().catch(() => []);
   const seen = new Set(base.map((b) => b.id));
-  return [...base, ...extra.filter((a) => !seen.has(a.id))];
+
+  return [...base, ...extra.filter((a) => !seen.has(a.id))].filter((a) => allowed.has(a.id));
 }
 
 const memberEditSchema = z.object({

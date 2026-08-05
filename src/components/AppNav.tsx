@@ -33,7 +33,11 @@ export function AppNav({
     LINKS = [...LINKS, { href: "/aprovacoes", label: "Aprovações" }];
   }
   if (!isSubmitter && isAdmin) {
-    LINKS = [...LINKS, { href: "/mensagens", label: "Mensagens" }];
+    LINKS = [
+      ...LINKS,
+      { href: "/mensagens", label: "Mensagens" },
+      { href: "/plataforma", label: "Plataforma" },
+    ];
   }
 
   return (

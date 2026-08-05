@@ -22,6 +22,12 @@ import type {
   CreateSpaceInput,
   CreateImportBatchInput,
   ImportBatch,
+  ImportTemplate,
+  ImportReminder,
+  SpendingGoal,
+  Membership,
+  PlatformStats,
+  ReminderFrequency,
   ExpenseFilters,
   CreateRecurringInput,
   Member,
@@ -53,6 +59,9 @@ interface Store {
   recurring: RecurringTemplate[];
   appUsers: AppUser[];
   importBatches: ImportBatch[];
+  importTemplates: ImportTemplate[];
+  importReminders: ImportReminder[];
+  spendingGoals: SpendingGoal[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -72,6 +81,9 @@ function getStore(): Store {
       recurring: [],
       appUsers: [],
       importBatches: [],
+      importTemplates: [],
+      importReminders: [],
+      spendingGoals: [],
     };
   }
   return globalForStore.__financasStore;
@@ -485,6 +497,140 @@ export class MockRepository implements Repository {
     return [...getStore().appUsers];
   }
 
+  async findImportTemplate(fingerprint: string): Promise<ImportTemplate | null> {
+    return getStore().importTemplates.find((t) => t.fingerprint === fingerprint) ?? null;
+  }
+
+  async saveImportTemplate(
+    input: Omit<ImportTemplate, "id" | "uses" | "createdAt">,
+  ): Promise<void> {
+    const store = getStore();
+    const existing = store.importTemplates.find((t) => t.fingerprint === input.fingerprint);
+    if (existing) {
+      existing.uses += 1;
+      existing.label = input.label;
+      existing.mapping = input.mapping;
+      return;
+    }
+    store.importTemplates.push({
+      ...input,
+      id: `tpl_${randomUUID()}`,
+      uses: 1,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async listImportTemplates(): Promise<ImportTemplate[]> {
+    return [...getStore().importTemplates].sort((a, b) => b.uses - a.uses);
+  }
+
+  async listImportReminders(spaceId: string): Promise<ImportReminder[]> {
+    return getStore().importReminders.filter((r) => r.spaceId === spaceId);
+  }
+
+  async upsertImportReminder(input: {
+    spaceId: string;
+    source: string;
+    label?: string | null;
+    frequency: ReminderFrequency;
+    active: boolean;
+  }): Promise<void> {
+    const store = getStore();
+    const cur = store.importReminders.find(
+      (r) => r.spaceId === input.spaceId && r.source === input.source,
+    );
+    if (cur) {
+      cur.frequency = input.frequency;
+      cur.active = input.active;
+      cur.label = input.label ?? cur.label;
+      return;
+    }
+    store.importReminders.push({
+      id: `rem_${randomUUID()}`,
+      spaceId: input.spaceId,
+      source: input.source,
+      label: input.label ?? null,
+      frequency: input.frequency,
+      active: input.active,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteImportReminder(spaceId: string, source: string): Promise<void> {
+    const store = getStore();
+    store.importReminders = store.importReminders.filter(
+      (r) => !(r.spaceId === spaceId && r.source === source),
+    );
+  }
+
+  async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
+    const ids = new Set(spaceIds);
+    return getStore()
+      .members.filter((m) => ids.has(m.spaceId))
+      .map((m) => ({ spaceId: m.spaceId, linkedUserId: m.linkedUserId ?? null }));
+  }
+
+  async getPlatformStats(): Promise<PlatformStats> {
+    const store = getStore();
+    const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const spaces = store.spaces.map((s) => {
+      const expenses = store.expenses.filter((e) => e.spaceId === s.id && !e.deletedAt);
+      const lastActivity = expenses.reduce<string | null>(
+        (max, e) => (max === null || e.transactionDate > max ? e.transactionDate : max),
+        null,
+      );
+      return {
+        id: s.id,
+        name: s.name,
+        memberCount: store.members.filter((m) => m.spaceId === s.id).length,
+        expenseCount: expenses.length,
+        lastActivity,
+        createdAt: s.createdAt,
+      };
+    });
+    return {
+      accountCount: store.appUsers.length,
+      spaceCount: spaces.length,
+      expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
+      activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
+      spaces: spaces.sort((a, b) => (a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1),
+      templates: store.importTemplates.map((t) => ({ label: t.label, uses: t.uses })),
+    };
+  }
+
+  async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
+    return getStore().spendingGoals.filter((g) => g.spaceId === spaceId);
+  }
+
+  async upsertSpendingGoal(input: {
+    spaceId: string;
+    categoryId: string | null;
+    amountCents: number;
+  }): Promise<void> {
+    const store = getStore();
+    const cur = store.spendingGoals.find(
+      (g) => g.spaceId === input.spaceId && g.categoryId === input.categoryId,
+    );
+    if (cur) {
+      cur.amountCents = input.amountCents;
+      return;
+    }
+    store.spendingGoals.push({
+      id: `goal_${randomUUID()}`,
+      spaceId: input.spaceId,
+      categoryId: input.categoryId,
+      amountCents: input.amountCents,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void> {
+    const store = getStore();
+    store.spendingGoals = store.spendingGoals.filter(
+      (g) => !(g.spaceId === spaceId && g.categoryId === categoryId),
+    );
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     return getStore()
       .expenses.filter((e) => (e.spaceId ?? "casa") === spaceId && !e.deletedAt)
@@ -500,6 +646,7 @@ export class MockRepository implements Repository {
       rowCount: input.rowCount,
       importedCount: input.importedCount,
       duplicateCount: input.duplicateCount,
+      lastTransactionDate: input.lastTransactionDate ?? null,
       createdBy: input.createdBy ?? null,
       createdAt: new Date().toISOString(),
     };

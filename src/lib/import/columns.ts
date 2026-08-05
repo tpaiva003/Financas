@@ -325,3 +325,31 @@ export function rowsToTransactions(
 
   return out;
 }
+
+/**
+ * "Impressão digital" da estrutura de um ficheiro: hash dos nomes das colunas do
+ * cabeçalho, normalizados. Dois extratos do mesmo banco produzem a mesma
+ * impressão, o que permite reutilizar um mapeamento confirmado antes.
+ *
+ * Só usa NOMES DE COLUNAS — nunca valores. Não há aqui dados financeiros.
+ */
+export function headerFingerprint(grid: Grid, headerRow: number): string | null {
+  const row = grid[headerRow];
+  if (!row) return null;
+  const cols = row.map(norm).filter((c) => c.length > 0);
+  if (cols.length < 3) return null; // demasiado pobre para identificar um banco
+
+  // FNV-1a de 32 bits: chega para distinguir estruturas e é curto.
+  let hash = 0x811c9dc5;
+  const key = cols.join("|");
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** Os nomes das colunas do cabeçalho, para mostrar e para diagnóstico. */
+export function headerColumns(grid: Grid, headerRow: number): string[] {
+  return (grid[headerRow] ?? []).map((c) => (c ?? "").toString().trim());
+}

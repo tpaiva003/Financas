@@ -15,6 +15,12 @@ import type {
   ContactMessage,
   CreateImportBatchInput,
   ImportBatch,
+  ImportTemplate,
+  ImportReminder,
+  SpendingGoal,
+  Membership,
+  PlatformStats,
+  ReminderFrequency,
   CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
@@ -32,9 +38,23 @@ import type {
 } from "./repository";
 import { randomUUID } from "node:crypto";
 
+function rowToTemplate(r: any): ImportTemplate {
+  return {
+    id: r.id,
+    fingerprint: r.fingerprint,
+    label: r.label,
+    header: Array.isArray(r.header) ? r.header : [],
+    mapping: r.mapping ?? {},
+    uses: r.uses ?? 0,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToImportBatch(r: any): ImportBatch {
   return {
     id: r.id,
+    lastTransactionDate: r.last_transaction_date ?? null,
     spaceId: r.space_id,
     source: r.source,
     fileName: r.file_name,
@@ -717,6 +737,230 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
   }
 
+  async findImportTemplate(fingerprint: string): Promise<ImportTemplate | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_templates")
+      .select("*")
+      .eq("fingerprint", fingerprint)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTemplate(data) : null;
+  }
+
+  async saveImportTemplate(
+    input: Omit<ImportTemplate, "id" | "uses" | "createdAt">,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const existing = await this.findImportTemplate(input.fingerprint);
+    if (existing) {
+      const { error } = await db
+        .from("import_templates")
+        .update({ uses: existing.uses + 1, label: input.label, mapping: input.mapping })
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+      return;
+    }
+    const { error } = await db.from("import_templates").insert({
+      id: `tpl_${randomUUID()}`,
+      fingerprint: input.fingerprint,
+      label: input.label,
+      header: input.header,
+      mapping: input.mapping,
+      uses: 1,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async listImportTemplates(): Promise<ImportTemplate[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_templates")
+      .select("*")
+      .order("uses", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToTemplate);
+  }
+
+  async listImportReminders(spaceId: string): Promise<ImportReminder[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_reminders")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("source");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      spaceId: r.space_id,
+      source: r.source,
+      label: r.label,
+      frequency: r.frequency as ReminderFrequency,
+      active: r.active,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async upsertImportReminder(input: {
+    spaceId: string;
+    source: string;
+    label?: string | null;
+    frequency: ReminderFrequency;
+    active: boolean;
+    createdBy?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("import_reminders").upsert(
+      {
+        id: `rem_${randomUUID()}`,
+        space_id: input.spaceId,
+        source: input.source,
+        label: input.label ?? null,
+        frequency: input.frequency,
+        active: input.active,
+        created_by: input.createdBy ?? null,
+      },
+      { onConflict: "space_id,source" },
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteImportReminder(spaceId: string, source: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("import_reminders")
+      .delete()
+      .eq("space_id", spaceId)
+      .eq("source", source);
+    if (error) throw new Error(error.message);
+  }
+
+  async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
+    if (spaceIds.length === 0) return [];
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("members")
+      .select("space_id, linked_user_id")
+      .in("space_id", spaceIds);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      spaceId: r.space_id as string,
+      linkedUserId: (r.linked_user_id as string | null) ?? null,
+    }));
+  }
+
+  async getPlatformStats(): Promise<PlatformStats> {
+    const db = getSupabaseAdmin();
+    const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+
+    const [spacesRes, membersRes, expensesRes, accountsRes] = await Promise.all([
+      db.from("spaces").select("id, name, created_at"),
+      db.from("members").select("space_id"),
+      // Só o que é preciso para contar e datar: nunca descrições nem valores.
+      db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
+      db.from("app_users").select("id"),
+    ]);
+    for (const r of [spacesRes, membersRes, expensesRes, accountsRes]) {
+      if (r.error) throw new Error(r.error.message);
+    }
+
+    const memberCounts = new Map<string, number>();
+    for (const m of membersRes.data ?? []) {
+      const id = (m as any).space_id as string;
+      memberCounts.set(id, (memberCounts.get(id) ?? 0) + 1);
+    }
+    const expenseCounts = new Map<string, number>();
+    const lastBySpace = new Map<string, string>();
+    for (const e of expensesRes.data ?? []) {
+      const id = (e as any).space_id as string;
+      const date = (e as any).transaction_date as string;
+      expenseCounts.set(id, (expenseCounts.get(id) ?? 0) + 1);
+      const cur = lastBySpace.get(id);
+      if (!cur || date > cur) lastBySpace.set(id, date);
+    }
+
+    const spaces = (spacesRes.data ?? []).map((s: any) => ({
+      id: s.id as string,
+      name: s.name as string,
+      memberCount: memberCounts.get(s.id) ?? 0,
+      expenseCount: expenseCounts.get(s.id) ?? 0,
+      lastActivity: lastBySpace.get(s.id) ?? null,
+      createdAt: s.created_at as string,
+    }));
+
+    // Os templates podem não existir (migração 0011 por aplicar).
+    const templates = await this.listImportTemplates().catch(() => []);
+
+    return {
+      accountCount: (accountsRes.data ?? []).length,
+      spaceCount: spaces.length,
+      expenseCount: (expensesRes.data ?? []).length,
+      activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
+      spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
+      templates: templates.map((t) => ({ label: t.label, uses: t.uses })),
+    };
+  }
+
+  async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("spending_goals")
+      .select("*")
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      id: r.id as string,
+      spaceId: r.space_id as string,
+      categoryId: (r.category_id as string | null) ?? null,
+      amountCents: r.amount_cents as number,
+      createdAt: r.created_at as string,
+    }));
+  }
+
+  async upsertSpendingGoal(input: {
+    spaceId: string;
+    categoryId: string | null;
+    amountCents: number;
+    createdBy?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    // O índice único usa coalesce(category_id, '__total__'), que o upsert do
+    // PostgREST não sabe resolver: procuramos primeiro e depois gravamos.
+    let query = db.from("spending_goals").select("id").eq("space_id", input.spaceId);
+    query = input.categoryId
+      ? query.eq("category_id", input.categoryId)
+      : query.is("category_id", null);
+    const { data: existing, error: findError } = await query.maybeSingle();
+    if (findError) throw new Error(findError.message);
+
+    if (existing) {
+      const { error } = await db
+        .from("spending_goals")
+        .update({ amount_cents: input.amountCents, updated_at: new Date().toISOString() })
+        .eq("id", existing.id as string);
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const { error } = await db.from("spending_goals").insert({
+      id: `goal_${randomUUID()}`,
+      space_id: input.spaceId,
+      category_id: input.categoryId,
+      amount_cents: input.amountCents,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    let query = db.from("spending_goals").delete().eq("space_id", spaceId);
+    query = categoryId ? query.eq("category_id", categoryId) : query.is("category_id", null);
+    const { error } = await query;
+    if (error) throw new Error(error.message);
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
@@ -740,6 +984,9 @@ export class SupabaseRepository implements Repository {
         row_count: input.rowCount,
         imported_count: input.importedCount,
         duplicate_count: input.duplicateCount,
+        ...(input.lastTransactionDate
+          ? { last_transaction_date: input.lastTransactionDate }
+          : {}),
         created_by: input.createdBy ?? null,
       })
       .select("*")

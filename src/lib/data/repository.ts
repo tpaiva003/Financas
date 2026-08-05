@@ -17,7 +17,10 @@ import type {
   Settlement,
   Split,
   ClassificationRule,
+  Membership,
 } from "@/lib/domain";
+
+export type { Membership };
 
 export interface Category {
   id: string;
@@ -94,6 +97,7 @@ export interface UpdateRecurringInput {
 
 export interface ImportBatch {
   id: string;
+  lastTransactionDate?: string | null;
   spaceId: string;
   source: string;
   fileName?: string | null;
@@ -105,6 +109,8 @@ export interface ImportBatch {
 }
 
 export interface CreateImportBatchInput {
+  /** Data da transação mais recente do lote: base para o próximo import. */
+  lastTransactionDate?: string | null;
   spaceId: string;
   source: string;
   fileName?: string | null;
@@ -112,6 +118,40 @@ export interface CreateImportBatchInput {
   importedCount: number;
   duplicateCount: number;
   createdBy?: string | null;
+}
+
+/** Estrutura de banco já confirmada por alguém, reutilizável por todos. */
+export interface ImportTemplate {
+  id: string;
+  fingerprint: string;
+  label: string;
+  header: string[];
+  /** ColumnMapping serializado. */
+  mapping: Record<string, number | boolean>;
+  uses: number;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export type ReminderFrequency = "weekly" | "monthly" | "quarterly";
+
+export interface ImportReminder {
+  id: string;
+  spaceId: string;
+  source: string;
+  label?: string | null;
+  frequency: ReminderFrequency;
+  active: boolean;
+  createdAt: string;
+}
+
+/** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
+export interface SpendingGoal {
+  id: string;
+  spaceId: string;
+  categoryId: string | null;
+  amountCents: number;
+  createdAt: string;
 }
 
 export interface Space {
@@ -139,6 +179,34 @@ export interface AppUser {
   id: string;
   email: string;
   name: string;
+}
+
+/**
+ * Retrato de um ambiente para a consola do dono da plataforma.
+ *
+ * De propósito, só números e datas: nem descrições, nem valores, nem nomes de
+ * despesas. A consola serve para gerir a plataforma, não para ler as contas de
+ * quem a usa.
+ */
+export interface SpaceSummary {
+  id: string;
+  name: string;
+  memberCount: number;
+  expenseCount: number;
+  /** Data da despesa mais recente (não o seu conteúdo). */
+  lastActivity: string | null;
+  createdAt: string;
+}
+
+export interface PlatformStats {
+  accountCount: number;
+  spaceCount: number;
+  expenseCount: number;
+  /** Ambientes com movimento nos últimos 30 dias. */
+  activeSpaces: number;
+  spaces: SpaceSummary[];
+  /** Formatos de banco aprendidos e quantas vezes já serviram. */
+  templates: { label: string; uses: number }[];
 }
 
 export interface CreateSpaceInput {
@@ -260,6 +328,14 @@ export interface Repository {
   reorderSpaces(spaceIds: string[]): Promise<void>;
   /** Contas existentes (utilizadores base + adicionais), para associar a participantes. */
   listAppUsers(): Promise<AppUser[]>;
+  /**
+   * Ligações participante→conta dos ambientes indicados. É com isto que se
+   * decide que contas um utilizador pode ver, sem nunca listar a plataforma
+   * toda (ver `domain/tenancy.ts`).
+   */
+  listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]>;
+  /** Números agregados da plataforma, para a consola do dono. */
+  getPlatformStats(): Promise<PlatformStats>;
   listMembers(spaceId: string): Promise<Member[]>;
   addMember(input: AddMemberInput): Promise<Member>;
   updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void>;
@@ -319,6 +395,34 @@ export interface Repository {
   deleteAppUser(id: string): Promise<void>;
   /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
   setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
+  // Templates de bancos (estrutura confirmada, reutilizável).
+  findImportTemplate(fingerprint: string): Promise<ImportTemplate | null>;
+  saveImportTemplate(input: Omit<ImportTemplate, "id" | "uses" | "createdAt">): Promise<void>;
+  listImportTemplates(): Promise<ImportTemplate[]>;
+
+  // Lembretes de importação por ambiente e banco.
+  listImportReminders(spaceId: string): Promise<ImportReminder[]>;
+  upsertImportReminder(input: {
+    spaceId: string;
+    source: string;
+    label?: string | null;
+    frequency: ReminderFrequency;
+    active: boolean;
+    createdBy?: string | null;
+  }): Promise<void>;
+  deleteImportReminder(spaceId: string, source: string): Promise<void>;
+
+  // Metas de despesa por mês (por categoria ou do ambiente inteiro).
+  listSpendingGoals(spaceId: string): Promise<SpendingGoal[]>;
+  upsertSpendingGoal(input: {
+    spaceId: string;
+    /** Nulo = meta do ambiente inteiro. */
+    categoryId: string | null;
+    amountCents: number;
+    createdBy?: string | null;
+  }): Promise<void>;
+  deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void>;
+
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;
 

@@ -386,3 +386,130 @@ não há fallback para outro participante.
 - **Limite honesto:** isto é isolamento ao nível da aplicação. Quem administra o
   projeto Supabase continua a poder ler a base de dados; para garantias mais
   fortes seria preciso outro projeto/instância por cliente.
+
+## Bancos novos: mapeamento manual + templates partilhados (sem IA)
+
+**Decisão:** a app aprende bancos novos com o utilizador a apontar as colunas,
+não com análise automática do documento.
+
+Quando não reconhecemos um ficheiro, em vez de erro mostramos as primeiras 12
+linhas com as colunas numeradas e perguntamos onde estão a data, a descrição e o
+valor (ou débito/crédito). O utilizador confirma na pré-visualização que os
+dados saíram certos e só então guardamos o **template**: uma impressão digital
+dos nomes das colunas (hash FNV-1a) + o mapeamento. O ficheiro seguinte com a
+mesma estrutura é reconhecido automaticamente, para qualquer utilizador.
+
+**Porquê sem IA:** o problema não é de compreensão de linguagem, é estrutural —
+"qual das colunas é a data". Quem tem o extrato à frente responde em 10 segundos
+e com 100% de fiabilidade; um modelo custaria dinheiro por ficheiro, exigiria
+enviar dados bancários para fora e continuaria a precisar de confirmação humana.
+O template guardado tem prioridade sobre a deteção automática, precisamente
+porque foi validado por uma pessoa.
+
+**Privacidade:** o template guarda só nomes de colunas e índices. Nunca
+movimentos, montantes ou saldos. O mesmo vale para o "reportar banco em falta":
+segue o nome do banco e o texto do cabeçalho que o utilizador vê no ecrã e pode
+apagar antes de enviar.
+
+## Lembretes de importação
+
+Por ambiente e banco, com periodicidade semanal/mensal/trimestral. O estado sai
+de `domain/import-reminders.ts` (puro, testado) a partir da data do último lote:
+atrasado / está na hora / em dia / por importar. Cada lote passa a guardar a
+`last_transaction_date`, o que dá a resposta a "desde que dia devo importar?" —
+o dia seguinte à última transação já registada, que é a mesma regra que protege
+contra sobreposição.
+
+## Médias por categoria e metas nos relatórios
+
+Média mensal por categoria e por comerciante, comparada com o mês em análise
+("média do supermercado 340 €, este mês 200 €"). Duas decisões que mudam os
+números:
+
+1. **O mês em análise nunca entra na sua própria média.** Está quase sempre a
+   meio e puxaria a referência para baixo, escondendo justamente o excesso.
+2. **A média divide pelos meses da janela, não pelos meses em que aquela
+   categoria teve movimento.** Senão uma compra esporádica (uma vez em seis
+   meses) aparecia como se fosse um hábito mensal.
+
+A janela é ajustável no relatório (3, 6 ou 12 meses).
+
+**Metas:** tecto mensal por categoria, ou do ambiente inteiro, editável no
+próprio relatório (apagar o valor remove a meta). Estado: abaixo, perto (≥80%)
+ou acima. Ficam em `spending_goals`, com o total a usar `category_id` nulo e um
+índice único sobre `coalesce(category_id, '__total__')` — em Postgres dois NULL
+são distintos e sem isto podiam nascer várias metas totais.
+
+## Barras de período com média e homólogo (substitui o foco nas metas)
+
+O relatório por categoria passa a mostrar uma barra do gasto do período com duas
+marcas: a **média** dos últimos N meses (tracejado) e o **período homólogo**
+(traço cheio). A comparação principal é contra o homólogo.
+
+**Cortar o homólogo no mesmo dia.** A 5 de agosto, comparar com agosto inteiro do
+ano passado não diz nada. O homólogo é cortado no dia em que o mês corrente vai
+("5 € a 5/8/2026 contra 50 € a 5/8/2025"), e a média continua a mostrar o mês
+inteiro, para se ver onde o mês costuma ir dar. Meses passados contam inteiros.
+
+**Escala partilhada por todo o painel** (o total tem a sua): as barras também se
+comparam entre si. Com uma escala por linha, cada linha ficava cheia e o painel
+não dizia nada.
+
+As **metas** ficam: são úteis, mas eram a leitura errada em primeiro plano.
+Passam a ser um extra recolhido em cada linha, e a barra de progresso só aparece
+quando existe meta.
+
+## Tema de dia e de noite
+
+As cores passaram de hex fixo no Tailwind para variáveis CSS em canais RGB
+(`rgb(var(--c-fg) / <alpha-value>)`), o que mantém os modificadores de opacidade
+(`bg-panel/80`, `border-fg/30`) a funcionar. O tema de dia usa papel quente, não
+branco clínico, e escurece o verde e o vermelho — os originais não tinham
+contraste suficiente sobre fundo claro.
+
+A escolha fica no browser (localStorage), não na conta: é uma preferência do
+aparelho — a mesma pessoa pode querer noite no telemóvel e dia no portátil. Um
+script inline no `<head>` aplica-a antes de pintar, para não haver flash.
+
+## "Última que pagaste" vs "Último registo teu"
+
+Eram ambíguos. "Pagaste" filtra por pagador — inclui despesas registadas pela
+outra pessoa em que tu és o pagador. "Registaste" filtra por quem meteu os dados
+e passa a mostrar o **dia do registo**, não a data da despesa: é essa a pergunta
+("quando é que atualizei isto pela última vez"). Ambos os cartões explicam agora
+o que contam.
+
+## Seed com histórico
+
+Passou de um mês para 14 (jul/2025 a ago/2026, com o último mês a meio, como um
+mês a decorrer). Sem histórico não há média nem homólogo e metade dos relatórios
+fica vazia. Os valores variam de forma determinística — nada aleatório, para as
+capturas e os testes darem sempre o mesmo.
+
+## Multi-inquilino: o ambiente é a unidade de isolamento
+
+Uma pessoa vê um ambiente se, e só se, existir um participante desse ambiente
+ligado à conta dela. Daí sai tudo — despesas, saldos, categorias, lembretes,
+metas. As regras estão em `domain/tenancy.ts`, puras e testadas.
+
+**Fuga fechada:** `listKnownAccounts()` devolvia TODAS as contas da plataforma e
+era mostrada no ecrã de participantes a qualquer utilizador — um cliente externo
+via o nome e o email do dono e de quem mais usasse a app. Passa a devolver só
+contas com que se partilha pelo menos um ambiente. Numa app multi-inquilino
+ninguém pode sequer descobrir que as outras contas existem.
+
+**O dono não entra nos ambientes dos clientes.** Ao convidar alguém, cria-se a
+conta E o ambiente dela, com um único participante: a própria. O dono administra
+a plataforma, não participa nas contas de quem a usa. Há testes que fixam isto.
+
+**Consola do dono (`/plataforma`), só para o admin.** Mostra contagens e datas —
+contas, ambientes, despesas, ambientes ativos nos últimos 30 dias, e os formatos
+de banco aprendidos. Nunca descrições, valores ou saldos.
+
+Vale a pena ser claro sobre o limite: como a app fala com o Postgres pela
+service-role, quem tem as chaves do projeto consegue tecnicamente ler os dados.
+O que a decisão garante é que **o produto não expõe isso** — não há ecrã que
+mostre as despesas de um cliente, o dono não aparece dentro do ambiente dele, e
+a consola foi desenhada para gerir, não para espreitar. Uma garantia mais forte
+exigiria cifra do lado do cliente, com o custo de perder classificação, dedup e
+relatórios do lado do servidor.

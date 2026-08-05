@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { ImportWizard } from "@/components/ImportWizard";
+import { ImportReminders } from "@/components/ImportReminders";
 import { undoImportBatchAction } from "@/app/(app)/actions";
+import { getAllReminders } from "@/lib/services/reminder-service";
 import { IMPORT_SOURCES } from "@/lib/import/types";
 
 export const metadata = { title: "Importar extrato · Rachar" };
@@ -27,6 +29,8 @@ export default async function ImportarPage() {
   const batches = perSpace
     .flat()
     .sort((a, b) => (a.batch.createdAt < b.batch.createdAt ? 1 : -1));
+
+  const reminders = await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name })));
 
   const sourceLabel = (id: string) =>
     IMPORT_SOURCES.find((s) => s.id === id)?.label ?? id;
@@ -53,6 +57,8 @@ export default async function ImportarPage() {
         spaces={ctx.spaces.map((s) => ({ id: s.id, name: s.name }))}
         currentSpaceId={ctx.space.id}
       />
+
+      <ImportReminders spaces={reminders} />
 
       <section>
         <h2 className="eyebrow mb-2">Importações anteriores</h2>

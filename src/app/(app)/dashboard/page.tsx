@@ -4,6 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
+import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
@@ -38,15 +39,25 @@ export default async function DashboardPage() {
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
 
+  // Lembretes de importação: o aviso visual de que há extratos por trazer.
+  const dueImports = pendingReminders(
+    await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
+  ).filter((r) => r.status.state !== "never");
+
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+  // "Registaste" = foste tu a meter os dados na app (independentemente de quem
+  // pagou). É isto que responde a "quando é que atualizei isto pela última vez",
+  // por isso o que se mostra é o DIA DO REGISTO, não a data da despesa.
   const myRegistered = [...recent]
     .filter((e) => e.createdBy === ctx.user.id)
     .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+  // "Pagaste" = és o pagador, tenha sido quem tenha sido a registar a despesa.
   const myPaid = [...recent]
     .filter((e) => e.payerId === ctx.viewerMemberId && e.status === "confirmed")
     .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1))[0];
+  const registeredByOther = myPaid ? myPaid.createdBy !== ctx.user.id : false;
 
   return (
     <div className="space-y-10">
@@ -72,6 +83,30 @@ export default async function DashboardPage() {
         </Link>
       ) : null}
 
+      {dueImports.length > 0 ? (
+        <Link
+          href="/importar"
+          className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-panel2 text-fg">↓</span>
+            <div>
+              <p className="text-sm font-medium">
+                {dueImports.length === 1
+                  ? dueImports[0]!.status.message
+                  : `${dueImports.length} extratos por importar`}
+              </p>
+              <p className="text-xs text-fg-muted">
+                {dueImports[0]!.status.fromDate
+                  ? `Importar a partir de ${new Date(dueImports[0]!.status.fromDate!).toLocaleDateString("pt-PT")} · ${dueImports[0]!.spaceName}`
+                  : `Ambiente: ${dueImports[0]!.spaceName}`}
+              </p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
+      ) : null}
+
       {pending.length > 0 ? (
         <Link
           href="/recorrentes"
@@ -90,13 +125,21 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="card p-4">
-          <p className="eyebrow">Última que registaste</p>
+          <p className="eyebrow">Último registo teu</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myRegistered ? fmtDate(myRegistered.transactionDate) : "—"}
+            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "—"}
           </p>
           {myRegistered ? (
-            <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
-          ) : null}
+            <>
+              <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
+              <p className="mt-1 text-[11px] text-fg-faint">
+                Dia em que meteste dados na app · despesa de{" "}
+                {fmtDate(myRegistered.transactionDate)}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-[11px] text-fg-faint">Ainda não registaste nada aqui.</p>
+          )}
         </div>
         <div className="card p-4">
           <p className="eyebrow">Última que pagaste</p>
@@ -104,8 +147,16 @@ export default async function DashboardPage() {
             {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
           </p>
           {myPaid ? (
-            <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
-          ) : null}
+            <>
+              <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
+              <p className="mt-1 text-[11px] text-fg-faint">
+                Despesas em que és o pagador, tenha sido quem tenha sido a registá-las
+                {registeredByOther ? " (esta foi registada por outra pessoa)" : ""}.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-[11px] text-fg-faint">Ainda não há despesas pagas por ti.</p>
+          )}
         </div>
       </div>
 
