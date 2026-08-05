@@ -8,7 +8,14 @@ import {
   type ReportPeriodId,
   type Slice,
 } from "@/lib/services/reports-service";
-import { formatCents, type BaselineMode, type CategoryDelta, type MonthComparison } from "@/lib/domain";
+import {
+  formatCents,
+  monthLabel,
+  sameMonthLastYear,
+  type BaselineMode,
+  type CategoryDelta,
+  type MonthComparison,
+} from "@/lib/domain";
 import { MonthlyChart } from "@/components/MonthlyChart";
 import { CategoryAverages } from "@/components/CategoryAverages";
 
@@ -160,7 +167,12 @@ export async function ReportsContent({
         </div>
         {comparar === "yoy" && report.comparison.currentMonth && !report.comparison.sameMonthLastYear ? (
           <p className="mt-2 text-xs text-fg-faint">
-            Ainda não há dados de {report.comparison.currentLabel} do ano anterior para comparar.
+            {/* O mês homólogo pelo nome. Dizer "ago 26 do ano anterior" era
+                confuso: o rótulo já traz o ano, e a frase parecia dizer duas
+                coisas contraditórias. */}
+            Ainda não há dados de{" "}
+            {monthLabel(sameMonthLastYear(report.comparison.currentMonth))} para comparar com{" "}
+            {report.comparison.currentLabel}.
           </p>
         ) : null}
       </div>

@@ -60,6 +60,7 @@ export const SECTIONS: NavSection[] = [
       { href: "/patrimonio/ativos", label: "Ativos" },
       { href: "/patrimonio/dividas", label: "Dívidas" },
       { href: "/patrimonio/fire", label: "FIRE" },
+      { href: "/patrimonio/importar", label: "Importar" },
     ],
   },
 ];
