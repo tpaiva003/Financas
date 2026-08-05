@@ -27,6 +27,8 @@ import type {
   SpendingGoal,
   Asset,
   CreateAssetInput,
+  Income,
+  CreateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -65,6 +67,7 @@ interface Store {
   importReminders: ImportReminder[];
   spendingGoals: SpendingGoal[];
   assets: Asset[];
+  income: Income[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -88,6 +91,7 @@ function getStore(): Store {
       importReminders: [],
       spendingGoals: [],
       assets: [],
+      income: [],
     };
   }
   return globalForStore.__financasStore;
@@ -659,6 +663,23 @@ export class MockRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.assets = store.assets.filter((a) => !(a.id === id && a.spaceId === spaceId));
+  }
+
+  async listIncome(spaceId: string): Promise<Income[]> {
+    return getStore()
+      .income.filter((i) => i.spaceId === spaceId)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const entry: Income = { ...input, id: `inc_${randomUUID()}` };
+    getStore().income.push(entry);
+    return entry;
+  }
+
+  async deleteIncome(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.income = store.income.filter((i) => !(i.id === id && i.spaceId === spaceId));
   }
 
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {

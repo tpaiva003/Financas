@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SectionNav } from "@/components/SectionNav";
+import { BrandMark } from "@/components/BrandMark";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -21,7 +22,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="sticky top-0 z-20 border-b border-hair bg-bg/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
           <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="font-display text-[15px] font-semibold tracking-tight">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 font-display text-[15px] font-semibold tracking-tight"
+            >
+              <BrandMark />
               Rachar
             </Link>
             {ctx.space ? (
@@ -73,7 +78,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <>
               {/* As mesmas secções do topo, para o mapa mental ser um só. */}
               <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
-              <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
+              <BottomLink href="/despesas" label="Movimentos" icon={<IconList />} />
               <BottomLink href="/relatorios" label="Análise" icon={<IconChart />} />
               <BottomLink href="/patrimonio" label="Património" icon={<IconWallet />} />
               <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />

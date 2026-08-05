@@ -586,3 +586,28 @@ Públicas, porque a Google as exige acessíveis sem sessão para aprovar o ecrã
 consentimento, e porque quem está a decidir se cria conta deve poder lê-las
 antes. Escritas a partir do que a app faz, não de um modelo: se o comportamento
 mudar, estas páginas mudam com ele.
+
+## Rendimento, e porque a secção passou a chamar-se Movimentos
+
+Faltava metade da história: a app sabia para onde o dinheiro ia mas não de onde
+vinha. Sem isso não há taxa de poupança, que é o indicador que diz se se está a
+ir a algum lado.
+
+Duas decisões que mudam os números:
+
+- **O valor pedido é o líquido recebido**, não o bruto. É o que se pode gastar,
+  e é sobre isso que a taxa de poupança faz sentido.
+- **A média de vários meses pesa pelo dinheiro, não pelos meses.** É o total
+  poupado a dividir pelo total recebido. A média das percentagens daria o mesmo
+  peso a um mês de 500 € e a um de 5000 €, e um mês fraco com boa percentagem
+  mascararia um mês forte com má.
+
+Separa-se rendimento **ativo** (salário, trabalhos paralelos), que para se a
+pessoa parar de trabalhar, de **passivo** (juros, dividendos, rendas), que não
+para. A percentagem de despesas já coberta por rendimento passivo é o mesmo
+indicador do FIRE, mas com dinheiro que entrou mesmo em vez de uma projeção.
+
+**A secção "Despesas" passou a "Movimentos".** Desde que há rendimentos, trata
+do dinheiro nos dois sentidos, e o nome antigo escondia metade. Foi a alternativa
+a criar uma quinta secção no topo, que era exatamente o que se tinha combinado
+não fazer.

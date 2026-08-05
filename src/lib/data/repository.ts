@@ -19,6 +19,7 @@ import type {
   ClassificationRule,
   Membership,
   AssetKind,
+  IncomeKind,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -158,10 +159,33 @@ export interface Asset {
   valueCents?: number | null;
   purchasedAt?: string | null;
   notes?: string | null;
+  /** Taxa anual, em percentagem (juros a receber, ou a pagar numa dívida). */
+  interestRatePct?: number | null;
+  /** Prestação mensal, para dívidas com plano de amortização. */
+  monthlyPaymentCents?: number | null;
+  /** Meses que faltam pagar. */
+  termMonths?: number | null;
+  /** "fixa" ou "variavel". */
+  rateKind?: string | null;
   updatedAt?: string | null;
 }
 
 export type CreateAssetInput = Omit<Asset, "id" | "updatedAt"> & { createdBy?: string | null };
+
+/** Dinheiro que entra: ordenado, trabalhos paralelos, juros, dividendos. */
+export interface Income {
+  id: string;
+  spaceId: string;
+  kind: IncomeKind;
+  description: string;
+  /** Valor líquido recebido. */
+  amountCents: number;
+  date: string;
+  recurring: boolean;
+  notes?: string | null;
+}
+
+export type CreateIncomeInput = Omit<Income, "id"> & { createdBy?: string | null };
 
 /** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
 export interface SpendingGoal {
@@ -452,6 +476,11 @@ export interface Repository {
   createAsset(input: CreateAssetInput): Promise<Asset>;
   updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void>;
   deleteAsset(id: string, spaceId: string): Promise<void>;
+
+  // Rendimento.
+  listIncome(spaceId: string): Promise<Income[]>;
+  createIncome(input: CreateIncomeInput): Promise<Income>;
+  deleteIncome(id: string, spaceId: string): Promise<void>;
 
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;

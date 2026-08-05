@@ -1473,3 +1473,58 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
     .catch(() => {});
   revalidatePath("/patrimonio");
 }
+
+// ---- Rendimento -----------------------------------------------------------
+
+const INCOME_KINDS = ["salario", "extra", "juros", "dividendos", "renda", "outro"] as const;
+
+export async function saveIncomeAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) return { error: "Descreve o rendimento." };
+
+  const cents = parseAmountCents(formData.get("amount"));
+  if (cents === null || Number.isNaN(cents)) return { error: "Indica o valor recebido." };
+
+  const date = String(formData.get("date") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Data inválida." };
+
+  const rawKind = String(formData.get("kind") ?? "salario");
+  const kind = (INCOME_KINDS as readonly string[]).includes(rawKind)
+    ? (rawKind as (typeof INCOME_KINDS)[number])
+    : "outro";
+
+  try {
+    await getRepository().createIncome({
+      spaceId: ctx.space.id,
+      kind,
+      description: description.slice(0, 120),
+      amountCents: cents,
+      date,
+      recurring: String(formData.get("recurring") ?? "") === "on",
+      notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar. A tabela de rendimentos pode faltar." };
+  }
+
+  revalidatePath("/rendimentos");
+  revalidatePath("/relatorios");
+  return { ok: true, message: `${description} registado.` };
+}
+
+export async function deleteIncomeAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().deleteIncome(id, ctx.space.id).catch(() => {});
+  revalidatePath("/rendimentos");
+  revalidatePath("/relatorios");
+}

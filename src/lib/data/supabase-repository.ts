@@ -20,6 +20,8 @@ import type {
   SpendingGoal,
   Asset,
   CreateAssetInput,
+  Income,
+  CreateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1036,6 +1038,10 @@ export class SupabaseRepository implements Repository {
         value_cents: input.valueCents ?? null,
         purchased_at: input.purchasedAt ?? null,
         notes: input.notes ?? null,
+        interest_rate_pct: input.interestRatePct ?? null,
+        monthly_payment_cents: input.monthlyPaymentCents ?? null,
+        term_months: input.termMonths ?? null,
+        rate_kind: input.rateKind ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1055,6 +1061,10 @@ export class SupabaseRepository implements Repository {
     if (patch.valueCents !== undefined) row.value_cents = patch.valueCents;
     if (patch.purchasedAt !== undefined) row.purchased_at = patch.purchasedAt;
     if (patch.notes !== undefined) row.notes = patch.notes;
+    if (patch.interestRatePct !== undefined) row.interest_rate_pct = patch.interestRatePct;
+    if (patch.monthlyPaymentCents !== undefined) row.monthly_payment_cents = patch.monthlyPaymentCents;
+    if (patch.termMonths !== undefined) row.term_months = patch.termMonths;
+    if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1062,6 +1072,50 @@ export class SupabaseRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db.from("assets").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listIncome(spaceId: string): Promise<Income[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("income")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      spaceId: r.space_id,
+      kind: r.kind,
+      description: r.description,
+      amountCents: r.amount_cents,
+      date: r.date,
+      recurring: Boolean(r.recurring),
+      notes: r.notes ?? null,
+    }));
+  }
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const db = getSupabaseAdmin();
+    const id = `inc_${randomUUID()}`;
+    const { error } = await db.from("income").insert({
+      id,
+      space_id: input.spaceId,
+      kind: input.kind,
+      description: input.description,
+      amount_cents: input.amountCents,
+      date: input.date,
+      recurring: input.recurring,
+      notes: input.notes ?? null,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { ...input, id };
+  }
+
+  async deleteIncome(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("income").delete().eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -1233,6 +1287,10 @@ function rowToAsset(r: any): Asset {
     valueCents: r.value_cents ?? null,
     purchasedAt: r.purchased_at ?? null,
     notes: r.notes ?? null,
+    interestRatePct: r.interest_rate_pct === null || r.interest_rate_pct === undefined ? null : Number(r.interest_rate_pct),
+    monthlyPaymentCents: r.monthly_payment_cents ?? null,
+    termMonths: r.term_months ?? null,
+    rateKind: r.rate_kind ?? null,
     updatedAt: r.updated_at ?? null,
   };
 }
