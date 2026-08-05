@@ -83,7 +83,7 @@ export async function getAllReminders(
   return Promise.all(spaces.map((s) => getSpaceReminders(s.id, s.name, today)));
 }
 
-/** Só os que exigem ação — é isto que se mostra no painel principal. */
+/** Só os que exigem ação, é isto que se mostra no painel principal. */
 export function pendingReminders(all: SpaceReminders[]): {
   spaceId: string;
   spaceName: string;

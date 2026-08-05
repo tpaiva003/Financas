@@ -20,7 +20,7 @@ export interface SpaceContext {
   space: Space;
   /** Todos os participantes (inclui submitters). */
   members: Member[];
-  /** Participantes plenos — os que participam no saldo (pagam/dividem). */
+  /** Participantes plenos, os que participam no saldo (pagam/dividem). */
   fullMembers: Member[];
   /** Participante do ambiente atual ligado ao utilizador (p/ privacidade). */
   viewerMemberId: string;

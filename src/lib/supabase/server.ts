@@ -1,6 +1,6 @@
 /**
  * Cliente Supabase para uso EXCLUSIVO no servidor (Server Components / Server
- * Actions / Route Handlers). Usa a service-role key — NUNCA expor ao browser.
+ * Actions / Route Handlers). Usa a service-role key, NUNCA expor ao browser.
  *
  * Nota de arquitetura (ver DECISOES.md): no MVP, todo o acesso a dados é
  * server-side com a service-role key e as regras de privacidade são aplicadas

@@ -1216,7 +1216,7 @@ export async function inviteUserAction(
   const userId = `usr_${randomUUID()}`;
   await repo.createAppUser({ id: userId, email, name });
 
-  // O ambiente é criado já com a pessoa lá dentro — e SÓ com ela. O dono da
+  // O ambiente é criado já com a pessoa lá dentro, e SÓ com ela. O dono da
   // plataforma nunca entra como participante no ambiente de um cliente: gere a
   // plataforma, não participa nas contas de quem a usa (ver domain/tenancy.ts).
   const spaceName = String(formData.get("spaceName") ?? "").trim() || "Pessoal";
@@ -1307,7 +1307,7 @@ export async function linkMemberAccountAction(
  * Contas que o utilizador atual pode ver: só as que partilham com ele pelo
  * menos um ambiente (ver `domain/tenancy.ts`).
  *
- * Isto era, antes, a lista de TODAS as contas da plataforma — o que mostrava o
+ * Isto era, antes, a lista de TODAS as contas da plataforma, o que mostrava o
  * nome e o email de gente de outro inquilino a quem abrisse o ecrã de
  * participantes. Numa app multi-inquilino ninguém pode sequer descobrir que as
  * outras contas existem.

@@ -1,5 +1,5 @@
 /**
- * Tipos do domínio — App de Despesas Partilhadas.
+ * Tipos do domínio, App de Despesas Partilhadas.
  *
  * Invariantes (ver CLAUDE.md / REQUISITOS.md):
  *  - "Quem pagou" (payer) é independente de "como se divide" (split).
@@ -37,7 +37,7 @@ export type ExpenseOrigin = "manual" | "import" | "recurring";
 export type ExpenseStatus = "confirmed" | "pending";
 
 /**
- * Linha de despesa (item) — opcional, para dividir uma compra única em parte
+ * Linha de despesa (item), opcional, para dividir uma compra única em parte
  * partilhada e parte pessoal (REQ-SPL-3).
  */
 export interface ExpenseItem {
@@ -58,7 +58,7 @@ export interface Expense {
   currency: Currency;
   /** Data da transação (ISO YYYY-MM-DD). */
   transactionDate: string;
-  /** Data de lançamento (cartões) — opcional. */
+  /** Data de lançamento (cartões), opcional. */
   postedDate?: string | null;
   categoryId?: string | null;
   tags?: string[];
@@ -71,7 +71,7 @@ export interface Expense {
   /** Itens opcionais (split ao nível do item). */
   items?: ExpenseItem[];
   receiptPath?: string | null;
-  /** Dono (para despesas pessoais) — quem a registou. */
+  /** Dono (para despesas pessoais), quem a registou. */
   ownerId: UserId;
   /** Visível ao outro utilizador? (despesas pessoais, REQ-PRIV-2). */
   visibleToPartner?: boolean;
@@ -132,6 +132,6 @@ export interface NormalizedTransaction {
   currency: Currency;
   transactionDate: string;
   postedDate?: string | null;
-  /** Conta/cartão de origem (ajuda a desambiguar UIDs) — opcional. */
+  /** Conta/cartão de origem (ajuda a desambiguar UIDs), opcional. */
   account?: string | null;
 }

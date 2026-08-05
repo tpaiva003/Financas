@@ -1,5 +1,5 @@
 /**
- * Repositório em memória — app navegável de ponta a ponta sem Supabase.
+ * Repositório em memória, app navegável de ponta a ponta sem Supabase.
  *
  * Mantém o estado num singleton de módulo (persiste enquanto o processo viver).
  * Respeita a privacidade das despesas pessoais (REQ-PRIV-2): o viewer só vê as

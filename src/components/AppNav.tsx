@@ -42,7 +42,7 @@ export function AppNav({
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* Atalho mensagens por ler — visível no topo também em mobile (admin). */}
+      {/* Atalho mensagens por ler, visível no topo também em mobile (admin). */}
       {isAdmin && unreadMessages > 0 ? (
         <Link
           href="/mensagens"

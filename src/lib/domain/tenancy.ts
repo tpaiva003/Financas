@@ -3,7 +3,7 @@
  *
  * A unidade de isolamento é o **ambiente** (space). Uma pessoa vê um ambiente
  * se, e só se, existir um participante desse ambiente ligado à conta dela.
- * Daqui sai tudo o resto — despesas, saldos, categorias, lembretes.
+ * Daqui sai tudo o resto, despesas, saldos, categorias, lembretes.
  *
  * A regra menos óbvia, e a que mais depressa se viola sem querer, é a
  * VISIBILIDADE DE CONTAS: quem está na app não pode sequer descobrir que
@@ -56,7 +56,7 @@ export function canAccessSpace(
  *
  * Serve para garantir o contrário: ao criar o ambiente de um cliente, o dono
  * NÃO entra como participante. Ele administra a plataforma, não participa nas
- * contas de quem a usa — e não deve aparecer em lado nenhum dentro dela.
+ * contas de quem a usa, e não deve aparecer em lado nenhum dentro dela.
  */
 export function ownerIsMemberOf(
   ownerId: string,

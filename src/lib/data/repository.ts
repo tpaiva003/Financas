@@ -1,5 +1,5 @@
 /**
- * Camada de dados — interface do repositório.
+ * Camada de dados, interface do repositório.
  *
  * A app fala sempre com esta interface; existem duas implementações:
  *  - MockRepository: em memória, com seed (app navegável sem Supabase).

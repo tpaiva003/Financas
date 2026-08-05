@@ -95,7 +95,7 @@ function mkExpense(e: {
 
 /**
  * Histórico de exemplo: um ano e pico de despesas, para a app ser navegável de
- * ponta a ponta. Sem isto, os relatórios não têm com que comparar — não há
+ * ponta a ponta. Sem isto, os relatórios não têm com que comparar, não há
  * média nem período homólogo, e metade dos ecrãs fica vazia.
  *
  * Os valores variam de forma determinística (nada de aleatório: as capturas e

@@ -1,5 +1,5 @@
 /**
- * Autenticação completa (runtime Node) — usada pelo route handler e pelo servidor.
+ * Autenticação completa (runtime Node), usada pelo route handler e pelo servidor.
  *
  * REQ-AUTH:
  *  - SSO Google + Microsoft com allow-list de 2 emails (ver auth.config.ts).

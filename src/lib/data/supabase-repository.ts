@@ -2,7 +2,7 @@
  * Repositório Supabase (Postgres). Mapeia linhas snake_case ↔ domínio camelCase.
  *
  * As queries correspondem ao schema em `supabase/migrations`. A privacidade das
- * despesas pessoais é aplicada aqui (camada de aplicação) — ver server.ts.
+ * despesas pessoais é aplicada aqui (camada de aplicação), ver server.ts.
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -924,7 +924,7 @@ export class SupabaseRepository implements Repository {
     const templates = await this.listImportTemplates().catch(() => []);
 
     // Se a tabela de contas não respondeu, ainda dá para saber quantas contas
-    // distintas participam nos ambientes — melhor do que não dizer nada.
+    // distintas participam nos ambientes, melhor do que não dizer nada.
     const linkedAccounts = new Set(
       (memberRows ?? [])
         .map((m) => (m as unknown as { linked_user_id?: string | null }).linked_user_id)

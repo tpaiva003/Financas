@@ -18,7 +18,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Rachar · Contas à Moda do Porto",
-  description: "Rachar — dividir contas partilhadas sem dramas. Nascido no Porto.",
+  description: "Rachar, dividir contas partilhadas sem dramas. Nascido no Porto.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

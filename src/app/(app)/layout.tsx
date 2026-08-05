@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
 
-      {/* Adicionar despesa — sempre a um toque (REQ-MAN-2). */}
+      {/* Adicionar despesa, sempre a um toque (REQ-MAN-2). */}
       <Link
         href="/despesas/nova"
         className="group fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-fg text-bg shadow-glow transition hover:scale-105 active:scale-95 sm:bottom-10"

@@ -25,7 +25,7 @@ function dayLabel(ym: string, day: number): string {
  *
  * O ponto que faz isto valer a pena: quando o mês ainda vai a meio, o homólogo
  * é cortado no MESMO dia. "5 € a 5 de agosto" só diz alguma coisa contra "50 €
- * a 5 de agosto do ano passado" — contra o mês inteiro do ano passado não diz
+ * a 5 de agosto do ano passado", contra o mês inteiro do ano passado não diz
  * nada.
  */
 export function CategoryAverages({
@@ -57,7 +57,7 @@ export function CategoryAverages({
 
   // Uma escala só para todas as linhas: assim as barras também se comparam
   // entre si ("gasto mais no supermercado do que em transportes"). O total tem
-  // escala própria — é sempre muito maior e esmagaria o resto.
+  // escala própria, é sempre muito maior e esmagaria o resto.
   const scale = Math.max(
     1,
     ...rows.map((r) =>
@@ -81,7 +81,7 @@ export function CategoryAverages({
           ) : averages.partial ? (
             <>
               {monthLabel} vai em <span className="text-fg">{cut}</span>. O homólogo está cortado
-              no mesmo dia, para a comparação ser justa — e a média mostra o mês inteiro, para se
+              no mesmo dia, para a comparação ser justa. A média mostra o mês inteiro, para se
               ver onde isto costuma ir dar.
             </>
           ) : (
@@ -260,9 +260,9 @@ function BarRow({
   );
 }
 
-/** Variação face ao homólogo até ao mesmo dia — a leitura que interessa. */
+/** Variação face ao homólogo até ao mesmo dia, a leitura que interessa. */
 function YoyDelta({ row }: { row: AverageRow }) {
-  // Nada gasto ainda: dizer "igual ao homólogo" seria ruído — e enganador
+  // Nada gasto ainda: dizer "igual ao homólogo" seria ruído, e enganador
   // quando o homólogo também estava a zero nesse dia.
   if (row.currentCents === 0) {
     return <span className="text-xs text-fg-faint">ainda nada</span>;

@@ -56,7 +56,7 @@ export function ImportWizard({
 
   return (
     <div className="space-y-6">
-      {/* Passo 1 — escolher o ficheiro */}
+      {/* Passo 1, escolher o ficheiro */}
       <form action={previewAction} className="card space-y-4 p-6">
         <div>
           <h2 className="label">1. Ficheiro do banco</h2>
@@ -121,7 +121,7 @@ export function ImportWizard({
         <PreviewButton hasPreview={Boolean(preview)} />
       </form>
 
-      {/* Passo 2 — rever e confirmar */}
+      {/* Passo 2, rever e confirmar */}
       {preview ? (
         <PreviewStep
           key={`${preview.defaultSpaceId}-${preview.fileName}-${preview.rowCount}`}
@@ -166,7 +166,7 @@ function ManualMappingPanel({ sample }: { sample: ImportUnknownSample }) {
         <p className="text-sm text-fg-muted">
           Não conhecemos o formato de <span className="text-fg">{sample.fileName}</span>. Diz-nos
           onde estão a data, a descrição e o valor. Depois de confirmares que os
-          dados saíram certos, guardamos o formato — deste banco fica aprendido
+          dados saíram certos, guardamos o formato, deste banco fica aprendido
           para a próxima, para ti e para quem usar a app.
         </p>
       </div>
@@ -290,7 +290,7 @@ function ManualMappingPanel({ sample }: { sample: ImportUnknownSample }) {
 }
 
 /**
- * Reportar um banco em falta. Só vai o que está escrito no formulário — as
+ * Reportar um banco em falta. Só vai o que está escrito no formulário, as
  * colunas que o utilizador vê e pode apagar. Nunca seguem valores nem saldos.
  */
 function MissingBankReport({ sample }: { sample: ImportUnknownSample | null }) {
@@ -630,7 +630,7 @@ function PreviewStep({
         {preview.knownTemplate ? (
           <p className="mt-2 text-xs text-credit">
             Formato conhecido: <span className="font-medium">{preview.knownTemplate}</span>. Foi
-            alguém que o ensinou à app — as colunas vieram já certas.
+            alguém que o ensinou à app, as colunas vieram já certas.
           </p>
         ) : null}
       </div>
@@ -649,7 +649,7 @@ function PreviewStep({
               Guardar este formato para a próxima
               <span className="mt-0.5 block text-xs text-fg-muted">
                 Confirma primeiro, em baixo, que as datas e os valores estão certos.
-                Guardamos só os nomes das colunas e a que servem — nunca movimentos,
+                Guardamos só os nomes das colunas e a que servem, nunca movimentos,
                 montantes ou saldos. Fica disponível para quem importar o mesmo banco.
               </span>
             </span>
@@ -667,7 +667,7 @@ function PreviewStep({
               />
               {!templateLabel.trim() ? (
                 <p className="mt-1 text-xs text-fg-faint">
-                  Sem nome, importamos à mesma — só não fica guardado.
+                  Sem nome, importamos à mesma, só não fica guardado.
                 </p>
               ) : null}
             </div>

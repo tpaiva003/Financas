@@ -15,7 +15,7 @@ import type { ClassificationResult, ClassificationRule } from "./types";
 
 /**
  * Devolve a primeira regra cujo keyword aparece na descrição (por prioridade).
- * Não decide nada sozinha sobre entradas manuais — ver nota da invariante.
+ * Não decide nada sozinha sobre entradas manuais, ver nota da invariante.
  */
 export function classify(
   description: string,
@@ -54,7 +54,7 @@ export function classify(
 /**
  * Sugestão para um formulário de entrada manual: só preenche campos que o
  * utilizador ainda não tocou. Quando o utilizador edita, o `userTouched`
- * correspondente passa a true e a sugestão deixa de mexer — preservando a
+ * correspondente passa a true e a sugestão deixa de mexer, preservando a
  * escolha manual (REQ-CLF-3).
  */
 export function classifyForManualEntry(

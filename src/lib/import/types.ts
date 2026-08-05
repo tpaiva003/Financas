@@ -68,7 +68,7 @@ export interface ImportPreview {
   mappingLabel: string;
   /**
    * Impressão digital da estrutura do ficheiro (nomes das colunas). É com isto
-   * que reconhecemos o mesmo banco da próxima vez — não guarda valores.
+   * que reconhecemos o mesmo banco da próxima vez, não guarda valores.
    */
   fingerprint: string | null;
   /** Nomes das colunas do cabeçalho, para mostrar ao guardar o template. */
@@ -83,7 +83,7 @@ export interface ImportPreview {
 
 /**
  * Ficheiro que não foi reconhecido. Devolvemos as primeiras linhas para o
- * utilizador indicar as colunas à mão — é assim que a app aprende bancos novos,
+ * utilizador indicar as colunas à mão, é assim que a app aprende bancos novos,
  * sem precisar de nada mais do que os nomes das colunas.
  */
 export interface ImportUnknownSample {

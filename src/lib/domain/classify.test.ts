@@ -36,7 +36,7 @@ describe("classify", () => {
   });
 });
 
-describe("classifyForManualEntry — invariante REQ-CLF-3", () => {
+describe("classifyForManualEntry, invariante REQ-CLF-3", () => {
   it("preenche o que o utilizador não tocou", () => {
     const r = classifyForManualEntry("Continente", rules, {});
     expect(r.categoryId).toBe("supermercado");

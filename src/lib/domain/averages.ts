@@ -2,7 +2,7 @@
  * Médias mensais por grupo (categoria ou comerciante), homólogo e metas.
  *
  * Responde a "quanto costumo gastar por mês no supermercado, e como está este
- * mês?" — e, sobretudo, torna a comparação justa quando o mês ainda vai a meio:
+ * mês?", e, sobretudo, torna a comparação justa quando o mês ainda vai a meio:
  * a 5 de agosto compara-se com os primeiros 5 dias de agosto do ano passado,
  * não com o mês inteiro. Lógica pura, sem acesso a dados.
  *
@@ -43,7 +43,7 @@ export interface AverageRow {
   deltaPct: number | null;
   /** Mesmo mês do ano anterior, completo. Null se esse mês não existe nos dados. */
   yoyCents: number | null;
-  /** Mesmo mês do ano anterior, até ao mesmo dia — a comparação justa. */
+  /** Mesmo mês do ano anterior, até ao mesmo dia, a comparação justa. */
   yoyToDayCents: number | null;
   /** current - homólogo até ao mesmo dia. */
   yoyDeltaCents: number | null;
