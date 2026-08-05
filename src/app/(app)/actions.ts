@@ -1434,6 +1434,16 @@ export async function saveAssetAction(
     return { error: "Indica o valor." };
   }
 
+  // Taxa e plano de amortização. A taxa serve os dois lados: num depósito diz
+  // o que rende, numa dívida diz o que custa. A prestação e o prazo só fazem
+  // sentido em dívidas, e guardam-se apenas aí para não ficarem valores
+  // órfãos numa conta à ordem.
+  const rate = parseNumber(formData.get("interestRatePct"));
+  const monthlyPayment = parseNumber(formData.get("monthlyPayment"));
+  const term = parseNumber(formData.get("termMonths"));
+  const rawRateKind = String(formData.get("rateKind") ?? "").trim();
+  const isDebt = kind === "divida";
+
   const patch = {
     spaceId: ctx.space.id,
     name: name.slice(0, 120),
@@ -1445,6 +1455,13 @@ export async function saveAssetAction(
     valueCents: kind === "investimento" ? null : value !== null ? toCents(Math.abs(value)) : null,
     purchasedAt: String(formData.get("purchasedAt") ?? "").trim() || null,
     notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+    interestRatePct: rate !== null && rate >= 0 ? rate : null,
+    monthlyPaymentCents:
+      isDebt && monthlyPayment !== null && monthlyPayment > 0
+        ? toCents(Math.abs(monthlyPayment))
+        : null,
+    termMonths: isDebt && term !== null && term > 0 ? Math.round(term) : null,
+    rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
   };
 
   const id = String(formData.get("id") ?? "").trim();

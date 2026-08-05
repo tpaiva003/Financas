@@ -69,16 +69,3 @@ export function classifyForManualEntry(
     matchedRuleId: suggestion.matchedRuleId,
   };
 }
-
-/**
- * Testa uma regra contra um histórico de descrições (REQ-CLF-4): devolve as
- * descrições que a regra apanharia. Útil no editor visual de regras.
- */
-export function testRuleAgainstHistory(
-  rule: Pick<ClassificationRule, "keyword">,
-  descriptions: string[],
-): string[] {
-  const needle = normalizeText(rule.keyword);
-  if (needle.length === 0) return [];
-  return descriptions.filter((d) => normalizeText(d).includes(needle));
-}

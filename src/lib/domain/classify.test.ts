@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classify, classifyForManualEntry, testRuleAgainstHistory } from "./classify";
+import { classify, classifyForManualEntry } from "./classify";
 import type { ClassificationRule } from "./types";
 
 const rules: ClassificationRule[] = [
@@ -53,16 +53,5 @@ describe("classifyForManualEntry, invariante REQ-CLF-3", () => {
     const r = classifyForManualEntry("Continente", rules, { kind: true });
     expect(r.categoryId).toBe("supermercado");
     expect(r.kind).toBeUndefined();
-  });
-});
-
-describe("testRuleAgainstHistory", () => {
-  it("devolve as descrições que a regra apanharia", () => {
-    const hits = testRuleAgainstHistory({ keyword: "galp" }, [
-      "GALP Energia",
-      "Continente",
-      "galp 1234 lisboa",
-    ]);
-    expect(hits).toEqual(["GALP Energia", "galp 1234 lisboa"]);
   });
 });

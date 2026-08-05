@@ -5,10 +5,17 @@ import { getRepository } from "@/lib/data";
 import type { Asset } from "@/lib/data";
 import {
   ASSET_KIND_LABELS,
+  RATE_KIND_LABELS,
+  annualInterestCents,
+  buildLoan,
   buildNetWorth,
   formatCents,
+  formatMonths,
+  payoffMonth,
+  summariseRates,
   type AssetKind,
   type AssetView,
+  type RateKind,
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
 import { AssetForm } from "@/components/AssetForm";
@@ -57,6 +64,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   }
 
   const shown = net.assets.filter((a) => kindsToShow.includes(a.kind));
+  const rates = summariseRates(assets);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-8">
@@ -146,6 +155,29 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
           </ul>
         </section>
       ) : null}
+
+      {rates.annualInterestCents > 0 || rates.annualDebtInterestCents > 0 ? (
+        <section className="card p-5">
+          <p className="eyebrow mb-2">Juros, num ano</p>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+            {rates.annualInterestCents > 0 ? (
+              <p className="text-fg-muted">
+                Recebes <span className="text-credit">{formatCents(rates.annualInterestCents)}</span>
+              </p>
+            ) : null}
+            {rates.annualDebtInterestCents > 0 ? (
+              <p className="text-fg-muted">
+                Pagas <span className="text-debt">{formatCents(rates.annualDebtInterestCents)}</span>
+              </p>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-fg-faint">
+            À taxa registada em cada um, sobre o valor de hoje. É a conta que
+            responde a amortizar ou investir: só compensa investir se render
+            mais do que a dívida custa.
+          </p>
+        </section>
+      ) : null}
       </>
       ) : null}
 
@@ -154,6 +186,51 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
         netWorthCents={net.netCents}
         suggestedAnnualExpensesCents={monthlyAverage * 12}
       />
+      ) : null}
+
+      {view === "dividas" && rates.amortisingCount > 0 ? (
+        <section className="card p-5">
+          <p className="eyebrow mb-3">O que sai todos os meses</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <p className="font-display text-2xl font-semibold tracking-tight tnum">
+                {formatCents(rates.monthlyPaymentsCents)}
+              </p>
+              <p className="mt-0.5 text-xs text-fg-muted">em prestações, por mês</p>
+            </div>
+            {rates.annualDebtInterestCents > 0 ? (
+              <div>
+                <p className="font-display text-2xl font-semibold tracking-tight tnum text-debt">
+                  {formatCents(rates.annualDebtInterestCents)}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-muted">de juros no próximo ano</p>
+              </div>
+            ) : null}
+            {rates.lastPayoffMonths !== null ? (
+              <div>
+                <p className="font-display text-2xl font-semibold tracking-tight">
+                  {formatMonthYear(payoffMonth(today, rates.lastPayoffMonths))}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-muted">
+                  fica tudo pago, se nada mudar
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {view === "ativos" && rates.annualInterestCents > 0 ? (
+        <section className="card p-5">
+          <p className="eyebrow">Juros a receber</p>
+          <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum text-credit">
+            {formatCents(rates.annualInterestCents)}
+          </p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            por ano, de {rates.earningCount}{" "}
+            {rates.earningCount === 1 ? "bem com taxa registada" : "bens com taxa registada"}.
+          </p>
+        </section>
       ) : null}
 
       {view === "ativos" || view === "dividas" ? (
@@ -172,7 +249,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                 <p className="label mb-0 px-5 pt-4">{ASSET_KIND_LABELS[kind]}</p>
                 <ul className="divide-y divide-hair2">
                   {(byKind.get(kind) ?? []).map((a) => (
-                    <AssetRow key={a.id} asset={a} />
+                    <AssetRow key={a.id} asset={a} today={today} />
                   ))}
                 </ul>
               </div>
@@ -190,10 +267,42 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   );
 }
 
-function AssetRow({ asset: a }: { asset: AssetView }) {
+/** "2054-05" lido como se fala. */
+function formatMonthYear(ym: string | null): string {
+  if (!ym) return "—";
+  return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("pt-PT", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function AssetRow({ asset: a, today }: { asset: AssetView; today: string }) {
   const isInvestment = a.kind === "investimento";
+  const isDebt = a.kind === "divida";
+  const rateLabel =
+    a.rateKind === "fixa" || a.rateKind === "variavel"
+      ? RATE_KIND_LABELS[a.rateKind as RateKind].toLowerCase()
+      : null;
+
+  // Só as dívidas têm plano de pagamento; os outros bens com taxa mostram
+  // quanto rendem por ano, que é a mesma informação vista do outro lado.
+  const plan = isDebt
+    ? buildLoan({
+        principalCents: a.currentValueCents,
+        annualRatePct: a.interestRatePct,
+        termMonths: a.termMonths,
+        monthlyPaymentCents: a.monthlyPaymentCents,
+      })
+    : null;
+  const yearlyInterest =
+    !isDebt && a.interestRatePct
+      ? annualInterestCents(a.currentValueCents, a.interestRatePct)
+      : 0;
+
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+    <li className="px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-fg">{a.name}</p>
         <p className="mt-0.5 font-mono text-[11px] text-fg-faint">
@@ -252,6 +361,86 @@ function AssetRow({ asset: a }: { asset: AssetView }) {
           </button>
         </form>
       </div>
+      </div>
+
+      {plan && plan.neverPaysOff ? (
+        <p className="mt-2 text-xs text-debt">
+          A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
+          {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+        </p>
+      ) : null}
+
+      {plan && plan.monthsToPayOff !== null ? (
+        <div className="mt-2 space-y-0.5 text-xs text-fg-muted">
+          <p>
+            <span className="tnum text-fg">{formatCents(plan.monthlyPaymentCents ?? 0)}</span> por
+            mês{plan.paymentIsEstimated ? " (estimada pelo prazo)" : ""}
+            {a.interestRatePct ? (
+              <>
+                {" · "}
+                <span className="tnum">{String(a.interestRatePct).replace(".", ",")}%</span>
+                {rateLabel ? ` ${rateLabel}` : ""}
+              </>
+            ) : null}
+          </p>
+          <p>
+            Último pagamento em{" "}
+            <span className="text-fg">
+              {formatMonthYear(payoffMonth(today, plan.monthsToPayOff))}
+            </span>
+            , daqui a {formatMonths(plan.monthsToPayOff)}
+            {plan.totalInterestCents ? (
+              <>
+                {", com "}
+                <span className="tnum text-debt">{formatCents(plan.totalInterestCents)}</span> de
+                juros até lá
+              </>
+            ) : null}
+            .
+          </p>
+          {plan.nextInterestCents ? (
+            <p className="text-fg-faint">
+              Da próxima prestação, {formatCents(plan.nextInterestCents)} é juro e{" "}
+              {formatCents(plan.nextPrincipalCents ?? 0)} abate mesmo à dívida.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {yearlyInterest > 0 ? (
+        <p className="mt-2 text-xs text-fg-muted">
+          <span className="tnum">{String(a.interestRatePct).replace(".", ",")}%</span> ao ano
+          {rateLabel ? `, ${rateLabel}` : ""}: rende cerca de{" "}
+          <span className="tnum text-credit">{formatCents(yearlyInterest)}</span> por ano.
+        </p>
+      ) : null}
+
+      {a.notes ? <p className="mt-2 text-xs text-fg-faint">{a.notes}</p> : null}
+
+      <details className="mt-2">
+        <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg">
+          Editar
+        </summary>
+        <div className="mt-3 rounded-xl border border-hair bg-panel2/20 p-4">
+          <AssetForm
+            asset={{
+              id: a.id,
+              name: a.name,
+              kind: a.kind,
+              quantity: a.quantity,
+              unitCostCents: a.unitCostCents,
+              unitPriceCents: a.unitPriceCents,
+              valueCents: a.valueCents,
+              purchasedAt: a.purchasedAt,
+              notes: a.notes,
+              interestRatePct: a.interestRatePct,
+              monthlyPaymentCents: a.monthlyPaymentCents,
+              termMonths: a.termMonths,
+              rateKind: a.rateKind,
+            }}
+          />
+        </div>
+      </details>
     </li>
   );
 }

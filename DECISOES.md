@@ -642,3 +642,46 @@ Adiciona sempre uma despesa, mas aparecia no património e nos rendimentos, onde
 parecia que ia acrescentar um bem ou um ordenado. Passa a esconder-se nessas
 páginas, que já têm o seu formulário à mão. Um atalho que faz outra coisa do que
 aparenta é pior do que não existir.
+
+## Juros e amortização
+
+O património sabia quanto vale cada coisa e não sabia o que ela faz. Um depósito
+a prazo a 3% e o mesmo dinheiro parado à ordem apareciam iguais; uma dívida de
+150 mil não dizia quando acaba. Passa a guardar-se a **taxa anual** em qualquer
+bem e, nas dívidas, a **prestação e o prazo**.
+
+**A conta da dívida é feita mês a mês, não pela fórmula fechada.** São algumas
+centenas de iterações, tempo nenhum, e é exato: apanha a última prestação (que é
+quase sempre mais pequena que as outras) e não acumula erro de arredondamento em
+cêntimos, como a fórmula acumula.
+
+**A prestação real ganha ao prazo.** Se estiverem os dois preenchidos, manda a
+prestação, porque é o que sai da conta todos os meses; o prazo só serve para a
+estimar quando ela não é conhecida. Quem paga acima da prestação acaba antes, e
+a app tem de mostrar isso em vez do plano teórico.
+
+**Quando a prestação não cobre os juros, diz-se isso.** Devolver "faltam 1.200
+meses" era tecnicamente verdade e praticamente inútil: o que ali se passa é que
+a dívida está a crescer.
+
+No resumo mostram-se as duas metades lado a lado, o que os bens rendem por ano e
+o que as dívidas custam por ano, porque é essa a conta que responde a **amortizar
+ou investir**. Nas dívidas conta-se o juro do próximo ano à taxa atual, não o
+juro total até ao fim: é esse que se compara com o que o dinheiro renderia.
+
+## Editar um bem, em vez de apagar e voltar a criar
+
+A ação de gravar já aceitava um `id` desde o início, mas o formulário nunca o
+enviava: para corrigir um valor era preciso apagar e escrever tudo de novo. O
+mesmo formulário passa a servir os dois casos, e abre-se dentro da própria linha
+com um `<details>` nativo, sem JavaScript à mistura.
+
+## Três funções mortas, removidas
+
+`pairwiseStatement`, `testRuleAgainstHistory` e `detectDuplicates` não eram
+chamadas por nada além dos próprios testes. A última era a mais perigosa: uma
+**segunda implementação da deduplicação**, invariante do domínio, a par da que o
+serviço de importação usa de facto (que pergunta à base de dados só pelos UIDs
+do ficheiro, em vez de carregar as despesas todas). Duas implementações do mesmo
+invariante é como se começa a ter duas respostas diferentes para a mesma
+pergunta. Ficou a que corre em produção.

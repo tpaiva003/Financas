@@ -36,6 +36,15 @@ export interface AssetInput {
   /** Valor atual, em cêntimos (tudo o que não é investimento). */
   valueCents?: number | null;
   purchasedAt?: string | null;
+  notes?: string | null;
+  /** Taxa anual nominal, em percentagem: o que rende, ou o que custa. */
+  interestRatePct?: number | null;
+  /** Prestação mensal, em cêntimos (dívidas com plano de amortização). */
+  monthlyPaymentCents?: number | null;
+  /** Meses que faltam pagar. */
+  termMonths?: number | null;
+  /** "fixa" ou "variavel". */
+  rateKind?: string | null;
 }
 
 export interface AssetView extends AssetInput {
