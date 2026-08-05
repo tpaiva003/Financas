@@ -22,15 +22,25 @@ export default async function PlataformaPage() {
   const user = await requireUser();
   if (!isAdmin(user.id)) redirect("/dashboard");
 
-  const stats = await getRepository()
-    .getPlatformStats()
-    .catch(() => null);
+  // Se falhar por inteiro, dizemos porquê. É um ecrã só do admin: esconder o
+  // motivo só torna o problema mais difícil de resolver.
+  let stats;
+  let failure: string | null = null;
+  try {
+    stats = await getRepository().getPlatformStats();
+  } catch (e) {
+    failure = e instanceof Error ? e.message : String(e);
+  }
 
   if (!stats) {
     return (
-      <p className="card p-10 text-center text-sm text-fg-muted">
-        Não consegui ler os números da plataforma.
-      </p>
+      <div className="card space-y-2 p-8 text-center">
+        <p className="text-sm text-fg">Não consegui ler os números da plataforma.</p>
+        {failure ? <p className="font-mono text-xs text-fg-faint">{failure}</p> : null}
+        <p className="text-sm text-fg-muted">
+          Se for passageiro, recarregar resolve. O resto da app não é afetado.
+        </p>
+      </div>
     );
   }
 
@@ -49,11 +59,32 @@ export default async function PlataformaPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {/* As contas base (allow-list) não vivem na tabela de contas: somam-se. */}
-        <Stat label="Contas" value={stats.accountCount + householdUsers().length} />
+        <Stat
+          label="Contas"
+          value={stats.accountCount === null ? null : stats.accountCount + householdUsers().length}
+        />
         <Stat label="Ambientes" value={stats.spaceCount} />
         <Stat label="Despesas" value={stats.expenseCount} />
         <Stat label="Ativos (30 dias)" value={stats.activeSpaces} />
       </div>
+
+      {/* O que não foi possível ler. O resto da consola continua a servir. */}
+      {stats.warnings.length > 0 ? (
+        <div
+          role="status"
+          className="rounded-xl border border-hair bg-panel2/40 p-4 text-sm text-fg-muted"
+        >
+          <p className="font-medium text-fg">Alguns números não vieram desta vez.</p>
+          <ul className="mt-1 space-y-0.5 font-mono text-xs text-fg-faint">
+            {stats.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs">
+            Costuma ser passageiro — recarrega a página. O que está em cima continua certo.
+          </p>
+        </div>
+      ) : null}
 
       <section className="card p-6">
         <h2 className="label">Dar acesso a alguém</h2>
@@ -104,11 +135,18 @@ export default async function PlataformaPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="card p-4">
       <p className="eyebrow">{label}</p>
-      <p className="mt-1.5 font-display text-3xl font-semibold tracking-tight tnum">{value}</p>
+      <p
+        className={`mt-1.5 font-display text-3xl font-semibold tracking-tight tnum ${
+          value === null ? "text-fg-faint" : ""
+        }`}
+        title={value === null ? "Não foi possível ler este número" : undefined}
+      >
+        {value === null ? "—" : value}
+      </p>
     </div>
   );
 }

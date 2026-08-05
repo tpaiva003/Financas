@@ -854,16 +854,47 @@ export class SupabaseRepository implements Repository {
     const db = getSupabaseAdmin();
     const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
 
-    const [spacesRes, membersRes, expensesRes, accountsRes] = await Promise.all([
-      db.from("spaces").select("id, name, created_at"),
-      db.from("members").select("space_id"),
-      // Só o que é preciso para contar e datar: nunca descrições nem valores.
-      db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
-      db.from("app_users").select("id"),
-    ]);
-    for (const r of [spacesRes, membersRes, expensesRes, accountsRes]) {
-      if (r.error) throw new Error(r.error.message);
+    const warnings: string[] = [];
+
+    /**
+     * Cada leitura é independente: se uma falhar, a consola mostra o resto e
+     * diz o que faltou. Uma chamada rejeitada (aconteceu um 401 transitório do
+     * gateway) não pode transformar a página num beco sem saída.
+     *
+     * Uma repetição, porque estas falhas costumam ser passageiras.
+     */
+    async function read<T>(
+      label: string,
+      run: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+    ): Promise<T[] | null> {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data, error } = await run();
+        if (!error) return data ?? [];
+        if (attempt === 1) {
+          warnings.push(`${label}: ${error.message}`);
+          return null;
+        }
+      }
+      return null;
     }
+
+    const [spaceRows, memberRows, expenseRows, accountRows] = await Promise.all([
+      read<{ id: string; name: string; created_at: string }>("ambientes", () =>
+        db.from("spaces").select("id, name, created_at"),
+      ),
+      read<{ space_id: string; linked_user_id: string | null }>("participantes", () =>
+        db.from("members").select("space_id, linked_user_id"),
+      ),
+      // Só o que é preciso para contar e datar: nunca descrições nem valores.
+      read<{ space_id: string; transaction_date: string }>("despesas", () =>
+        db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
+      ),
+      read<{ id: string }>("contas", () => db.from("app_users").select("id")),
+    ]);
+
+    const membersRes = { data: memberRows };
+    const expensesRes = { data: expenseRows };
+    const spacesRes = { data: spaceRows };
 
     const memberCounts = new Map<string, number>();
     for (const m of membersRes.data ?? []) {
@@ -892,13 +923,28 @@ export class SupabaseRepository implements Repository {
     // Os templates podem não existir (migração 0011 por aplicar).
     const templates = await this.listImportTemplates().catch(() => []);
 
+    // Se a tabela de contas não respondeu, ainda dá para saber quantas contas
+    // distintas participam nos ambientes — melhor do que não dizer nada.
+    const linkedAccounts = new Set(
+      (memberRows ?? [])
+        .map((m) => (m as unknown as { linked_user_id?: string | null }).linked_user_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+
     return {
-      accountCount: (accountsRes.data ?? []).length,
-      spaceCount: spaces.length,
-      expenseCount: (expensesRes.data ?? []).length,
-      activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
+      accountCount: accountRows ? accountRows.length : null,
+      spaceCount: spaceRows ? spaces.length : null,
+      expenseCount: expenseRows ? expenseRows.length : null,
+      activeSpaces:
+        spaceRows && expenseRows
+          ? spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length
+          : null,
       spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
       templates: templates.map((t) => ({ label: t.label, uses: t.uses })),
+      warnings:
+        accountRows === null && linkedAccounts.size > 0
+          ? [...warnings, `Contas com ambiente (estimativa): ${linkedAccounts.size}.`]
+          : warnings,
     };
   }
 

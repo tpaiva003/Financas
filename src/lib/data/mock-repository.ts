@@ -593,8 +593,9 @@ export class MockRepository implements Repository {
       spaceCount: spaces.length,
       expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
       activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
-      spaces: spaces.sort((a, b) => (a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1),
+      spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
       templates: store.importTemplates.map((t) => ({ label: t.label, uses: t.uses })),
+      warnings: [],
     };
   }
 
