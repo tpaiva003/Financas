@@ -611,3 +611,34 @@ indicador do FIRE, mas com dinheiro que entrou mesmo em vez de uma projeção.
 do dinheiro nos dois sentidos, e o nome antigo escondia metade. Foi a alternativa
 a criar uma quinta secção no topo, que era exatamente o que se tinha combinado
 não fazer.
+
+## Email: convite e recuperação de palavra-chave
+
+Até aqui, convidar alguém não avisava ninguém: criava-se a conta e a pessoa não
+sabia. O convite passa a enviar email, e a mensagem de resultado **diz se o
+email saiu mesmo**, com o motivo quando falha, em vez de fingir sucesso.
+
+O envio fala com a API do Resend por HTTP, sem SDK: é um pedido só. E **nunca
+deita a app abaixo**: se a chave faltar ou o envio falhar, regista-se e segue-se.
+Um convite que não chega é chato; uma app que rebenta a meio de criar uma conta
+é pior.
+
+**Recuperação de palavra-chave.** Guarda-se o hash do token, nunca o token: quem
+ler a tabela não entra em conta nenhuma. Validade de uma hora, uso único, e a
+marcação de usado acontece antes de devolver o utilizador, para dois pedidos
+simultâneos não valerem os dois.
+
+O formulário responde **sempre a mesma coisa**, exista a conta ou não. Dizer
+"esse email não está registado" transformava-o numa forma de descobrir quem usa
+a app, o que numa app de finanças partilhadas não é inofensivo.
+
+Os emails usam a identidade da marca, em HTML de tabelas com estilos em linha,
+porque os clientes de email continuam a ignorar CSS moderno. A marca vai em SVG
+embutido, já que imagens externas são bloqueadas por omissão.
+
+## O botão flutuante deixou de mentir
+
+Adiciona sempre uma despesa, mas aparecia no património e nos rendimentos, onde
+parecia que ia acrescentar um bem ou um ordenado. Passa a esconder-se nessas
+páginas, que já têm o seu formulário à mão. Um atalho que faz outra coisa do que
+aparenta é pior do que não existir.

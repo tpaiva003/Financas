@@ -68,6 +68,7 @@ interface Store {
   spendingGoals: SpendingGoal[];
   assets: Asset[];
   income: Income[];
+  resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -92,6 +93,7 @@ function getStore(): Store {
       spendingGoals: [],
       assets: [],
       income: [],
+      resetTokens: [],
     };
   }
   return globalForStore.__financasStore;
@@ -663,6 +665,23 @@ export class MockRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.assets = store.assets.filter((a) => !(a.id === id && a.spaceId === spaceId));
+  }
+
+  async createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<void> {
+    getStore().resetTokens.push({ ...input });
+  }
+
+  async consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | null> {
+    const t = getStore().resetTokens.find(
+      (x) => x.tokenHash === tokenHash && !x.usedAt && x.expiresAt > new Date().toISOString(),
+    );
+    if (!t) return null;
+    t.usedAt = new Date().toISOString();
+    return { userId: t.userId };
   }
 
   async listIncome(spaceId: string): Promise<Income[]> {

@@ -436,6 +436,14 @@ export interface Repository {
 
   // Palavra-chave (login interim).
   getUserPasswordHash(userId: string): Promise<string | null>;
+  /** Guarda o HASH de um token de recuperação, nunca o token em si. */
+  createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<void>;
+  /** Token por usar e dentro da validade. Devolve o utilizador. */
+  consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | null>;
   setUserPasswordHash(userId: string, hash: string): Promise<void>;
   /** Utilizadores adicionais (submitters) com login próprio. */
   getAppUserByEmail(email: string): Promise<AppUser | null>;

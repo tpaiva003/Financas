@@ -1075,6 +1075,43 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("password_reset_tokens").insert({
+      id: `prt_${randomUUID()}`,
+      user_id: input.userId,
+      token_hash: input.tokenHash,
+      expires_at: input.expiresAt,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("password_reset_tokens")
+      .select("id, user_id, expires_at, used_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.used_at || new Date(data.expires_at as string) < new Date()) return null;
+
+    // Marca-se como usado ANTES de devolver: um token só serve uma vez, mesmo
+    // que dois pedidos cheguem ao mesmo tempo.
+    const { error: e2 } = await db
+      .from("password_reset_tokens")
+      .update({ used_at: new Date().toISOString() })
+      .eq("id", data.id as string)
+      .is("used_at", null);
+    if (e2) throw new Error(e2.message);
+
+    return { userId: data.user_id as string };
+  }
+
   async listIncome(spaceId: string): Promise<Income[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

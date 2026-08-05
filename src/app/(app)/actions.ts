@@ -19,6 +19,7 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
+import { sendInvite, emailConfigured } from "@/lib/email/send";
 import {
   toCents,
   validateSplit,
@@ -1230,11 +1231,19 @@ export async function inviteUserAction(
     // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
   }
 
+  // Sem email, a pessoa não sabe que foi convidada, e o convite não serve de
+  // nada. Por isso o resultado diz sempre se a mensagem chegou a sair.
+  const mail = await sendInvite(email, name);
+
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
   return {
     ok: true,
-    message: `${name} já pode entrar com ${email}. Ambiente "${spaceName}" criado, só com ela.`,
+    message: mail.sent
+      ? `${name} recebeu um email com as instruções. Ambiente "${spaceName}" criado, só com ela.`
+      : `Conta criada e ambiente "${spaceName}" pronto, mas o email NÃO foi enviado${
+          emailConfigured() ? ` (${mail.reason})` : " (envio de email por configurar)"
+        }. Diz-lhe tu para entrar em rachar.pt com ${email}.`,
   };
 }
 

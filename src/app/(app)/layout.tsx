@@ -7,6 +7,7 @@ import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SectionNav } from "@/components/SectionNav";
 import { BrandMark } from "@/components/BrandMark";
+import { QuickAdd } from "@/components/QuickAdd";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -58,16 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
 
-      {/* Adicionar despesa, sempre a um toque (REQ-MAN-2). */}
-      <Link
-        href="/despesas/nova"
-        className="group fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-fg text-bg shadow-glow transition hover:scale-105 active:scale-95 sm:bottom-10"
-        aria-label="Adicionar despesa"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </Link>
+      <QuickAdd />
 
       {/* Navegação inferior (mobile). */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
