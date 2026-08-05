@@ -513,3 +513,23 @@ mostre as despesas de um cliente, o dono não aparece dentro do ambiente dele, e
 a consola foi desenhada para gerir, não para espreitar. Uma garantia mais forte
 exigiria cifra do lado do cliente, com o custo de perder classificação, dedup e
 relatórios do lado do servidor.
+
+## Menu: quatro secções, e o topo não cresce
+
+O menu tinha nove entradas e ganhava mais uma por cada funcionalidade nova. Não
+escala: mais funcionalidades não podem significar mais escolhas à frente de quem
+entra. Passa a haver quatro secções, por intenção:
+
+- **Saldo**, quanto devo ou me devem agora
+- **Despesas**, registar e trazer (lista, importar, recorrentes)
+- **Análise**, olhar para trás (resumo, categorias, evolução)
+- **Património**, o que tenho e para onde vou
+
+O que é ocasional (acertos, ambiente) ou administrativo (mensagens, consola) foi
+para um menu "Mais". As páginas de cada secção aparecem por dentro dela, numa
+segunda linha, e a barra do telemóvel usa as mesmas quatro secções, para o mapa
+mental ser um só. Há um teste que falha se voltarem a pendurar-se páginas no
+topo.
+
+Os relatórios eram um rolo interminável. Passam a três vistas, cada uma a
+responder a uma pergunta: como estou, em que gasto, como evoluiu.

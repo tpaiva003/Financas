@@ -5,6 +5,7 @@ import { getRepository } from "@/lib/data";
 import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SectionNav } from "@/components/SectionNav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -45,6 +46,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="mx-auto max-w-3xl animate-fade-in px-5 pb-32 pt-7 sm:pb-14">
+        {/* Páginas da secção atual (ex.: Lista, Importar, Recorrentes). */}
+        <div className="mb-6 empty:hidden">
+          <SectionNav />
+        </div>
         {children}
       </main>
 
@@ -66,10 +71,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
           ) : (
             <>
+              {/* As mesmas secções do topo, para o mapa mental ser um só. */}
               <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
               <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
-              <BottomLink href="/recorrentes" label="Recorr." icon={<IconRepeat />} />
-              <BottomLink href="/relatorios" label="Relatórios" icon={<IconChart />} />
+              <BottomLink href="/relatorios" label="Análise" icon={<IconChart />} />
+              <BottomLink href="/patrimonio" label="Património" icon={<IconWallet />} />
               <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />
             </>
           )}
@@ -109,6 +115,13 @@ function IconRepeat() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
       <path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
+function IconWallet() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M21 14h-4a2 2 0 0 1 0-4h4z" />
     </svg>
   );
 }

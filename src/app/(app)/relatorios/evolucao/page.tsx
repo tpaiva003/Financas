@@ -1,6 +1,6 @@
 import { ReportsContent } from "@/components/ReportsContent";
 
-export const metadata = { title: "Resumo · Rachar" };
+export const metadata = { title: "Evolução · Rachar" };
 export const dynamic = "force-dynamic";
 
 export default function Page({
@@ -8,5 +8,5 @@ export default function Page({
 }: {
   searchParams: { periodo?: string; comparar?: string; media?: string };
 }) {
-  return <ReportsContent view="resumo" searchParams={searchParams} />;
+  return <ReportsContent view="evolucao" searchParams={searchParams} />;
 }
