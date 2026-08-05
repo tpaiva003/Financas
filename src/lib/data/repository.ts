@@ -199,14 +199,20 @@ export interface SpaceSummary {
 }
 
 export interface PlatformStats {
-  accountCount: number;
-  spaceCount: number;
-  expenseCount: number;
+  /** Null quando a contagem não pôde ser lida (ver `warnings`). */
+  accountCount: number | null;
+  spaceCount: number | null;
+  expenseCount: number | null;
   /** Ambientes com movimento nos últimos 30 dias. */
-  activeSpaces: number;
+  activeSpaces: number | null;
   spaces: SpaceSummary[];
   /** Formatos de banco aprendidos e quantas vezes já serviram. */
   templates: { label: string; uses: number }[];
+  /**
+   * O que não foi possível ler, em texto. A consola mostra o resto na mesma:
+   * um número em falta não pode deitar abaixo a página inteira.
+   */
+  warnings: string[];
 }
 
 export interface CreateSpaceInput {
