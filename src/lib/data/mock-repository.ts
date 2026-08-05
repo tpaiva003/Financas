@@ -24,6 +24,7 @@ import type {
   ImportBatch,
   ImportTemplate,
   ImportReminder,
+  SpendingGoal,
   ReminderFrequency,
   ExpenseFilters,
   CreateRecurringInput,
@@ -58,6 +59,7 @@ interface Store {
   importBatches: ImportBatch[];
   importTemplates: ImportTemplate[];
   importReminders: ImportReminder[];
+  spendingGoals: SpendingGoal[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -79,6 +81,7 @@ function getStore(): Store {
       importBatches: [],
       importTemplates: [],
       importReminders: [],
+      spendingGoals: [],
     };
   }
   return globalForStore.__financasStore;
@@ -555,6 +558,39 @@ export class MockRepository implements Repository {
     const store = getStore();
     store.importReminders = store.importReminders.filter(
       (r) => !(r.spaceId === spaceId && r.source === source),
+    );
+  }
+
+  async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
+    return getStore().spendingGoals.filter((g) => g.spaceId === spaceId);
+  }
+
+  async upsertSpendingGoal(input: {
+    spaceId: string;
+    categoryId: string | null;
+    amountCents: number;
+  }): Promise<void> {
+    const store = getStore();
+    const cur = store.spendingGoals.find(
+      (g) => g.spaceId === input.spaceId && g.categoryId === input.categoryId,
+    );
+    if (cur) {
+      cur.amountCents = input.amountCents;
+      return;
+    }
+    store.spendingGoals.push({
+      id: `goal_${randomUUID()}`,
+      spaceId: input.spaceId,
+      categoryId: input.categoryId,
+      amountCents: input.amountCents,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void> {
+    const store = getStore();
+    store.spendingGoals = store.spendingGoals.filter(
+      (g) => !(g.spaceId === spaceId && g.categoryId === categoryId),
     );
   }
 

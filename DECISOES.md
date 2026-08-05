@@ -419,3 +419,23 @@ atrasado / está na hora / em dia / por importar. Cada lote passa a guardar a
 `last_transaction_date`, o que dá a resposta a "desde que dia devo importar?" —
 o dia seguinte à última transação já registada, que é a mesma regra que protege
 contra sobreposição.
+
+## Médias por categoria e metas nos relatórios
+
+Média mensal por categoria e por comerciante, comparada com o mês em análise
+("média do supermercado 340 €, este mês 200 €"). Duas decisões que mudam os
+números:
+
+1. **O mês em análise nunca entra na sua própria média.** Está quase sempre a
+   meio e puxaria a referência para baixo, escondendo justamente o excesso.
+2. **A média divide pelos meses da janela, não pelos meses em que aquela
+   categoria teve movimento.** Senão uma compra esporádica (uma vez em seis
+   meses) aparecia como se fosse um hábito mensal.
+
+A janela é ajustável no relatório (3, 6 ou 12 meses).
+
+**Metas:** tecto mensal por categoria, ou do ambiente inteiro, editável no
+próprio relatório (apagar o valor remove a meta). Estado: abaixo, perto (≥80%)
+ou acima. Ficam em `spending_goals`, com o total a usar `category_id` nulo e um
+índice único sobre `coalesce(category_id, '__total__')` — em Postgres dois NULL
+são distintos e sem isto podiam nascer várias metas totais.

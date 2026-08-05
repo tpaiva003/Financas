@@ -623,6 +623,43 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
   revalidatePath("/despesas");
 }
 
+// ---- Metas de despesa ------------------------------------------------------
+
+/**
+ * Define ou apaga a meta mensal de uma categoria (ou do ambiente inteiro,
+ * quando não vem categoria). Valor vazio apaga a meta.
+ */
+export async function saveSpendingGoalAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+
+  const raw = String(formData.get("amount") ?? "").trim();
+  // "__total__" é a meta do ambiente: na base de dados fica com categoria nula.
+  const categoryValue = String(formData.get("categoryId") ?? "").trim();
+  const categoryId = categoryValue && categoryValue !== "__total__" ? categoryValue : null;
+
+  const repo = getRepository();
+  if (!raw) {
+    await repo.deleteSpendingGoal(ctx.space.id, categoryId).catch(() => {});
+    revalidatePath("/relatorios");
+    return;
+  }
+
+  const cents = parseAmountCents(raw);
+  if (cents === null || Number.isNaN(cents)) return;
+  await repo
+    .upsertSpendingGoal({
+      spaceId: ctx.space.id,
+      categoryId,
+      amountCents: cents,
+      createdBy: ctx.user.id,
+    })
+    .catch(() => {
+      // Tabela por criar: os relatórios continuam a funcionar sem metas.
+    });
+  revalidatePath("/relatorios");
+}
+
 // ---- Importação de extratos (REQ-IMP) -------------------------------------
 
 export interface ImportPreviewState {

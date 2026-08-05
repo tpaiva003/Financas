@@ -17,6 +17,7 @@ import type {
   ImportBatch,
   ImportTemplate,
   ImportReminder,
+  SpendingGoal,
   ReminderFrequency,
   CreateCategoryInput,
   CreateContactInput,
@@ -830,6 +831,65 @@ export class SupabaseRepository implements Repository {
       .delete()
       .eq("space_id", spaceId)
       .eq("source", source);
+    if (error) throw new Error(error.message);
+  }
+
+  async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("spending_goals")
+      .select("*")
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      id: r.id as string,
+      spaceId: r.space_id as string,
+      categoryId: (r.category_id as string | null) ?? null,
+      amountCents: r.amount_cents as number,
+      createdAt: r.created_at as string,
+    }));
+  }
+
+  async upsertSpendingGoal(input: {
+    spaceId: string;
+    categoryId: string | null;
+    amountCents: number;
+    createdBy?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    // O índice único usa coalesce(category_id, '__total__'), que o upsert do
+    // PostgREST não sabe resolver: procuramos primeiro e depois gravamos.
+    let query = db.from("spending_goals").select("id").eq("space_id", input.spaceId);
+    query = input.categoryId
+      ? query.eq("category_id", input.categoryId)
+      : query.is("category_id", null);
+    const { data: existing, error: findError } = await query.maybeSingle();
+    if (findError) throw new Error(findError.message);
+
+    if (existing) {
+      const { error } = await db
+        .from("spending_goals")
+        .update({ amount_cents: input.amountCents, updated_at: new Date().toISOString() })
+        .eq("id", existing.id as string);
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const { error } = await db.from("spending_goals").insert({
+      id: `goal_${randomUUID()}`,
+      space_id: input.spaceId,
+      category_id: input.categoryId,
+      amount_cents: input.amountCents,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    let query = db.from("spending_goals").delete().eq("space_id", spaceId);
+    query = categoryId ? query.eq("category_id", categoryId) : query.is("category_id", null);
+    const { error } = await query;
     if (error) throw new Error(error.message);
   }
 

@@ -142,6 +142,15 @@ export interface ImportReminder {
   createdAt: string;
 }
 
+/** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
+export interface SpendingGoal {
+  id: string;
+  spaceId: string;
+  categoryId: string | null;
+  amountCents: number;
+  createdAt: string;
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -363,6 +372,17 @@ export interface Repository {
     createdBy?: string | null;
   }): Promise<void>;
   deleteImportReminder(spaceId: string, source: string): Promise<void>;
+
+  // Metas de despesa por mês (por categoria ou do ambiente inteiro).
+  listSpendingGoals(spaceId: string): Promise<SpendingGoal[]>;
+  upsertSpendingGoal(input: {
+    spaceId: string;
+    /** Nulo = meta do ambiente inteiro. */
+    categoryId: string | null;
+    amountCents: number;
+    createdBy?: string | null;
+  }): Promise<void>;
+  deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void>;
 
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;

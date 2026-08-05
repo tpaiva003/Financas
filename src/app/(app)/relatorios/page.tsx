@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/reports-service";
 import { formatCents, type BaselineMode, type CategoryDelta, type MonthComparison } from "@/lib/domain";
 import { MonthlyChart } from "@/components/MonthlyChart";
+import { CategoryAverages } from "@/components/CategoryAverages";
 
 export const metadata = { title: "Relatórios · Rachar" };
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function RelatoriosPage({
   searchParams,
 }: {
-  searchParams: { periodo?: string; comparar?: string };
+  searchParams: { periodo?: string; comparar?: string; media?: string };
 }) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
@@ -33,6 +34,12 @@ export default async function RelatoriosPage({
   const comparar = (COMPARISONS.find((c) => c.id === searchParams.comparar)?.id ??
     "previous") as BaselineMode;
 
+  // Janela das médias por categoria: quantos meses anteriores entram na conta.
+  const AVERAGE_WINDOWS = [3, 6, 12] as const;
+  const media = AVERAGE_WINDOWS.includes(Number(searchParams.media) as 3 | 6 | 12)
+    ? (Number(searchParams.media) as 3 | 6 | 12)
+    : 3;
+
   const report = await getSpaceReport(
     ctx.space.id,
     ctx.viewerMemberId,
@@ -40,15 +47,18 @@ export default async function RelatoriosPage({
     categories,
     periodo,
     comparar,
+    media,
   );
 
-  /** Mantém o período ao trocar de comparação e vice-versa. */
-  const href = (patch: { periodo?: string; comparar?: string }) => {
+  /** Mantém as outras escolhas ao trocar de período, comparação ou média. */
+  const href = (patch: { periodo?: string; comparar?: string; media?: number }) => {
     const p = new URLSearchParams();
     const per = patch.periodo ?? periodo;
     const cmp = patch.comparar ?? comparar;
+    const med = patch.media ?? media;
     if (per !== "12m") p.set("periodo", per);
     if (cmp !== "previous") p.set("comparar", cmp);
+    if (med !== 3) p.set("media", String(med));
     return p.toString() ? `/relatorios?${p}` : "/relatorios";
   };
 
@@ -150,6 +160,48 @@ export default async function RelatoriosPage({
           {report.comparison.currentMonth ? (
             <MonthOverMonth c={report.comparison} />
           ) : null}
+
+          {/* Média mensal por categoria e metas ajustáveis. */}
+          <section>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="eyebrow mb-0">Médias e metas por categoria</h2>
+              <div className="flex items-center gap-1 rounded-full border border-hair p-1 text-xs">
+                {AVERAGE_WINDOWS.map((w) => (
+                  <Link
+                    key={w}
+                    href={href({ media: w })}
+                    className={`rounded-full px-3 py-1 transition-colors ${
+                      w === media ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {w} meses
+                  </Link>
+                ))}
+              </div>
+            </div>
+            <CategoryAverages
+              averages={report.categoryAverages}
+              monthLabel={report.comparison.currentLabel}
+              editable
+            />
+          </section>
+
+          {report.merchantAverages.rows.length > 0 ? (
+            <section>
+              <h2 className="eyebrow mb-3">Médias por comerciante</h2>
+              <CategoryAverages
+                averages={{
+                  ...report.merchantAverages,
+                  // Só os maiores: a lista completa seria ruído.
+                  rows: report.merchantAverages.rows.slice(0, 8),
+                  total: null,
+                }}
+                monthLabel={report.comparison.currentLabel}
+                editable={false}
+              />
+            </section>
+          ) : null}
+
           <Section title="Por categoria">
             <BarList slices={report.byCategory} />
           </Section>
