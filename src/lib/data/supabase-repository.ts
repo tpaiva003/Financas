@@ -1075,6 +1075,43 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async unlinkUserFromMembers(userId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("members")
+      .update({ linked_user_id: null })
+      .eq("linked_user_id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAccountAndSoleSpaces(userId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+
+    const { data: mine, error } = await db
+      .from("members")
+      .select("space_id")
+      .eq("linked_user_id", userId);
+    if (error) throw new Error(error.message);
+
+    // Só se apagam ambientes onde esta pessoa estava sozinha: os partilhados
+    // pertencem também a quem lá ficou.
+    const spaceIds = [...new Set((mine ?? []).map((m: any) => m.space_id as string))];
+    for (const spaceId of spaceIds) {
+      const { count } = await db
+        .from("members")
+        .select("id", { count: "exact", head: true })
+        .eq("space_id", spaceId);
+      if ((count ?? 0) <= 1) {
+        // As tabelas dependentes caem por "on delete cascade".
+        await db.from("spaces").delete().eq("id", spaceId);
+      }
+    }
+
+    await this.unlinkUserFromMembers(userId);
+    await db.from("password_reset_tokens").delete().eq("user_id", userId);
+    await db.from("app_users").delete().eq("id", userId);
+  }
+
   async createPasswordResetToken(input: {
     userId: string;
     tokenHash: string;

@@ -5,6 +5,7 @@ import { isAdmin, householdUsers } from "@/lib/users";
 import { getRepository } from "@/lib/data";
 import type { SpaceSummary } from "@/lib/data";
 import { InviteUserForm } from "@/components/InviteUserForm";
+import { AccountRow } from "@/components/AccountRow";
 
 export const metadata = { title: "Plataforma · Rachar" };
 export const dynamic = "force-dynamic";
@@ -44,6 +45,9 @@ export default async function PlataformaPage() {
     );
   }
 
+  const accounts = await getRepository()
+    .listAppUsers()
+    .catch(() => []);
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
 
   return (
@@ -52,7 +56,7 @@ export default async function PlataformaPage() {
         <p className="eyebrow">Gestão</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Plataforma</h1>
         <p className="mt-1 text-sm text-fg-muted">
-          A saúde do serviço num relance. Cada ambiente pertence a quem lá está —
+          A saúde do serviço num relance. Cada ambiente pertence a quem lá está,
           aqui só se veem contagens e datas, nunca despesas, valores ou saldos.
         </p>
       </div>
@@ -93,6 +97,25 @@ export default async function PlataformaPage() {
           email indicado e define a palavra-chave na primeira entrada.
         </p>
         <InviteUserForm />
+      </section>
+
+      <section>
+        <h2 className="eyebrow mb-3">Contas com acesso</h2>
+        {accounts.length === 0 ? (
+          <p className="card p-8 text-center text-sm text-fg-muted">
+            Ainda não convidaste ninguém.
+          </p>
+        ) : (
+          <ul className="card divide-y divide-hair2 p-0">
+            {accounts.map((a) => (
+              <AccountRow key={a.id} account={a} />
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-fg-faint">
+          As contas base (as tuas e da Clara) vêm das variáveis de ambiente e não
+          se removem aqui.
+        </p>
       </section>
 
       <section>

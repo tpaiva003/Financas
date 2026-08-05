@@ -58,7 +58,8 @@ export default async function RendimentosPage() {
         {rate.ratePct === null ? (
           <>
             <p className="mt-2 font-display text-4xl font-semibold tracking-tight text-fg-faint">
-              —
+              {/* Símbolo de campo vazio, não pontuação. */}
+              &mdash;
             </p>
             <p className="mt-1 text-sm text-fg-muted">
               Regista o que recebeste este mês para saber quanto ficou.

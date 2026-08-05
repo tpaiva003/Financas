@@ -1537,3 +1537,54 @@ export async function deleteIncomeAction(formData: FormData): Promise<void> {
   revalidatePath("/rendimentos");
   revalidatePath("/relatorios");
 }
+
+// ---- Remover contas da plataforma -----------------------------------------
+
+/**
+ * Retira o acesso de alguém à plataforma.
+ *
+ * NÃO apaga o histórico. Os participantes que estavam ligados a esta conta
+ * ficam sem ligação, o que significa que as despesas continuam a contar para o
+ * saldo de quem partilha o ambiente. Apagar as despesas de uma pessoa
+ * desequilibrava contas alheias que já podem ter sido acertadas, e isso não é
+ * reversível.
+ *
+ * Para apagar mesmo os dados (pedido de RGPD), há `deleteAccountDataAction`.
+ */
+export async function removeAccountAccessAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  if (!userId) return;
+  // O dono da plataforma não se pode remover a si próprio por engano.
+  if (userId === user.id) return;
+
+  const repo = getRepository();
+  await repo.unlinkUserFromMembers(userId).catch(() => {});
+  await repo.deleteAppUser(userId).catch(() => {});
+
+  revalidatePath("/plataforma");
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Apaga a conta E os ambientes onde a pessoa estava sozinha.
+ *
+ * Ambientes partilhados ficam de pé: as contas das outras pessoas não podem
+ * desaparecer porque uma delas saiu.
+ */
+export async function deleteAccountDataAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+  if (String(formData.get("confirmar") ?? "") !== "apagar") return;
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  if (!userId || userId === user.id) return;
+
+  const repo = getRepository();
+  await repo.deleteAccountAndSoleSpaces(userId).catch(() => {});
+
+  revalidatePath("/plataforma");
+  revalidatePath("/", "layout");
+}

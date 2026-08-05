@@ -83,7 +83,6 @@ export function renderEmail(content: EmailContent): string {
         Contas à moda do Porto
       </p>
       <p style="max-width:520px;margin:8px auto 0;font-size:11px;line-height:1.6;color:${FAINT};text-align:center">
-        Desperta Dedicação Unipessoal Lda. ·
         <a href="https://rachar.pt/privacidade" style="color:${FAINT}">Privacidade</a> ·
         <a href="https://rachar.pt/termos" style="color:${FAINT}">Termos</a>
       </p>

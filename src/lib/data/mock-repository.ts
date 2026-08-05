@@ -667,6 +667,25 @@ export class MockRepository implements Repository {
     store.assets = store.assets.filter((a) => !(a.id === id && a.spaceId === spaceId));
   }
 
+  async unlinkUserFromMembers(userId: string): Promise<void> {
+    for (const m of getStore().members) {
+      if (m.linkedUserId === userId) m.linkedUserId = null;
+    }
+  }
+
+  async deleteAccountAndSoleSpaces(userId: string): Promise<void> {
+    const store = getStore();
+    const mine = store.members.filter((m) => m.linkedUserId === userId).map((m) => m.spaceId);
+    const soleSpaces = [...new Set(mine)].filter(
+      (sid) => store.members.filter((m) => m.spaceId === sid).length === 1,
+    );
+    store.expenses = store.expenses.filter((e) => !soleSpaces.includes(e.spaceId ?? ""));
+    store.members = store.members.filter((m) => !soleSpaces.includes(m.spaceId));
+    store.spaces = store.spaces.filter((s) => !soleSpaces.includes(s.id));
+    await this.unlinkUserFromMembers(userId);
+    store.appUsers = store.appUsers.filter((u) => u.id !== userId);
+  }
+
   async createPasswordResetToken(input: {
     userId: string;
     tokenHash: string;

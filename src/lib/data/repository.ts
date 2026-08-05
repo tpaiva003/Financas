@@ -449,6 +449,10 @@ export interface Repository {
   getAppUserByEmail(email: string): Promise<AppUser | null>;
   createAppUser(input: AppUser): Promise<void>;
   deleteAppUser(id: string): Promise<void>;
+  /** Desliga a conta dos participantes, sem apagar o histórico. */
+  unlinkUserFromMembers(userId: string): Promise<void>;
+  /** Apaga a conta e os ambientes onde era a única pessoa. */
+  deleteAccountAndSoleSpaces(userId: string): Promise<void>;
   /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
   setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
   // Templates de bancos (estrutura confirmada, reutilizável).
