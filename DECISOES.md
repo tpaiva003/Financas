@@ -533,3 +533,28 @@ topo.
 
 Os relatórios eram um rolo interminável. Passam a três vistas, cada uma a
 responder a uma pergunta: como estou, em que gasto, como evoluiu.
+
+## Comerciantes: marcas conhecidas antes de adivinhar
+
+O agrupamento por comerciante usava as duas primeiras palavras da descrição, o
+que falha no caso mais comum: "CONTINENTE MODELO MATOSINHOS" e "CONT BOM DIA
+PORTO" são o mesmo sítio e contavam separados.
+
+A ordem passa a ser: **apelido confirmado pelo utilizador**, depois **marca
+conhecida** (lista de cadeias portuguesas com as suas variantes), e só depois as
+primeiras palavras. Quanto mais humano o sinal, mais peso tem.
+
+Para o que sobra, `suggestMerges` propõe juntas prováveis (prefixo, quase igual,
+primeira palavra específica) que o utilizador confirma. **Nunca junta sozinha**:
+um agrupamento errado estraga relatórios de forma difícil de detetar, por isso o
+custo de perguntar é muito menor do que o de adivinhar mal. A confirmação vira
+apelido e vale daí em diante.
+
+A IA fica como último recurso, depois destes três passos, para o que nenhum
+apanhar.
+
+## Domínio rachar.pt
+
+`metadataBase` passa a apontar para o domínio, para os URLs partilhados ficarem
+absolutos. O domínio real vive em `NEXT_PUBLIC_SITE_URL` e `AUTH_URL`, para o
+ambiente local continuar a funcionar sem tocar em código.

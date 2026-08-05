@@ -49,7 +49,16 @@ export const SECTIONS: NavSection[] = [
       { href: "/relatorios/evolucao", label: "Evolução" },
     ],
   },
-  { href: "/patrimonio", label: "Património" },
+  {
+    href: "/patrimonio",
+    label: "Património",
+    children: [
+      { href: "/patrimonio", label: "Resumo" },
+      { href: "/patrimonio/ativos", label: "Ativos" },
+      { href: "/patrimonio/dividas", label: "Dívidas" },
+      { href: "/patrimonio/fire", label: "FIRE" },
+    ],
+  },
 ];
 
 /** Páginas ocasionais ou de administração, fora do topo. */

@@ -12,3 +12,4 @@ export * from "./averages";
 export * from "./tenancy";
 export * from "./networth";
 export * from "./fire";
+export * from "./merchants";

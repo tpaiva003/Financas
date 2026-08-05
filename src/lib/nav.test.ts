@@ -36,6 +36,18 @@ describe("Análise", () => {
   });
 });
 
+describe("Património", () => {
+  it("separa as perguntas em vistas", () => {
+    const pat = SECTIONS.find((s) => s.label === "Património")!;
+    expect(pat.children?.map((c) => c.label)).toEqual([
+      "Resumo",
+      "Ativos",
+      "Dívidas",
+      "FIRE",
+    ]);
+  });
+});
+
 describe("isSectionActive", () => {
   it("acende a secção da própria página", () => {
     const saldo = SECTIONS[0]!;

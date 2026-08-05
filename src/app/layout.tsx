@@ -16,7 +16,11 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
+/** Domínio de produção. Serve de base a todos os URLs absolutos. */
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://rachar.pt";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Rachar · Contas à Moda do Porto",
   description: "Rachar, dividir contas partilhadas sem dramas. Nascido no Porto.",
   manifest: "/manifest.webmanifest",
