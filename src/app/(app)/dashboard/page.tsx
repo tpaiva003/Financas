@@ -4,6 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
+import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 
@@ -38,6 +39,11 @@ export default async function DashboardPage() {
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
 
+  // Lembretes de importação: o aviso visual de que há extratos por trazer.
+  const dueImports = pendingReminders(
+    await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
+  ).filter((r) => r.status.state !== "never");
+
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
@@ -66,6 +72,30 @@ export default async function DashboardPage() {
             <div>
               <p className="text-sm font-medium">{pendingApprovals.length} despesa(s) por aprovar</p>
               <p className="text-xs text-fg-muted">Submetidas que aguardam a tua aprovação.</p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
+      ) : null}
+
+      {dueImports.length > 0 ? (
+        <Link
+          href="/importar"
+          className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-panel2 text-fg">↓</span>
+            <div>
+              <p className="text-sm font-medium">
+                {dueImports.length === 1
+                  ? dueImports[0]!.status.message
+                  : `${dueImports.length} extratos por importar`}
+              </p>
+              <p className="text-xs text-fg-muted">
+                {dueImports[0]!.status.fromDate
+                  ? `Importar a partir de ${new Date(dueImports[0]!.status.fromDate!).toLocaleDateString("pt-PT")} · ${dueImports[0]!.spaceName}`
+                  : `Ambiente: ${dueImports[0]!.spaceName}`}
+              </p>
             </div>
           </div>
           <span className="text-fg-faint">→</span>

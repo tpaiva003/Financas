@@ -66,6 +66,40 @@ export interface ImportPreview {
   rows: ImportPreviewRow[];
   /** Descrição do mapeamento detetado, para o utilizador confirmar. */
   mappingLabel: string;
+  /**
+   * Impressão digital da estrutura do ficheiro (nomes das colunas). É com isto
+   * que reconhecemos o mesmo banco da próxima vez — não guarda valores.
+   */
+  fingerprint: string | null;
+  /** Nomes das colunas do cabeçalho, para mostrar ao guardar o template. */
+  header: string[];
+  /** Mapeamento usado (detetado, manual ou vindo de template guardado). */
+  mapping: Record<string, number | boolean> | null;
+  /** Nome do template guardado que reconheceu este ficheiro, se houver. */
+  knownTemplate: string | null;
+  /** O mapeamento veio do utilizador: vale a pena propor guardá-lo. */
+  manualMapping: boolean;
+}
+
+/**
+ * Ficheiro que não foi reconhecido. Devolvemos as primeiras linhas para o
+ * utilizador indicar as colunas à mão — é assim que a app aprende bancos novos,
+ * sem precisar de nada mais do que os nomes das colunas.
+ */
+export interface ImportUnknownSample {
+  fileName: string;
+  rows: string[][];
+}
+
+/** Mapeamento indicado à mão pelo utilizador na UI. */
+export interface ManualMapping {
+  headerRow: number;
+  dateCol: number;
+  descriptionCol: number;
+  amountCol: number;
+  debitCol: number;
+  creditCol: number;
+  invertSign: boolean;
 }
 
 /** Linha escolhida pelo utilizador para importar. */
@@ -104,6 +138,17 @@ export interface ImportCommitPayload {
   percentA?: number;
   soleMemberId?: string;
   rows: ImportCommitRow[];
+  /**
+   * Estrutura a guardar como template quando o utilizador confirma que os dados
+   * saíram certos. Fica disponível para toda a gente: o próximo ficheiro com as
+   * mesmas colunas é reconhecido logo. Guarda só nomes de colunas e índices.
+   */
+  saveTemplate?: {
+    fingerprint: string;
+    label: string;
+    header: string[];
+    mapping: Record<string, number | boolean>;
+  } | null;
 }
 
 export const IMPORT_SOURCES = [

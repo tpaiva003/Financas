@@ -15,6 +15,9 @@ import type {
   ContactMessage,
   CreateImportBatchInput,
   ImportBatch,
+  ImportTemplate,
+  ImportReminder,
+  ReminderFrequency,
   CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
@@ -32,9 +35,23 @@ import type {
 } from "./repository";
 import { randomUUID } from "node:crypto";
 
+function rowToTemplate(r: any): ImportTemplate {
+  return {
+    id: r.id,
+    fingerprint: r.fingerprint,
+    label: r.label,
+    header: Array.isArray(r.header) ? r.header : [],
+    mapping: r.mapping ?? {},
+    uses: r.uses ?? 0,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToImportBatch(r: any): ImportBatch {
   return {
     id: r.id,
+    lastTransactionDate: r.last_transaction_date ?? null,
     spaceId: r.space_id,
     source: r.source,
     fileName: r.file_name,
@@ -717,6 +734,105 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
   }
 
+  async findImportTemplate(fingerprint: string): Promise<ImportTemplate | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_templates")
+      .select("*")
+      .eq("fingerprint", fingerprint)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTemplate(data) : null;
+  }
+
+  async saveImportTemplate(
+    input: Omit<ImportTemplate, "id" | "uses" | "createdAt">,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const existing = await this.findImportTemplate(input.fingerprint);
+    if (existing) {
+      const { error } = await db
+        .from("import_templates")
+        .update({ uses: existing.uses + 1, label: input.label, mapping: input.mapping })
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+      return;
+    }
+    const { error } = await db.from("import_templates").insert({
+      id: `tpl_${randomUUID()}`,
+      fingerprint: input.fingerprint,
+      label: input.label,
+      header: input.header,
+      mapping: input.mapping,
+      uses: 1,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async listImportTemplates(): Promise<ImportTemplate[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_templates")
+      .select("*")
+      .order("uses", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToTemplate);
+  }
+
+  async listImportReminders(spaceId: string): Promise<ImportReminder[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("import_reminders")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("source");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      spaceId: r.space_id,
+      source: r.source,
+      label: r.label,
+      frequency: r.frequency as ReminderFrequency,
+      active: r.active,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async upsertImportReminder(input: {
+    spaceId: string;
+    source: string;
+    label?: string | null;
+    frequency: ReminderFrequency;
+    active: boolean;
+    createdBy?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("import_reminders").upsert(
+      {
+        id: `rem_${randomUUID()}`,
+        space_id: input.spaceId,
+        source: input.source,
+        label: input.label ?? null,
+        frequency: input.frequency,
+        active: input.active,
+        created_by: input.createdBy ?? null,
+      },
+      { onConflict: "space_id,source" },
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteImportReminder(spaceId: string, source: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("import_reminders")
+      .delete()
+      .eq("space_id", spaceId)
+      .eq("source", source);
+    if (error) throw new Error(error.message);
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
@@ -740,6 +856,9 @@ export class SupabaseRepository implements Repository {
         row_count: input.rowCount,
         imported_count: input.importedCount,
         duplicate_count: input.duplicateCount,
+        ...(input.lastTransactionDate
+          ? { last_transaction_date: input.lastTransactionDate }
+          : {}),
         created_by: input.createdBy ?? null,
       })
       .select("*")

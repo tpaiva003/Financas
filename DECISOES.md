@@ -386,3 +386,36 @@ não há fallback para outro participante.
 - **Limite honesto:** isto é isolamento ao nível da aplicação. Quem administra o
   projeto Supabase continua a poder ler a base de dados; para garantias mais
   fortes seria preciso outro projeto/instância por cliente.
+
+## Bancos novos: mapeamento manual + templates partilhados (sem IA)
+
+**Decisão:** a app aprende bancos novos com o utilizador a apontar as colunas,
+não com análise automática do documento.
+
+Quando não reconhecemos um ficheiro, em vez de erro mostramos as primeiras 12
+linhas com as colunas numeradas e perguntamos onde estão a data, a descrição e o
+valor (ou débito/crédito). O utilizador confirma na pré-visualização que os
+dados saíram certos e só então guardamos o **template**: uma impressão digital
+dos nomes das colunas (hash FNV-1a) + o mapeamento. O ficheiro seguinte com a
+mesma estrutura é reconhecido automaticamente, para qualquer utilizador.
+
+**Porquê sem IA:** o problema não é de compreensão de linguagem, é estrutural —
+"qual das colunas é a data". Quem tem o extrato à frente responde em 10 segundos
+e com 100% de fiabilidade; um modelo custaria dinheiro por ficheiro, exigiria
+enviar dados bancários para fora e continuaria a precisar de confirmação humana.
+O template guardado tem prioridade sobre a deteção automática, precisamente
+porque foi validado por uma pessoa.
+
+**Privacidade:** o template guarda só nomes de colunas e índices. Nunca
+movimentos, montantes ou saldos. O mesmo vale para o "reportar banco em falta":
+segue o nome do banco e o texto do cabeçalho que o utilizador vê no ecrã e pode
+apagar antes de enviar.
+
+## Lembretes de importação
+
+Por ambiente e banco, com periodicidade semanal/mensal/trimestral. O estado sai
+de `domain/import-reminders.ts` (puro, testado) a partir da data do último lote:
+atrasado / está na hora / em dia / por importar. Cada lote passa a guardar a
+`last_transaction_date`, o que dá a resposta a "desde que dia devo importar?" —
+o dia seguinte à última transação já registada, que é a mesma regra que protege
+contra sobreposição.

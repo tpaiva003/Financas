@@ -94,6 +94,7 @@ export interface UpdateRecurringInput {
 
 export interface ImportBatch {
   id: string;
+  lastTransactionDate?: string | null;
   spaceId: string;
   source: string;
   fileName?: string | null;
@@ -105,6 +106,8 @@ export interface ImportBatch {
 }
 
 export interface CreateImportBatchInput {
+  /** Data da transação mais recente do lote: base para o próximo import. */
+  lastTransactionDate?: string | null;
   spaceId: string;
   source: string;
   fileName?: string | null;
@@ -112,6 +115,31 @@ export interface CreateImportBatchInput {
   importedCount: number;
   duplicateCount: number;
   createdBy?: string | null;
+}
+
+/** Estrutura de banco já confirmada por alguém, reutilizável por todos. */
+export interface ImportTemplate {
+  id: string;
+  fingerprint: string;
+  label: string;
+  header: string[];
+  /** ColumnMapping serializado. */
+  mapping: Record<string, number | boolean>;
+  uses: number;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export type ReminderFrequency = "weekly" | "monthly" | "quarterly";
+
+export interface ImportReminder {
+  id: string;
+  spaceId: string;
+  source: string;
+  label?: string | null;
+  frequency: ReminderFrequency;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface Space {
@@ -319,6 +347,23 @@ export interface Repository {
   deleteAppUser(id: string): Promise<void>;
   /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
   setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
+  // Templates de bancos (estrutura confirmada, reutilizável).
+  findImportTemplate(fingerprint: string): Promise<ImportTemplate | null>;
+  saveImportTemplate(input: Omit<ImportTemplate, "id" | "uses" | "createdAt">): Promise<void>;
+  listImportTemplates(): Promise<ImportTemplate[]>;
+
+  // Lembretes de importação por ambiente e banco.
+  listImportReminders(spaceId: string): Promise<ImportReminder[]>;
+  upsertImportReminder(input: {
+    spaceId: string;
+    source: string;
+    label?: string | null;
+    frequency: ReminderFrequency;
+    active: boolean;
+    createdBy?: string | null;
+  }): Promise<void>;
+  deleteImportReminder(spaceId: string, source: string): Promise<void>;
+
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;
 

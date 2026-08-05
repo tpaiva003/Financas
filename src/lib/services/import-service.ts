@@ -14,7 +14,12 @@
 import { getRepository } from "@/lib/data";
 import { classify, stableUid, suggestReconciliation } from "@/lib/domain";
 import type { Split, NormalizedTransaction } from "@/lib/domain";
-import { detectMapping, rowsToTransactions } from "@/lib/import/columns";
+import {
+  detectMapping,
+  rowsToTransactions,
+  headerFingerprint,
+  headerColumns,
+} from "@/lib/import/columns";
 import type { ColumnMapping, Grid } from "@/lib/import/columns";
 import { readUploadToGrid, MAX_IMPORT_BYTES } from "@/lib/import/read-file";
 import type {
@@ -22,10 +27,22 @@ import type {
   ImportPreview,
   ImportPreviewRow,
   ImportSpaceInfo,
+  ImportUnknownSample,
+  ManualMapping,
 } from "@/lib/import/types";
 import type { TargetSpace } from "@/lib/space";
 
-export class ImportError extends Error {}
+/**
+ * Erro de importação. Quando o ficheiro não é reconhecido levamos connosco as
+ * primeiras linhas (`sample`) para o utilizador poder indicar as colunas à mão.
+ */
+export class ImportError extends Error {
+  sample?: ImportUnknownSample | null;
+  constructor(message: string, sample?: ImportUnknownSample | null) {
+    super(message);
+    this.sample = sample ?? null;
+  }
+}
 
 /** Lê o ficheiro e devolve a pré-visualização já deduplicada e classificada. */
 export async function buildImportPreview(params: {
@@ -37,8 +54,13 @@ export async function buildImportPreview(params: {
   targets: TargetSpace[];
   /** Ambiente sugerido por omissão para as linhas. */
   defaultSpaceId: string;
+  /**
+   * Colunas indicadas à mão pelo utilizador, quando a deteção falhou. Ganham a
+   * todo o resto: é o utilizador a olhar para o ficheiro.
+   */
+  manualMapping?: ManualMapping | null;
 }): Promise<ImportPreview> {
-  const { files, source, account, targets, defaultSpaceId } = params;
+  const { files, source, account, targets, defaultSpaceId, manualMapping } = params;
   if (targets.length === 0) throw new ImportError("Não tens ambientes onde importar.");
 
   const usable = files.filter((f) => f && f.size > 0);
@@ -50,6 +72,11 @@ export async function buildImportPreview(params: {
   const transactions: NormalizedTransaction[] = [];
   const failed: string[] = [];
   let mappingLabel = "";
+  let fingerprint: string | null = null;
+  let header: string[] = [];
+  let confirmedMapping: ColumnMapping | null = null;
+  let templateLabel: string | null = null;
+  let unknownSample: { fileName: string; rows: string[][] } | null = null;
 
   for (const file of usable) {
     let grid;
@@ -59,10 +86,47 @@ export async function buildImportPreview(params: {
       failed.push(file.name);
       continue;
     }
-    const mapping = grid.length > 0 ? detectMapping(grid) : null;
+    let mapping: ColumnMapping | null = null;
+
+    if (manualMapping) {
+      // O utilizador já disse quais são as colunas: não adivinhamos nada.
+      mapping = { ...manualMapping };
+    } else if (grid.length > 0) {
+      // Se já alguém confirmou esta estrutura, o mapeamento guardado tem
+      // prioridade: foi validado por uma pessoa, a deteção é só um palpite.
+      for (let r = 0; r < Math.min(grid.length, 25); r++) {
+        const fp = headerFingerprint(grid, r);
+        if (!fp) continue;
+        const tpl = await getRepository()
+          .findImportTemplate(fp)
+          .catch(() => null);
+        if (tpl) {
+          mapping = tpl.mapping as unknown as ColumnMapping;
+          templateLabel = tpl.label;
+          break;
+        }
+      }
+      mapping = mapping ?? detectMapping(grid);
+    }
+
     if (!mapping) {
       failed.push(file.name);
+      // Guardamos a estrutura para o utilizador poder mapear à mão.
+      if (grid.length > 0 && !unknownSample) {
+        unknownSample = {
+          fileName: file.name,
+          rows: grid.slice(0, 12).map((r) => r.map((c) => (c ?? "").toString())),
+        };
+      }
       continue;
+    }
+
+    // Estrutura reconhecida: guardamos a impressão digital para poder gravar
+    // como template quando o utilizador confirmar que os dados estão certos.
+    if (!fingerprint) {
+      fingerprint = headerFingerprint(grid, mapping.headerRow);
+      header = headerColumns(grid, mapping.headerRow);
+      confirmedMapping = mapping;
     }
 
     const txs = rowsToTransactions(grid, mapping, source, account ?? null);
@@ -75,10 +139,13 @@ export async function buildImportPreview(params: {
   }
 
   if (transactions.length === 0) {
+    // Em vez de um beco sem saída, devolvemos a estrutura para o utilizador
+    // mapear à mão — é assim que a app aprende bancos novos.
     throw new ImportError(
-      usable.length === 1
-        ? "Não reconheci as colunas do ficheiro. Precisa de ter data, descrição e valor."
-        : "Não consegui ler nenhum dos ficheiros.",
+      manualMapping
+        ? "Com essas colunas não consegui ler nenhum movimento. Confere a linha do cabeçalho e as colunas escolhidas."
+        : "Não reconheci as colunas deste ficheiro. Indica quais são, em baixo, para eu aprender.",
+      unknownSample,
     );
   }
 
@@ -159,7 +226,14 @@ export async function buildImportPreview(params: {
     failedFiles: failed,
     rowCount: transactions.length,
     rows,
-    mappingLabel,
+    mappingLabel: templateLabel ? `${templateLabel} · ${mappingLabel}` : mappingLabel,
+    fingerprint,
+    header,
+    mapping: confirmedMapping ? { ...confirmedMapping } : null,
+    knownTemplate: templateLabel,
+    // Só vale a pena propor guardar um template se foi o utilizador a mapear e
+    // ainda não conhecíamos esta estrutura.
+    manualMapping: Boolean(manualMapping) && !templateLabel,
   };
 }
 
@@ -203,6 +277,25 @@ export async function commitImport(params: {
   const payerUserId = defaultTarget.fullMembers.find((m) => m.id === payload.payerId)?.linkedUserId;
 
   const repo = getRepository();
+
+  // O utilizador confirmou que os dados saíram certos: guardamos a estrutura
+  // para o próximo ficheiro deste banco ser reconhecido logo — por qualquer
+  // pessoa. Só nomes de colunas e índices, nunca valores nem montantes.
+  const tpl = payload.saveTemplate;
+  if (tpl?.fingerprint && tpl.label.trim()) {
+    await repo
+      .saveImportTemplate({
+        fingerprint: tpl.fingerprint,
+        label: tpl.label.trim().slice(0, 60),
+        header: tpl.header,
+        mapping: tpl.mapping,
+        createdBy: userId,
+      })
+      .catch(() => {
+        // Guardar o template é um extra: nunca deve impedir a importação.
+      });
+  }
+
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const id = byId.has(row.spaceId) ? row.spaceId : defaultTarget.space.id;
@@ -230,6 +323,13 @@ export async function commitImport(params: {
     // O lote permite anular a importação. Se a tabela ainda não existir
     // (migração por aplicar), importamos na mesma: o dedup por UID continua a
     // proteger contra duplicados; só se perde o "anular lote".
+    // Data da transação mais recente: é daqui que sai o "importar desde" da
+    // próxima vez, sem ter de varrer o histórico todo.
+    const lastTransactionDate = spaceRows.reduce<string | null>(
+      (max, r) => (max === null || r.transactionDate > max ? r.transactionDate : max),
+      null,
+    );
+
     let batchId: string | null = null;
     try {
       const batch = await repo.createImportBatch({
@@ -239,6 +339,7 @@ export async function commitImport(params: {
         rowCount: payload.rowCount,
         importedCount: spaceRows.length,
         duplicateCount: payload.duplicateCount,
+        lastTransactionDate,
         createdBy: userId,
       });
       batchId = batch.id;
