@@ -112,3 +112,58 @@ describe("buildMonthComparison", () => {
     expect(r.movingAvgCents).toBe(1200);
   });
 });
+
+describe("buildMonthComparison — modos de comparação", () => {
+  // Três meses de dados: mai/25 (homólogo de mai/26), mar/26, abr/26, mai/26.
+  const cats = [{ id: "casa", name: "Casa", color: "#111" }];
+  const expenses = [
+    { amountCents: 10000, transactionDate: "2025-05-10", categoryId: "casa" },
+    { amountCents: 20000, transactionDate: "2026-03-10", categoryId: "casa" },
+    { amountCents: 40000, transactionDate: "2026-04-10", categoryId: "casa" },
+    { amountCents: 30000, transactionDate: "2026-05-10", categoryId: "casa" },
+  ];
+
+  it("por omissão compara com o mês anterior", () => {
+    const c = buildMonthComparison(expenses, cats);
+    expect(c.currentMonth).toBe("2026-05");
+    expect(c.baseline).toBe("previous");
+    expect(c.baselineTotalCents).toBe(40000); // abril
+    expect(c.baselineDeltaCents).toBe(-10000);
+  });
+
+  it("compara com a média dos meses anteriores, excluindo o próprio", () => {
+    const c = buildMonthComparison(expenses, cats, 3, "average");
+    // Anteriores a mai/26 com dados: mai/25, mar/26, abr/26 -> (100+200+400)/3
+    expect(c.baselineTotalCents).toBe(Math.round((10000 + 20000 + 40000) / 3));
+    expect(c.baselineLabel).toContain("média");
+  });
+
+  it("compara com o mês homólogo do ano anterior", () => {
+    const c = buildMonthComparison(expenses, cats, 3, "yoy");
+    expect(c.sameMonthLastYear).toBe("2025-05");
+    expect(c.baselineTotalCents).toBe(10000);
+    expect(c.baselineDeltaCents).toBe(20000);
+    expect(c.baselineDeltaPct).toBe(200);
+  });
+
+  it("sem homólogo, a referência é zero e fica assinalado", () => {
+    const soRecente = [{ amountCents: 5000, transactionDate: "2026-05-10", categoryId: "casa" }];
+    const c = buildMonthComparison(soRecente, cats, 3, "yoy");
+    expect(c.sameMonthLastYear).toBeNull();
+    expect(c.baselineTotalCents).toBe(0);
+    expect(c.baselineDeltaPct).toBeNull();
+  });
+
+  it("as categorias comparam contra a referência escolhida", () => {
+    const c = buildMonthComparison(expenses, cats, 3, "yoy");
+    const casa = c.categories.find((r) => r.key === "casa")!;
+    expect(casa.currentCents).toBe(30000);
+    expect(casa.previousCents).toBe(10000); // mai/25, não abril
+  });
+
+  it("devolve a série mensal ordenada para o gráfico", () => {
+    const c = buildMonthComparison(expenses, cats);
+    expect(c.series.map((p) => p.ym)).toEqual(["2025-05", "2026-03", "2026-04", "2026-05"]);
+    expect(c.series.at(-1)!.totalCents).toBe(30000);
+  });
+});

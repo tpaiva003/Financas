@@ -5,7 +5,12 @@
 
 import { getRepository } from "@/lib/data";
 import type { Member, Category } from "@/lib/data";
-import { buildMonthComparison, computeShares, type MonthComparison } from "@/lib/domain";
+import {
+  buildMonthComparison,
+  computeShares,
+  type BaselineMode,
+  type MonthComparison,
+} from "@/lib/domain";
 import { similarityKey } from "@/lib/import/similar";
 
 export interface Slice {
@@ -62,18 +67,21 @@ export async function getSpaceReport(
   members: Member[],
   categories: Category[],
   periodId: ReportPeriodId = "12m",
+  baseline: BaselineMode = "previous",
 ): Promise<SpaceReport> {
   const repo = getRepository();
   const period = REPORT_PERIODS.find((p) => p.id === periodId) ?? REPORT_PERIODS[2];
   const from = periodStart(period.months);
 
-  const expenses = (await repo.listExpenses({ spaceId, viewerId: viewerMemberId })).filter(
+  const allExpenses = (await repo.listExpenses({ spaceId, viewerId: viewerMemberId })).filter(
     (e) =>
       e.status === "confirmed" &&
-      // As pendentes de aprovação ainda não são despesas para efeitos de análise.
       e.approvalStatus !== "pending" &&
-      e.approvalStatus !== "rejected" &&
-      (from === null || e.transactionDate >= from),
+      e.approvalStatus !== "rejected",
+  );
+  const expenses = allExpenses.filter(
+    (e) =>
+      from === null || e.transactionDate >= from,
   );
 
   // A "minha parte": quota nas partilhadas mais as pessoais do próprio.
@@ -149,13 +157,17 @@ export async function getSpaceReport(
     }))
     .sort((a, b) => b.amountCents - a.amountCents);
 
+  // A comparação usa TODO o histórico (o homólogo precisa do ano anterior),
+  // mesmo quando os totais mostrados são só do período escolhido.
   const comparison = buildMonthComparison(
-    expenses.map((e) => ({
+    allExpenses.map((e) => ({
       amountCents: e.amountCents,
       transactionDate: e.transactionDate,
       categoryId: e.categoryId ?? null,
     })),
     categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+    3,
+    baseline,
   );
 
   const byMerchant: Slice[] = [...merchantTotals.entries()]
