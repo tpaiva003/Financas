@@ -18,6 +18,8 @@ import type {
   ImportTemplate,
   ImportReminder,
   SpendingGoal,
+  Membership,
+  PlatformStats,
   ReminderFrequency,
   CreateCategoryInput,
   CreateContactInput,
@@ -832,6 +834,72 @@ export class SupabaseRepository implements Repository {
       .eq("space_id", spaceId)
       .eq("source", source);
     if (error) throw new Error(error.message);
+  }
+
+  async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
+    if (spaceIds.length === 0) return [];
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("members")
+      .select("space_id, linked_user_id")
+      .in("space_id", spaceIds);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      spaceId: r.space_id as string,
+      linkedUserId: (r.linked_user_id as string | null) ?? null,
+    }));
+  }
+
+  async getPlatformStats(): Promise<PlatformStats> {
+    const db = getSupabaseAdmin();
+    const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+
+    const [spacesRes, membersRes, expensesRes, accountsRes] = await Promise.all([
+      db.from("spaces").select("id, name, created_at"),
+      db.from("members").select("space_id"),
+      // Só o que é preciso para contar e datar: nunca descrições nem valores.
+      db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
+      db.from("app_users").select("id"),
+    ]);
+    for (const r of [spacesRes, membersRes, expensesRes, accountsRes]) {
+      if (r.error) throw new Error(r.error.message);
+    }
+
+    const memberCounts = new Map<string, number>();
+    for (const m of membersRes.data ?? []) {
+      const id = (m as any).space_id as string;
+      memberCounts.set(id, (memberCounts.get(id) ?? 0) + 1);
+    }
+    const expenseCounts = new Map<string, number>();
+    const lastBySpace = new Map<string, string>();
+    for (const e of expensesRes.data ?? []) {
+      const id = (e as any).space_id as string;
+      const date = (e as any).transaction_date as string;
+      expenseCounts.set(id, (expenseCounts.get(id) ?? 0) + 1);
+      const cur = lastBySpace.get(id);
+      if (!cur || date > cur) lastBySpace.set(id, date);
+    }
+
+    const spaces = (spacesRes.data ?? []).map((s: any) => ({
+      id: s.id as string,
+      name: s.name as string,
+      memberCount: memberCounts.get(s.id) ?? 0,
+      expenseCount: expenseCounts.get(s.id) ?? 0,
+      lastActivity: lastBySpace.get(s.id) ?? null,
+      createdAt: s.created_at as string,
+    }));
+
+    // Os templates podem não existir (migração 0011 por aplicar).
+    const templates = await this.listImportTemplates().catch(() => []);
+
+    return {
+      accountCount: (accountsRes.data ?? []).length,
+      spaceCount: spaces.length,
+      expenseCount: (expensesRes.data ?? []).length,
+      activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
+      spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
+      templates: templates.map((t) => ({ label: t.label, uses: t.uses })),
+    };
   }
 
   async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {

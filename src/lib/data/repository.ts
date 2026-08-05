@@ -17,7 +17,10 @@ import type {
   Settlement,
   Split,
   ClassificationRule,
+  Membership,
 } from "@/lib/domain";
+
+export type { Membership };
 
 export interface Category {
   id: string;
@@ -178,6 +181,34 @@ export interface AppUser {
   name: string;
 }
 
+/**
+ * Retrato de um ambiente para a consola do dono da plataforma.
+ *
+ * De propósito, só números e datas: nem descrições, nem valores, nem nomes de
+ * despesas. A consola serve para gerir a plataforma, não para ler as contas de
+ * quem a usa.
+ */
+export interface SpaceSummary {
+  id: string;
+  name: string;
+  memberCount: number;
+  expenseCount: number;
+  /** Data da despesa mais recente (não o seu conteúdo). */
+  lastActivity: string | null;
+  createdAt: string;
+}
+
+export interface PlatformStats {
+  accountCount: number;
+  spaceCount: number;
+  expenseCount: number;
+  /** Ambientes com movimento nos últimos 30 dias. */
+  activeSpaces: number;
+  spaces: SpaceSummary[];
+  /** Formatos de banco aprendidos e quantas vezes já serviram. */
+  templates: { label: string; uses: number }[];
+}
+
 export interface CreateSpaceInput {
   name: string;
   createdBy: string;
@@ -297,6 +328,14 @@ export interface Repository {
   reorderSpaces(spaceIds: string[]): Promise<void>;
   /** Contas existentes (utilizadores base + adicionais), para associar a participantes. */
   listAppUsers(): Promise<AppUser[]>;
+  /**
+   * Ligações participante→conta dos ambientes indicados. É com isto que se
+   * decide que contas um utilizador pode ver, sem nunca listar a plataforma
+   * toda (ver `domain/tenancy.ts`).
+   */
+  listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]>;
+  /** Números agregados da plataforma, para a consola do dono. */
+  getPlatformStats(): Promise<PlatformStats>;
   listMembers(spaceId: string): Promise<Member[]>;
   addMember(input: AddMemberInput): Promise<Member>;
   updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void>;

@@ -485,3 +485,31 @@ Passou de um mês para 14 (jul/2025 a ago/2026, com o último mês a meio, como 
 mês a decorrer). Sem histórico não há média nem homólogo e metade dos relatórios
 fica vazia. Os valores variam de forma determinística — nada aleatório, para as
 capturas e os testes darem sempre o mesmo.
+
+## Multi-inquilino: o ambiente é a unidade de isolamento
+
+Uma pessoa vê um ambiente se, e só se, existir um participante desse ambiente
+ligado à conta dela. Daí sai tudo — despesas, saldos, categorias, lembretes,
+metas. As regras estão em `domain/tenancy.ts`, puras e testadas.
+
+**Fuga fechada:** `listKnownAccounts()` devolvia TODAS as contas da plataforma e
+era mostrada no ecrã de participantes a qualquer utilizador — um cliente externo
+via o nome e o email do dono e de quem mais usasse a app. Passa a devolver só
+contas com que se partilha pelo menos um ambiente. Numa app multi-inquilino
+ninguém pode sequer descobrir que as outras contas existem.
+
+**O dono não entra nos ambientes dos clientes.** Ao convidar alguém, cria-se a
+conta E o ambiente dela, com um único participante: a própria. O dono administra
+a plataforma, não participa nas contas de quem a usa. Há testes que fixam isto.
+
+**Consola do dono (`/plataforma`), só para o admin.** Mostra contagens e datas —
+contas, ambientes, despesas, ambientes ativos nos últimos 30 dias, e os formatos
+de banco aprendidos. Nunca descrições, valores ou saldos.
+
+Vale a pena ser claro sobre o limite: como a app fala com o Postgres pela
+service-role, quem tem as chaves do projeto consegue tecnicamente ler os dados.
+O que a decisão garante é que **o produto não expõe isso** — não há ecrã que
+mostre as despesas de um cliente, o dono não aparece dentro do ambiente dele, e
+a consola foi desenhada para gerir, não para espreitar. Uma garantia mais forte
+exigiria cifra do lado do cliente, com o custo de perder classificação, dedup e
+relatórios do lado do servidor.

@@ -25,6 +25,8 @@ import type {
   ImportTemplate,
   ImportReminder,
   SpendingGoal,
+  Membership,
+  PlatformStats,
   ReminderFrequency,
   ExpenseFilters,
   CreateRecurringInput,
@@ -559,6 +561,41 @@ export class MockRepository implements Repository {
     store.importReminders = store.importReminders.filter(
       (r) => !(r.spaceId === spaceId && r.source === source),
     );
+  }
+
+  async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
+    const ids = new Set(spaceIds);
+    return getStore()
+      .members.filter((m) => ids.has(m.spaceId))
+      .map((m) => ({ spaceId: m.spaceId, linkedUserId: m.linkedUserId ?? null }));
+  }
+
+  async getPlatformStats(): Promise<PlatformStats> {
+    const store = getStore();
+    const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const spaces = store.spaces.map((s) => {
+      const expenses = store.expenses.filter((e) => e.spaceId === s.id && !e.deletedAt);
+      const lastActivity = expenses.reduce<string | null>(
+        (max, e) => (max === null || e.transactionDate > max ? e.transactionDate : max),
+        null,
+      );
+      return {
+        id: s.id,
+        name: s.name,
+        memberCount: store.members.filter((m) => m.spaceId === s.id).length,
+        expenseCount: expenses.length,
+        lastActivity,
+        createdAt: s.createdAt,
+      };
+    });
+    return {
+      accountCount: store.appUsers.length,
+      spaceCount: spaces.length,
+      expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
+      activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
+      spaces: spaces.sort((a, b) => (a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1),
+      templates: store.importTemplates.map((t) => ({ label: t.label, uses: t.uses })),
+    };
   }
 
   async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {

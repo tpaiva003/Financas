@@ -9,3 +9,4 @@ export * from "./reports";
 export * from "./recurring";
 export * from "./import-reminders";
 export * from "./averages";
+export * from "./tenancy";

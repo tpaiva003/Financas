@@ -19,7 +19,13 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { toCents, validateSplit, nextOccurrence, type Split } from "@/lib/domain";
+import {
+  toCents,
+  validateSplit,
+  nextOccurrence,
+  accountsVisibleTo,
+  type Split,
+} from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -1207,9 +1213,29 @@ export async function inviteUserAction(
   const repo = getRepository();
   if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
 
-  await repo.createAppUser({ id: `usr_${randomUUID()}`, email, name });
+  const userId = `usr_${randomUUID()}`;
+  await repo.createAppUser({ id: userId, email, name });
+
+  // O ambiente é criado já com a pessoa lá dentro — e SÓ com ela. O dono da
+  // plataforma nunca entra como participante no ambiente de um cliente: gere a
+  // plataforma, não participa nas contas de quem a usa (ver domain/tenancy.ts).
+  const spaceName = String(formData.get("spaceName") ?? "").trim() || "Pessoal";
+  try {
+    await repo.createSpace({
+      name: spaceName.slice(0, 80),
+      createdBy: userId,
+      members: [{ name, linkedUserId: userId, email }],
+    });
+  } catch {
+    // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
+  }
+
   revalidatePath("/mensagens");
-  return { ok: true, message: `${name} já pode entrar com ${email}.` };
+  revalidatePath("/plataforma");
+  return {
+    ok: true,
+    message: `${name} já pode entrar com ${email}. Ambiente "${spaceName}" criado, só com ela.`,
+  };
 }
 
 /** Sobe ou desce um ambiente na lista, guardando a nova ordem. */
@@ -1277,14 +1303,29 @@ export async function linkMemberAccountAction(
   return { ok: true };
 }
 
-/** Contas conhecidas: os utilizadores base (env) mais os criados na app. */
+/**
+ * Contas que o utilizador atual pode ver: só as que partilham com ele pelo
+ * menos um ambiente (ver `domain/tenancy.ts`).
+ *
+ * Isto era, antes, a lista de TODAS as contas da plataforma — o que mostrava o
+ * nome e o email de gente de outro inquilino a quem abrisse o ecrã de
+ * participantes. Numa app multi-inquilino ninguém pode sequer descobrir que as
+ * outras contas existem.
+ */
 export async function listKnownAccounts(): Promise<{ id: string; name: string; email: string }[]> {
-  const base = householdUsers().map((u) => ({ id: u.id, name: u.name, email: u.email }));
-  const extra = await getRepository()
-    .listAppUsers()
+  const ctx = await getSpaceContext();
+  const repo = getRepository();
+
+  const memberships = await repo
+    .listMembershipsInSpaces(ctx.spaces.map((s) => s.id))
     .catch(() => []);
+  const allowed = new Set(accountsVisibleTo(ctx.user.id, memberships));
+
+  const base = householdUsers().map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const extra = await repo.listAppUsers().catch(() => []);
   const seen = new Set(base.map((b) => b.id));
-  return [...base, ...extra.filter((a) => !seen.has(a.id))];
+
+  return [...base, ...extra.filter((a) => !seen.has(a.id))].filter((a) => allowed.has(a.id));
 }
 
 const memberEditSchema = z.object({

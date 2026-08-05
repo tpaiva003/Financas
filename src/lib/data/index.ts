@@ -40,4 +40,10 @@ export type {
   UpdateRecurringInput,
   ImportBatch,
   CreateImportBatchInput,
+  ImportTemplate,
+  ImportReminder,
+  ReminderFrequency,
+  SpendingGoal,
+  PlatformStats,
+  SpaceSummary,
 } from "./repository";
