@@ -47,12 +47,17 @@ export default async function DashboardPage() {
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+  // "Registaste" = foste tu a meter os dados na app (independentemente de quem
+  // pagou). É isto que responde a "quando é que atualizei isto pela última vez",
+  // por isso o que se mostra é o DIA DO REGISTO, não a data da despesa.
   const myRegistered = [...recent]
     .filter((e) => e.createdBy === ctx.user.id)
     .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+  // "Pagaste" = és o pagador, tenha sido quem tenha sido a registar a despesa.
   const myPaid = [...recent]
     .filter((e) => e.payerId === ctx.viewerMemberId && e.status === "confirmed")
     .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1))[0];
+  const registeredByOther = myPaid ? myPaid.createdBy !== ctx.user.id : false;
 
   return (
     <div className="space-y-10">
@@ -120,13 +125,21 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="card p-4">
-          <p className="eyebrow">Última que registaste</p>
+          <p className="eyebrow">Último registo teu</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myRegistered ? fmtDate(myRegistered.transactionDate) : "—"}
+            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "—"}
           </p>
           {myRegistered ? (
-            <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
-          ) : null}
+            <>
+              <p className="mt-0.5 truncate text-xs text-fg-muted">{myRegistered.description}</p>
+              <p className="mt-1 text-[11px] text-fg-faint">
+                Dia em que meteste dados na app · despesa de{" "}
+                {fmtDate(myRegistered.transactionDate)}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-[11px] text-fg-faint">Ainda não registaste nada aqui.</p>
+          )}
         </div>
         <div className="card p-4">
           <p className="eyebrow">Última que pagaste</p>
@@ -134,8 +147,16 @@ export default async function DashboardPage() {
             {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
           </p>
           {myPaid ? (
-            <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
-          ) : null}
+            <>
+              <p className="mt-0.5 truncate text-xs text-fg-muted">{myPaid.description}</p>
+              <p className="mt-1 text-[11px] text-fg-faint">
+                Despesas em que és o pagador, tenha sido quem tenha sido a registá-las
+                {registeredByOther ? " (esta foi registada por outra pessoa)" : ""}.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-[11px] text-fg-faint">Ainda não há despesas pagas por ti.</p>
+          )}
         </div>
       </div>
 

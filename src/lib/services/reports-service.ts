@@ -203,7 +203,7 @@ export async function getSpaceReport(
       key,
       label: catMap.get(key)?.name ?? "Sem categoria",
       color: catMap.get(key)?.color ?? "#64748b",
-      ym: e.transactionDate.slice(0, 7),
+      date: e.transactionDate,
       amountCents: e.amountCents,
     };
   });
@@ -212,16 +212,27 @@ export async function getSpaceReport(
     key: similarityKey(e.description) || e.description.toLowerCase(),
     label: e.description,
     color: "#7c3aed",
-    ym: e.transactionDate.slice(0, 7),
+    date: e.transactionDate,
     amountCents: e.amountCents,
   }));
+
+  // Se o mês em análise é o mês corrente, ainda vai a meio: corta-se no dia de
+  // hoje para o homólogo comparar os mesmos dias. Meses passados contam
+  // inteiros.
+  const today = new Date();
+  const todayYm = today.toISOString().slice(0, 7);
+  const analysedMonth =
+    [...new Set(allExpenses.map((e) => e.transactionDate.slice(0, 7)))].sort().at(-1) ?? null;
+  const throughDay = analysedMonth === todayYm ? today.getUTCDate() : null;
 
   const categoryAverages = buildAverages(monthlyByCategory, {
     windowMonths: averageWindow,
     goals: goalsByKey,
+    throughDay,
   });
   const merchantAverages = buildAverages(monthlyByMerchant, {
     windowMonths: averageWindow,
+    throughDay,
   });
 
   return {

@@ -439,3 +439,49 @@ próprio relatório (apagar o valor remove a meta). Estado: abaixo, perto (≥80
 ou acima. Ficam em `spending_goals`, com o total a usar `category_id` nulo e um
 índice único sobre `coalesce(category_id, '__total__')` — em Postgres dois NULL
 são distintos e sem isto podiam nascer várias metas totais.
+
+## Barras de período com média e homólogo (substitui o foco nas metas)
+
+O relatório por categoria passa a mostrar uma barra do gasto do período com duas
+marcas: a **média** dos últimos N meses (tracejado) e o **período homólogo**
+(traço cheio). A comparação principal é contra o homólogo.
+
+**Cortar o homólogo no mesmo dia.** A 5 de agosto, comparar com agosto inteiro do
+ano passado não diz nada. O homólogo é cortado no dia em que o mês corrente vai
+("5 € a 5/8/2026 contra 50 € a 5/8/2025"), e a média continua a mostrar o mês
+inteiro, para se ver onde o mês costuma ir dar. Meses passados contam inteiros.
+
+**Escala partilhada por todo o painel** (o total tem a sua): as barras também se
+comparam entre si. Com uma escala por linha, cada linha ficava cheia e o painel
+não dizia nada.
+
+As **metas** ficam: são úteis, mas eram a leitura errada em primeiro plano.
+Passam a ser um extra recolhido em cada linha, e a barra de progresso só aparece
+quando existe meta.
+
+## Tema de dia e de noite
+
+As cores passaram de hex fixo no Tailwind para variáveis CSS em canais RGB
+(`rgb(var(--c-fg) / <alpha-value>)`), o que mantém os modificadores de opacidade
+(`bg-panel/80`, `border-fg/30`) a funcionar. O tema de dia usa papel quente, não
+branco clínico, e escurece o verde e o vermelho — os originais não tinham
+contraste suficiente sobre fundo claro.
+
+A escolha fica no browser (localStorage), não na conta: é uma preferência do
+aparelho — a mesma pessoa pode querer noite no telemóvel e dia no portátil. Um
+script inline no `<head>` aplica-a antes de pintar, para não haver flash.
+
+## "Última que pagaste" vs "Último registo teu"
+
+Eram ambíguos. "Pagaste" filtra por pagador — inclui despesas registadas pela
+outra pessoa em que tu és o pagador. "Registaste" filtra por quem meteu os dados
+e passa a mostrar o **dia do registo**, não a data da despesa: é essa a pergunta
+("quando é que atualizei isto pela última vez"). Ambos os cartões explicam agora
+o que contam.
+
+## Seed com histórico
+
+Passou de um mês para 14 (jul/2025 a ago/2026, com o último mês a meio, como um
+mês a decorrer). Sem histórico não há média nem homólogo e metade dos relatórios
+fica vazia. Os valores variam de forma determinística — nada aleatório, para as
+capturas e os testes darem sempre o mesmo.

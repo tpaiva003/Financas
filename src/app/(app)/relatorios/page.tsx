@@ -164,7 +164,7 @@ export default async function RelatoriosPage({
           {/* Média mensal por categoria e metas ajustáveis. */}
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="eyebrow mb-0">Médias e metas por categoria</h2>
+              <h2 className="eyebrow mb-0">Por categoria · média e homólogo</h2>
               <div className="flex items-center gap-1 rounded-full border border-hair p-1 text-xs">
                 {AVERAGE_WINDOWS.map((w) => (
                   <Link
@@ -188,7 +188,7 @@ export default async function RelatoriosPage({
 
           {report.merchantAverages.rows.length > 0 ? (
             <section>
-              <h2 className="eyebrow mb-3">Médias por comerciante</h2>
+              <h2 className="eyebrow mb-3">Por comerciante · média e homólogo</h2>
               <CategoryAverages
                 averages={{
                   ...report.merchantAverages,

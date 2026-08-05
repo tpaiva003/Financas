@@ -4,6 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -30,13 +31,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               />
             ) : null}
           </div>
-          <AppNav
-            userName={user.name}
-            isAdmin={admin}
-            isSubmitter={isSubmitter}
-            unreadMessages={unreadMessages}
-            pendingApprovals={pendingApprovals}
-          />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <AppNav
+              userName={user.name}
+              isAdmin={admin}
+              isSubmitter={isSubmitter}
+              unreadMessages={unreadMessages}
+              pendingApprovals={pendingApprovals}
+            />
+          </div>
         </div>
       </header>
 
