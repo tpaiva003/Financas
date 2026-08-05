@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { isAdmin } from "@/lib/users";
 import { getRepository } from "@/lib/data";
 import type { ContactMessage } from "@/lib/data";
+import { InviteUserForm } from "@/components/InviteUserForm";
 import {
   markMessageReadAction,
   archiveMessageAction,
@@ -36,6 +37,15 @@ export default async function MensagensPage({
           Mensagens {unread > 0 ? <span className="text-fg-muted">· {unread} por ler</span> : null}
         </h1>
       </div>
+
+      <section className="card p-6">
+        <h2 className="label">Convidar para experimentar</h2>
+        <p className="mb-3 text-sm text-fg-muted">
+          Cria uma conta independente. A pessoa entra com o email indicado, define
+          a palavra-chave na primeira entrada e recebe um ambiente só dela.
+        </p>
+        <InviteUserForm />
+      </section>
 
       <div className="flex items-center gap-1 rounded-full border border-hair p-1 text-sm">
         <Tab href="/mensagens" active={!showArchived} label={`Ativas (${active.length})`} />
@@ -128,6 +138,7 @@ function MessageCard({ m, archivedView }: { m: ContactMessage; archivedView: boo
             {m.archivedAt ? "Repor (desarquivar)" : "Arquivar"}
           </button>
         </form>
+        <InviteUserForm compact defaultName={m.name ?? ""} defaultEmail={m.email ?? ""} />
       </div>
     </li>
   );

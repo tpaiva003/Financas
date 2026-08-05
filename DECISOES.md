@@ -355,3 +355,34 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
   Ambiente. Escolhidas setas em vez de arrastar por funcionarem bem no telemóvel
   e por teclado. A leitura tolera a coluna não existir (fallback para a ordem de
   criação), e a ação falha em silêncio se a migração não estiver aplicada.
+
+## Fase 8 — Comparações nos relatórios e contas independentes
+
+### Relatórios
+- **Modo de comparação** (`BaselineMode`): mês anterior, **média dos meses
+  anteriores** ou **homólogo** (mesmo mês do ano passado). As categorias passam
+  a comparar contra a referência escolhida, não só contra o mês anterior.
+- A média **exclui o mês atual** — comparar um mês consigo próprio dilui o
+  desvio e engana.
+- A comparação usa **todo o histórico**, mesmo quando os totais mostrados são só
+  do período escolhido: sem isso o homólogo nunca teria dados.
+- **Gráfico mensal** em SVG puro (sem dependências), com a linha da referência,
+  limitado aos últimos 12 meses para continuar legível no telemóvel.
+- 6 testes novos para os modos de comparação.
+
+### Privacidade — corrigido um problema sério
+`getSpaceContext` tinha um fallback: quem não tivesse ambientes caía no "casa".
+Combinado com `viewerMemberId = members[0].id`, um utilizador novo aterrava nas
+contas de outra pessoa **e** era tratado como o primeiro participante desse
+ambiente. Agora quem entra sem ambientes recebe um ambiente "Pessoal" próprio, e
+não há fallback para outro participante.
+
+### Convidar alguém para experimentar
+- `inviteUserAction` (só admin) cria uma **conta independente**: não fica ligada
+  a nenhum ambiente do anfitrião. Os ambientes do convidado não aparecem na app
+  do anfitrião nem o contrário — o isolamento é por participação em ambientes.
+- O convite está em Mensagens, incluindo um botão por mensagem de contacto que
+  pré-preenche nome e email de quem pediu para experimentar.
+- **Limite honesto:** isto é isolamento ao nível da aplicação. Quem administra o
+  projeto Supabase continua a poder ler a base de dados; para garantias mais
+  fortes seria preciso outro projeto/instância por cliente.

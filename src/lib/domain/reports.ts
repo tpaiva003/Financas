@@ -35,6 +35,16 @@ export interface CategoryDelta {
   deltaPct: number | null;
 }
 
+/** Contra o que se compara o mês atual. */
+export type BaselineMode = "previous" | "average" | "yoy";
+
+/** Um mês da série, para o gráfico. */
+export interface MonthPoint {
+  ym: string;
+  label: string;
+  totalCents: number;
+}
+
 export interface MonthComparison {
   /** Mês de referência ("YYYY-MM") — o mais recente com despesas, ou null. */
   currentMonth: string | null;
@@ -51,6 +61,17 @@ export interface MonthComparison {
   movingAvgMonths: number;
   /** current - médiaMóvel (positivo = acima da média recente). */
   vsAverageCents: number;
+
+  /** Modo escolhido e a referência correspondente. */
+  baseline: BaselineMode;
+  baselineLabel: string;
+  baselineTotalCents: number;
+  baselineDeltaCents: number;
+  baselineDeltaPct: number | null;
+  /** Mês homólogo (mesmo mês do ano anterior), se existir na série. */
+  sameMonthLastYear: string | null;
+  /** Série mensal completa, para desenhar. */
+  series: MonthPoint[];
 }
 
 const FALLBACK_COLOR = "#64748b";
@@ -71,6 +92,12 @@ export function previousMonth(ym: string): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Mesmo mês do ano anterior ("2026-07" -> "2025-07"). */
+export function sameMonthLastYear(ym: string): string {
+  const [y, m] = ym.split("-");
+  return `${Number(y) - 1}-${m}`;
+}
+
 function pct(current: number, previous: number): number | null {
   if (previous === 0) return null;
   return ((current - previous) / Math.abs(previous)) * 100;
@@ -87,6 +114,7 @@ export function buildMonthComparison(
   expenses: ReportExpense[],
   categories: CategoryInfo[],
   movingWindow = 3,
+  baseline: BaselineMode = "previous",
 ): MonthComparison {
   const catMap = new Map(categories.map((c) => [c.id, c]));
 
@@ -123,19 +151,49 @@ export function buildMonthComparison(
       movingAvgCents: 0,
       movingAvgMonths: 0,
       vsAverageCents: 0,
+      baseline,
+      baselineLabel: "",
+      baselineTotalCents: 0,
+      baselineDeltaCents: 0,
+      baselineDeltaPct: null,
+      sameMonthLastYear: null,
+      series: [],
     };
   }
 
   const prevMonth = previousMonth(currentMonth);
+  const yoyMonth = sameMonthLastYear(currentMonth);
   const curCats = monthCat.get(currentMonth) ?? new Map<string, number>();
+
+  // Meses ANTERIORES ao atual (a média não se compara consigo própria).
+  const earlier = monthsWithData.filter((m) => m < currentMonth);
+  const avgWindow = earlier.slice(-movingWindow);
+  const avgOf = (get: (m: string) => number) =>
+    avgWindow.length > 0
+      ? Math.round(avgWindow.reduce((acc, m) => acc + get(m), 0) / avgWindow.length)
+      : 0;
+
+  /** Valor de referência de uma categoria, conforme o modo. */
+  const baseCat = (key: string): number => {
+    if (baseline === "yoy") return monthCat.get(yoyMonth)?.get(key) ?? 0;
+    if (baseline === "average") return avgOf((m) => monthCat.get(m)?.get(key) ?? 0);
+    return monthCat.get(prevMonth)?.get(key) ?? 0;
+  };
+
   const prvCats = monthCat.get(prevMonth) ?? new Map<string, number>();
 
-  const keys = new Set<string>([...curCats.keys(), ...prvCats.keys()]);
+  const baseCatsKeys =
+    baseline === "yoy"
+      ? [...(monthCat.get(yoyMonth)?.keys() ?? [])]
+      : baseline === "average"
+        ? avgWindow.flatMap((m) => [...(monthCat.get(m)?.keys() ?? [])])
+        : [...prvCats.keys()];
+  const keys = new Set<string>([...curCats.keys(), ...baseCatsKeys]);
   const categoriesOut: CategoryDelta[] = [...keys]
     .map((key) => {
       const info = key === "__none__" ? undefined : catMap.get(key);
       const currentCents = curCats.get(key) ?? 0;
-      const previousCents = prvCats.get(key) ?? 0;
+      const previousCents = baseCat(key);
       return {
         key,
         label: info?.name ?? "Sem categoria",
@@ -162,6 +220,25 @@ export function buildMonthComparison(
   const currentTotalCents = monthTotals.get(currentMonth) ?? 0;
   const previousTotalCents = monthTotals.get(prevMonth) ?? 0;
 
+  // Média dos meses anteriores (exclui o atual, para a comparação ser honesta).
+  const baseAvgCents = avgOf((m) => monthTotals.get(m) ?? 0);
+  const yoyTotalCents = monthTotals.get(yoyMonth) ?? 0;
+
+  const baselineTotalCents =
+    baseline === "yoy" ? yoyTotalCents : baseline === "average" ? baseAvgCents : previousTotalCents;
+  const baselineLabel =
+    baseline === "yoy"
+      ? monthLabel(yoyMonth)
+      : baseline === "average"
+        ? `média de ${avgWindow.length} ${avgWindow.length === 1 ? "mês" : "meses"}`
+        : monthLabel(prevMonth);
+
+  const series: MonthPoint[] = monthsWithData.map((ym) => ({
+    ym,
+    label: monthLabel(ym),
+    totalCents: monthTotals.get(ym) ?? 0,
+  }));
+
   return {
     currentMonth,
     previousMonth: prevMonth,
@@ -172,6 +249,13 @@ export function buildMonthComparison(
     totalDeltaCents: currentTotalCents - previousTotalCents,
     totalDeltaPct: pct(currentTotalCents, previousTotalCents),
     categories: categoriesOut,
+    baseline,
+    baselineLabel,
+    baselineTotalCents,
+    baselineDeltaCents: currentTotalCents - baselineTotalCents,
+    baselineDeltaPct: pct(currentTotalCents, baselineTotalCents),
+    sameMonthLastYear: monthTotals.has(yoyMonth) ? yoyMonth : null,
+    series,
     movingAvgCents,
     movingAvgMonths,
     vsAverageCents: currentTotalCents - movingAvgCents,

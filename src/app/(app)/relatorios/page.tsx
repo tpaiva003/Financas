@@ -8,7 +8,8 @@ import {
   type ReportPeriodId,
   type Slice,
 } from "@/lib/services/reports-service";
-import { formatCents, type CategoryDelta, type MonthComparison } from "@/lib/domain";
+import { formatCents, type BaselineMode, type CategoryDelta, type MonthComparison } from "@/lib/domain";
+import { MonthlyChart } from "@/components/MonthlyChart";
 
 export const metadata = { title: "Relatórios · Rachar" };
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function RelatoriosPage({
   searchParams,
 }: {
-  searchParams: { periodo?: string };
+  searchParams: { periodo?: string; comparar?: string };
 }) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
@@ -24,13 +25,32 @@ export default async function RelatoriosPage({
 
   const periodo = (REPORT_PERIODS.find((p) => p.id === searchParams.periodo)?.id ??
     "12m") as ReportPeriodId;
+  const COMPARISONS = [
+    { id: "previous", label: "Mês anterior" },
+    { id: "average", label: "Média" },
+    { id: "yoy", label: "Homólogo" },
+  ] as const;
+  const comparar = (COMPARISONS.find((c) => c.id === searchParams.comparar)?.id ??
+    "previous") as BaselineMode;
+
   const report = await getSpaceReport(
     ctx.space.id,
     ctx.viewerMemberId,
     ctx.members,
     categories,
     periodo,
+    comparar,
   );
+
+  /** Mantém o período ao trocar de comparação e vice-versa. */
+  const href = (patch: { periodo?: string; comparar?: string }) => {
+    const p = new URLSearchParams();
+    const per = patch.periodo ?? periodo;
+    const cmp = patch.comparar ?? comparar;
+    if (per !== "12m") p.set("periodo", per);
+    if (cmp !== "previous") p.set("comparar", cmp);
+    return p.toString() ? `/relatorios?${p}` : "/relatorios";
+  };
 
   return (
     <div className="space-y-9">
@@ -47,7 +67,7 @@ export default async function RelatoriosPage({
         {REPORT_PERIODS.map((p) => (
           <Link
             key={p.id}
-            href={p.id === "12m" ? "/relatorios" : `/relatorios?periodo=${p.id}`}
+            href={href({ periodo: p.id })}
             className={`rounded-full px-3.5 py-1.5 transition-colors ${
               p.id === periodo ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
             }`}
@@ -91,12 +111,42 @@ export default async function RelatoriosPage({
         </div>
       </div>
 
+      <div>
+        <p className="label">Comparar com</p>
+        <div className="flex flex-wrap items-center gap-1 rounded-full border border-hair p-1 text-sm">
+          {COMPARISONS.map((c) => (
+            <Link
+              key={c.id}
+              href={href({ comparar: c.id })}
+              className={`rounded-full px-3.5 py-1.5 transition-colors ${
+                c.id === comparar ? "bg-panel2 text-fg" : "text-fg-muted hover:text-fg"
+              }`}
+            >
+              {c.label}
+            </Link>
+          ))}
+        </div>
+        {comparar === "yoy" && report.comparison.currentMonth && !report.comparison.sameMonthLastYear ? (
+          <p className="mt-2 text-xs text-fg-faint">
+            Ainda não há dados de {report.comparison.currentLabel} do ano anterior para comparar.
+          </p>
+        ) : null}
+      </div>
+
       {report.count === 0 ? (
         <p className="card p-10 text-center text-sm text-fg-muted">
           Não há despesas confirmadas neste período.
         </p>
       ) : (
         <>
+          {report.comparison.series.length > 0 ? (
+            <MonthlyChart
+              series={report.comparison.series}
+              baselineCents={report.comparison.baselineTotalCents}
+              baselineLabel={report.comparison.baselineLabel}
+              currentYm={report.comparison.currentMonth}
+            />
+          ) : null}
           {report.comparison.currentMonth ? (
             <MonthOverMonth c={report.comparison} />
           ) : null}
@@ -129,7 +179,7 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
   return (
     <section>
       <h2 className="eyebrow mb-3">
-        {c.currentLabel} vs {c.previousLabel}
+        {c.currentLabel} vs {c.baselineLabel}
       </h2>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -139,21 +189,22 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
             {formatCents(c.currentTotalCents)}
           </p>
           <div className="mt-1 text-sm">
-            <DeltaInline deltaCents={c.totalDeltaCents} deltaPct={c.totalDeltaPct} suffix={`vs ${c.previousLabel}`} />
+            <DeltaInline
+              deltaCents={c.baselineDeltaCents}
+              deltaPct={c.baselineDeltaPct}
+              suffix={`vs ${c.baselineLabel}`}
+            />
           </div>
         </div>
         <div className="card p-5">
-          <p className="eyebrow">Média móvel ({c.movingAvgMonths} {c.movingAvgMonths === 1 ? "mês" : "meses"})</p>
+          <p className="eyebrow">Referência · {c.baselineLabel}</p>
           <p className="mt-2 font-display text-3xl font-semibold tracking-tight tnum text-fg-muted">
-            {formatCents(c.movingAvgCents)}
+            {formatCents(c.baselineTotalCents)}
           </p>
-          <div className="mt-1 text-sm">
-            <DeltaInline
-              deltaCents={c.vsAverageCents}
-              deltaPct={c.movingAvgCents !== 0 ? (c.vsAverageCents / Math.abs(c.movingAvgCents)) * 100 : null}
-              suffix="vs a média"
-            />
-          </div>
+          <p className="mt-1 text-sm text-fg-faint">
+            média móvel de {c.movingAvgMonths} {c.movingAvgMonths === 1 ? "mês" : "meses"}:{" "}
+            <span className="tnum">{formatCents(c.movingAvgCents)}</span>
+          </p>
         </div>
       </div>
 

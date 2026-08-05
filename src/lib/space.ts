@@ -77,8 +77,15 @@ export async function getSpaceContext(): Promise<SpaceContext> {
 
   let spaces = await repo.listSpacesForUser(user.id);
   if (spaces.length === 0) {
-    const casa = await repo.getSpace("casa");
-    if (casa) spaces = [casa];
+    // NUNCA cair no ambiente de outra pessoa: quem entra sem ambientes recebe o
+    // seu próprio. Antes havia um fallback para "casa", o que fazia um
+    // utilizador novo aterrar nas contas de outra pessoa.
+    const own = await repo.createSpace({
+      name: "Pessoal",
+      createdBy: user.id,
+      members: [{ name: user.name, linkedUserId: user.id, email: user.email }],
+    });
+    spaces = [own];
   }
 
   const wanted = cookies().get(SPACE_COOKIE)?.value;
@@ -87,7 +94,9 @@ export async function getSpaceContext(): Promise<SpaceContext> {
   const members = space ? await repo.listMembers(space.id) : [];
   const fullMembers = members.filter((m) => (m.role ?? "full") !== "submitter");
   const viewerMember = members.find((m) => m.linkedUserId === user.id);
-  const viewerMemberId = viewerMember?.id ?? members[0]?.id ?? user.id;
+  // Sem fallback para o primeiro participante: isso faria passar por outra
+  // pessoa. Os ambientes vêm sempre de uma ligação ao utilizador.
+  const viewerMemberId = viewerMember?.id ?? user.id;
   const viewerRole: MemberRole = viewerMember?.role ?? "full";
 
   return { user, spaces, space, members, fullMembers, viewerMemberId, viewerRole };

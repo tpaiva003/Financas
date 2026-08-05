@@ -1020,6 +1020,35 @@ export async function renameSpaceAction(
   return { ok: true };
 }
 
+/**
+ * Convida alguém para experimentar a app com conta INDEPENDENTE: não fica
+ * ligado a nenhum ambiente do anfitrião, por isso os dados dele não aparecem
+ * aqui (e os daqui não aparecem lá). Ao entrar pela primeira vez, recebe um
+ * ambiente "Pessoal" só dele e define a palavra-chave.
+ */
+export async function inviteUserAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return { error: "Sem permissão." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!name) return { error: "Indica o nome." };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email inválido." };
+  if (isEmailAllowed(email) || userByEmail(email)) {
+    return { error: "Esse email já pertence a um utilizador base." };
+  }
+
+  const repo = getRepository();
+  if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
+
+  await repo.createAppUser({ id: `usr_${randomUUID()}`, email, name });
+  revalidatePath("/mensagens");
+  return { ok: true, message: `${name} já pode entrar com ${email}.` };
+}
+
 /** Sobe ou desce um ambiente na lista, guardando a nova ordem. */
 export async function moveSpaceAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
