@@ -10,6 +10,7 @@ const BASE_LINKS = [
   { href: "/importar", label: "Importar" },
   { href: "/recorrentes", label: "Recorrentes" },
   { href: "/relatorios", label: "Relatórios" },
+  { href: "/patrimonio", label: "Património" },
   { href: "/acertos", label: "Acertos" },
 ];
 

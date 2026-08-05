@@ -46,4 +46,6 @@ export type {
   SpendingGoal,
   PlatformStats,
   SpaceSummary,
+  Asset,
+  CreateAssetInput,
 } from "./repository";

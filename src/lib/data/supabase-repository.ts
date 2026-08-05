@@ -18,6 +18,8 @@ import type {
   ImportTemplate,
   ImportReminder,
   SpendingGoal,
+  Asset,
+  CreateAssetInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1007,6 +1009,62 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async listAssets(spaceId: string): Promise<Asset[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("assets")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("created_at");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToAsset);
+  }
+
+  async createAsset(input: CreateAssetInput): Promise<Asset> {
+    const db = getSupabaseAdmin();
+    const id = `ast_${randomUUID()}`;
+    const { data, error } = await db
+      .from("assets")
+      .insert({
+        id,
+        space_id: input.spaceId,
+        name: input.name,
+        kind: input.kind,
+        quantity: input.quantity ?? null,
+        unit_cost_cents: input.unitCostCents ?? null,
+        unit_price_cents: input.unitPriceCents ?? null,
+        value_cents: input.valueCents ?? null,
+        purchased_at: input.purchasedAt ?? null,
+        notes: input.notes ?? null,
+        created_by: input.createdBy ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return rowToAsset(data);
+  }
+
+  async updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.kind !== undefined) row.kind = patch.kind;
+    if (patch.quantity !== undefined) row.quantity = patch.quantity;
+    if (patch.unitCostCents !== undefined) row.unit_cost_cents = patch.unitCostCents;
+    if (patch.unitPriceCents !== undefined) row.unit_price_cents = patch.unitPriceCents;
+    if (patch.valueCents !== undefined) row.value_cents = patch.valueCents;
+    if (patch.purchasedAt !== undefined) row.purchased_at = patch.purchasedAt;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAsset(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("assets").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
@@ -1161,4 +1219,20 @@ export class SupabaseRepository implements Repository {
       .is("read_at", null);
     return fallback.count ?? 0;
   }
+}
+
+function rowToAsset(r: any): Asset {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    name: r.name,
+    kind: r.kind,
+    quantity: r.quantity === null ? null : Number(r.quantity),
+    unitCostCents: r.unit_cost_cents ?? null,
+    unitPriceCents: r.unit_price_cents ?? null,
+    valueCents: r.value_cents ?? null,
+    purchasedAt: r.purchased_at ?? null,
+    notes: r.notes ?? null,
+    updatedAt: r.updated_at ?? null,
+  };
 }
