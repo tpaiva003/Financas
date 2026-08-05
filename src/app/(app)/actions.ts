@@ -1588,3 +1588,13 @@ export async function deleteAccountDataAction(formData: FormData): Promise<void>
   revalidatePath("/plataforma");
   revalidatePath("/", "layout");
 }
+
+/** Dispensa os primeiros passos. Fica num cookie: é preferência de ecrã. */
+export async function dismissOnboardingAction(): Promise<void> {
+  cookies().set("rachar_onboarding", "off", {
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+    sameSite: "lax",
+  });
+  revalidatePath("/dashboard");
+}

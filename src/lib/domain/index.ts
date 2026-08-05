@@ -16,3 +16,4 @@ export * from "./merchants";
 export * from "./access";
 export * from "./income";
 export * from "./returns";
+export * from "./onboarding";
