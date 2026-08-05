@@ -1216,7 +1216,7 @@ export async function inviteUserAction(
   const userId = `usr_${randomUUID()}`;
   await repo.createAppUser({ id: userId, email, name });
 
-  // O ambiente é criado já com a pessoa lá dentro — e SÓ com ela. O dono da
+  // O ambiente é criado já com a pessoa lá dentro, e SÓ com ela. O dono da
   // plataforma nunca entra como participante no ambiente de um cliente: gere a
   // plataforma, não participa nas contas de quem a usa (ver domain/tenancy.ts).
   const spaceName = String(formData.get("spaceName") ?? "").trim() || "Pessoal";
@@ -1307,7 +1307,7 @@ export async function linkMemberAccountAction(
  * Contas que o utilizador atual pode ver: só as que partilham com ele pelo
  * menos um ambiente (ver `domain/tenancy.ts`).
  *
- * Isto era, antes, a lista de TODAS as contas da plataforma — o que mostrava o
+ * Isto era, antes, a lista de TODAS as contas da plataforma, o que mostrava o
  * nome e o email de gente de outro inquilino a quem abrisse o ecrã de
  * participantes. Numa app multi-inquilino ninguém pode sequer descobrir que as
  * outras contas existem.
@@ -1385,4 +1385,91 @@ export async function deleteMemberAction(
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+// ---- Património: bens, investimentos e dívidas ----------------------------
+
+const ASSET_KINDS = ["conta", "investimento", "imovel", "outro", "divida"] as const;
+
+/** Número europeu ("1.234,56") para número simples. Null se vazio. */
+function parseNumber(raw: unknown): number | null {
+  const s = String(normalizeAmount(String(raw ?? "")) ?? "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function saveAssetAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Dá-lhe um nome." };
+  const rawKind = String(formData.get("kind") ?? "outro");
+  const kind = (ASSET_KINDS as readonly string[]).includes(rawKind)
+    ? (rawKind as (typeof ASSET_KINDS)[number])
+    : "outro";
+
+  const quantity = parseNumber(formData.get("quantity"));
+  const unitCost = parseNumber(formData.get("unitCost"));
+  const unitPrice = parseNumber(formData.get("unitPrice"));
+  const value = parseNumber(formData.get("value"));
+
+  if (kind === "investimento") {
+    if (quantity === null || quantity <= 0) return { error: "Indica quantas unidades tens." };
+    if (unitCost === null || unitCost < 0) return { error: "Indica o preço de compra por unidade." };
+  } else if (value === null) {
+    return { error: "Indica o valor." };
+  }
+
+  const patch = {
+    spaceId: ctx.space.id,
+    name: name.slice(0, 120),
+    kind,
+    quantity: kind === "investimento" ? quantity : null,
+    unitCostCents: kind === "investimento" && unitCost !== null ? toCents(unitCost) : null,
+    // Preço atual é opcional: sem ele não inventamos valorização.
+    unitPriceCents: kind === "investimento" && unitPrice !== null ? toCents(unitPrice) : null,
+    valueCents: kind === "investimento" ? null : value !== null ? toCents(Math.abs(value)) : null,
+    purchasedAt: String(formData.get("purchasedAt") ?? "").trim() || null,
+    notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+  };
+
+  const id = String(formData.get("id") ?? "").trim();
+  try {
+    if (id) await getRepository().updateAsset(id, ctx.space.id, patch);
+    else await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
+  } catch {
+    return { error: "Não consegui gravar. A tabela do património pode faltar." };
+  }
+
+  revalidatePath("/patrimonio");
+  return { ok: true, message: id ? "Atualizado." : `${name} adicionado.` };
+}
+
+export async function deleteAssetAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().deleteAsset(id, ctx.space.id).catch(() => {});
+  revalidatePath("/patrimonio");
+}
+
+/** Só o preço atual, para atualizar cotações depressa sem abrir o formulário. */
+export async function updateAssetPriceAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  const price = parseNumber(formData.get("unitPrice"));
+  if (!id) return;
+  await getRepository()
+    .updateAsset(id, ctx.space.id, {
+      unitPriceCents: price === null ? null : toCents(price),
+    })
+    .catch(() => {});
+  revalidatePath("/patrimonio");
 }

@@ -46,7 +46,7 @@ export interface MonthPoint {
 }
 
 export interface MonthComparison {
-  /** Mês de referência ("YYYY-MM") — o mais recente com despesas, ou null. */
+  /** Mês de referência ("YYYY-MM"), o mais recente com despesas, ou null. */
   currentMonth: string | null;
   previousMonth: string | null;
   currentLabel: string;

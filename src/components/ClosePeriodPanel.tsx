@@ -45,7 +45,7 @@ export function ClosePeriodPanel({
             confirm={`Transitar o saldo para o próximo período e colapsar ${openCount} despesa(s)? Não regista pagamento.`}
             variant="secondary"
             label="Transitar saldo"
-            hint="Sem pagamento — o saldo segue"
+            hint="Sem pagamento, o saldo segue"
           />
         </div>
       ) : (

@@ -78,6 +78,8 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
 
   const categoryName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
+  // O ícone vem da categoria: as criadas em cada ambiente têm o seu.
+  const categoryIcon = (id?: string | null) => categories.find((c) => c.id === id)?.icon ?? null;
 
   const openExpenses = expenses.filter((e) => !e.settledAt).sort(byDateDesc);
   const settledExpenses = expenses.filter((e) => e.settledAt).sort(byDateDesc);
@@ -138,6 +140,7 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
                         key={e.id}
                         expense={e}
                         categoryName={categoryName(e.categoryId)}
+                        categoryIcon={categoryIcon(e.categoryId)}
                         payerName={nameOf(e.payerId)}
                       />
                     ))}
@@ -171,6 +174,7 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
                       key={e.id}
                       expense={e}
                       categoryName={categoryName(e.categoryId)}
+                        categoryIcon={categoryIcon(e.categoryId)}
                       payerName={nameOf(e.payerId)}
                     />
                   ))}

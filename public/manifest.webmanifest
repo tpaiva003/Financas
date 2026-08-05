@@ -1,5 +1,5 @@
 {
-  "name": "Rachar — Contas à Moda do Porto",
+  "name": "Rachar, Contas à Moda do Porto",
   "short_name": "Rachar",
   "description": "Dividir contas partilhadas sem dramas. Privado, rápido e nascido no Porto.",
   "start_url": "/dashboard",
@@ -9,7 +9,10 @@
   "theme_color": "#08080a",
   "orientation": "portrait-primary",
   "lang": "pt-PT",
-  "categories": ["finance", "productivity"],
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/icons/icon.svg",

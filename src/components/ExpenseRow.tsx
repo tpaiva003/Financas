@@ -18,6 +18,11 @@ function splitLabel(e: Expense): string {
   }
 }
 
+/**
+ * Ícones das categorias por omissão. Só serve de rede de segurança: o ícone a
+ * usar é o que está guardado na categoria, porque as categorias criadas em cada
+ * ambiente (ex.: "Casamento") têm o seu e não cabem numa lista fixa.
+ */
 const CATEGORY_EMOJI: Record<string, string> = {
   supermercado: "🛒",
   restauracao: "🍽️",
@@ -33,10 +38,13 @@ const CATEGORY_EMOJI: Record<string, string> = {
 export function ExpenseRow({
   expense,
   categoryName,
+  categoryIcon,
   payerName,
 }: {
   expense: Expense;
   categoryName: string;
+  /** Ícone guardado na categoria. Ganha à lista fixa. */
+  categoryIcon?: string | null;
   payerName: string;
 }) {
   const isRefund = expense.amountCents < 0;
@@ -44,7 +52,8 @@ export function ExpenseRow({
     day: "2-digit",
     month: "short",
   });
-  const emoji = expense.categoryId ? (CATEGORY_EMOJI[expense.categoryId] ?? "•") : "•";
+  const emoji =
+    categoryIcon || (expense.categoryId ? (CATEGORY_EMOJI[expense.categoryId] ?? "•") : "•");
 
   return (
     <li>

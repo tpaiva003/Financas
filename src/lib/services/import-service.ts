@@ -140,7 +140,7 @@ export async function buildImportPreview(params: {
 
   if (transactions.length === 0) {
     // Em vez de um beco sem saída, devolvemos a estrutura para o utilizador
-    // mapear à mão — é assim que a app aprende bancos novos.
+    // mapear à mão, é assim que a app aprende bancos novos.
     throw new ImportError(
       manualMapping
         ? "Com essas colunas não consegui ler nenhum movimento. Confere a linha do cabeçalho e as colunas escolhidas."
@@ -279,7 +279,7 @@ export async function commitImport(params: {
   const repo = getRepository();
 
   // O utilizador confirmou que os dados saíram certos: guardamos a estrutura
-  // para o próximo ficheiro deste banco ser reconhecido logo — por qualquer
+  // para o próximo ficheiro deste banco ser reconhecido logo, por qualquer
   // pessoa. Só nomes de colunas e índices, nunca valores nem montantes.
   const tpl = payload.saveTemplate;
   if (tpl?.fingerprint && tpl.label.trim()) {

@@ -113,7 +113,7 @@ describe("buildMonthComparison", () => {
   });
 });
 
-describe("buildMonthComparison — modos de comparação", () => {
+describe("buildMonthComparison, modos de comparação", () => {
   // Três meses de dados: mai/25 (homólogo de mai/26), mar/26, abr/26, mai/26.
   const cats = [{ id: "casa", name: "Casa", color: "#111" }];
   const expenses = [

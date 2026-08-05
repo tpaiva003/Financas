@@ -57,7 +57,13 @@ export default function LoginPage({
       <footer className="px-6 pb-8 sm:px-10">
         <div className="flex items-center gap-2 border-t border-hair2 pt-6">
           <span className="h-1.5 w-1.5 rounded-full bg-credit" />
-          <p className="eyebrow">Encriptado · Allow-list de 2 emails</p>
+          {/* Já não são "2 emails": a app tem contas próprias e ambientes
+              isolados desde que passou a multi-inquilino. */}
+          <p className="eyebrow">
+            Encriptado ·{" "}
+            <Link href="/privacidade" className="hover:text-fg-muted">Privacidade</Link> ·{" "}
+            <Link href="/termos" className="hover:text-fg-muted">Termos</Link>
+          </p>
         </div>
       </footer>
     </main>

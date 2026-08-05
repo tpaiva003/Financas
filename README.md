@@ -1,4 +1,4 @@
-# Rachar — Contas à Moda do Porto
+# Rachar, Contas à Moda do Porto
 
 App web privada (PWA) para registar e dividir despesas do agregado e manter o
 saldo entre dois utilizadores. Substitui o Tricount/Splitwise. Acesso restrito a
@@ -9,7 +9,7 @@ dois emails (allow-list), atrás de autenticação SSO.
 
 ## Estado
 
-**Fase 1 — fundação do MVP.** Inclui:
+**Fase 1, fundação do MVP.** Inclui:
 
 - 🔐 Autenticação Auth.js (Google + Microsoft) com **allow-list de 2 emails**.
 - ➕ **Entrada manual rápida** de despesas (botão a um toque, 50/50 ou %).
@@ -29,7 +29,7 @@ O que falta para fechar o MVP e as fases seguintes está em `DECISOES.md` e
 Next.js 14 (App Router) · React 18 · TypeScript · Tailwind · Auth.js (NextAuth v5)
 · Supabase (Postgres + RLS) · Vitest · Zod.
 
-## Arranque rápido (modo mock — sem Supabase)
+## Arranque rápido (modo mock, sem Supabase)
 
 A app arranca navegável de ponta a ponta com dados de exemplo, sem precisar de
 configurar Supabase nem OAuth.

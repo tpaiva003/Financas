@@ -14,7 +14,7 @@ import {
   type MonthComparison,
   type MonthlyAmount,
 } from "@/lib/domain";
-import { similarityKey } from "@/lib/import/similar";
+import { identifyMerchant } from "@/lib/domain";
 
 export interface Slice {
   key: string;
@@ -128,11 +128,13 @@ export async function getSpaceReport(
       myShareCents += e.amountCents;
     }
 
-    // Agrupa por comerciante, reaproveitando a normalização do import.
-    const mKey = similarityKey(e.description) || e.description.toLowerCase();
+    // Agrupa por comerciante: marcas conhecidas primeiro, depois palavras.
+    // É isto que faz "Continente Modelo" e "Cont Bom Dia" contarem juntos.
+    const merchant = identifyMerchant(e.description);
+    const mKey = merchant.key || e.description.toLowerCase();
     const cur = merchantTotals.get(mKey);
     if (cur) cur.cents += e.amountCents;
-    else merchantTotals.set(mKey, { label: e.description, cents: e.amountCents });
+    else merchantTotals.set(mKey, { label: merchant.label, cents: e.amountCents });
     const cat = e.categoryId ?? "outros";
     catTotals.set(cat, (catTotals.get(cat) ?? 0) + e.amountCents);
     const ym = e.transactionDate.slice(0, 7); // YYYY-MM
@@ -208,13 +210,16 @@ export async function getSpaceReport(
     };
   });
 
-  const monthlyByMerchant: MonthlyAmount[] = allExpenses.map((e) => ({
-    key: similarityKey(e.description) || e.description.toLowerCase(),
-    label: e.description,
+  const monthlyByMerchant: MonthlyAmount[] = allExpenses.map((e) => {
+    const m = identifyMerchant(e.description);
+    return {
+    key: m.key || e.description.toLowerCase(),
+    label: m.label,
     color: "#7c3aed",
     date: e.transactionDate,
     amountCents: e.amountCents,
-  }));
+    };
+  });
 
   // Se o mês em análise é o mês corrente, ainda vai a meio: corta-se no dia de
   // hoje para o homólogo comparar os mesmos dias. Meses passados contam

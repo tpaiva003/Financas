@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 /**
  * Consola do dono da plataforma.
  *
- * Mostra a saúde do serviço — quantas contas, quantos ambientes, onde há
- * movimento — e NÃO mostra o conteúdo de ninguém: nem descrições, nem valores,
+ * Mostra a saúde do serviço, quantas contas, quantos ambientes, onde há
+ * movimento, e NÃO mostra o conteúdo de ninguém: nem descrições, nem valores,
  * nem saldos. É de propósito. Gerir a plataforma não é o mesmo que ler as
  * contas de quem a usa, e a app não deve tornar a segunda coisa fácil só
  * porque a primeira é legítima.
@@ -81,7 +81,7 @@ export default async function PlataformaPage() {
             ))}
           </ul>
           <p className="mt-2 text-xs">
-            Costuma ser passageiro — recarrega a página. O que está em cima continua certo.
+            Costuma ser passageiro, recarrega a página. O que está em cima continua certo.
           </p>
         </div>
       ) : null}
@@ -113,7 +113,7 @@ export default async function PlataformaPage() {
           <h2 className="eyebrow mb-3">Bancos aprendidos</h2>
           <p className="mb-3 text-sm text-fg-muted">
             Formatos que alguém ensinou à app. Cada um serve toda a gente daí em
-            diante — é assim que a plataforma vai crescendo com os inputs.
+            diante, é assim que a plataforma vai crescendo com os inputs.
           </p>
           <ul className="card divide-y divide-hair2 p-0">
             {stats.templates.map((t) => (

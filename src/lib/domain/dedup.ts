@@ -25,7 +25,7 @@ export interface DedupResult {
 /**
  * Classifica transações de um import contra o conjunto de UIDs já existentes.
  * Duplicados internos (o mesmo UID repetido dentro do próprio ficheiro) também
- * são marcados — só a primeira ocorrência conta como nova.
+ * são marcados, só a primeira ocorrência conta como nova.
  */
 export function detectDuplicates(
   incoming: NormalizedTransaction[],

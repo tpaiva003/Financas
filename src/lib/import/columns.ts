@@ -331,7 +331,7 @@ export function rowsToTransactions(
  * cabeçalho, normalizados. Dois extratos do mesmo banco produzem a mesma
  * impressão, o que permite reutilizar um mapeamento confirmado antes.
  *
- * Só usa NOMES DE COLUNAS — nunca valores. Não há aqui dados financeiros.
+ * Só usa NOMES DE COLUNAS, nunca valores. Não há aqui dados financeiros.
  */
 export function headerFingerprint(grid: Grid, headerRow: number): string | null {
   const row = grid[headerRow];

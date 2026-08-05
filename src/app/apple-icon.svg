@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rachar">
+  <!--
+    iOS não respeita cantos arredondados no ícone (recorta ele próprio) e não
+    suporta transparência, por isso o fundo cobre a tela inteira.
+  -->
+  <rect width="512" height="512" fill="#0d0d10"/>
+  <g fill="#f3f2ee" transform="translate(256 256) scale(0.86) translate(-256 -256)">
+    <path d="M240 106a150 150 0 0 0 0 300Z" transform="translate(-14 -16)"/>
+    <path d="M272 106a150 150 0 0 1 0 300Z" transform="translate(14 16)"/>
+  </g>
+</svg>

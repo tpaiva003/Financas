@@ -31,7 +31,7 @@ function apply(theme: Theme) {
 
 /**
  * Alterna entre o tema de noite (predefinido) e o de dia. A escolha fica no
- * browser — é uma preferência do aparelho, não da conta: o mesmo utilizador
+ * browser, é uma preferência do aparelho, não da conta: o mesmo utilizador
  * pode querer noite no telemóvel e dia no portátil.
  */
 export function ThemeToggle() {

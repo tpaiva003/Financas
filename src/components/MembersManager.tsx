@@ -79,8 +79,8 @@ function MemberRow({
         <form action={editAction} className="space-y-2">
           <input type="hidden" name="id" value={member.id} />
           <div className="grid gap-2 sm:grid-cols-2">
-            <input name="name" required maxLength={80} defaultValue={member.name} className="input" aria-label="Nome" />
-            <input name="email" type="email" defaultValue={member.email ?? ""} placeholder="email (opcional)" className="input" aria-label="Email" />
+            <input key={`name:${member.id}:${member.name}`} name="name" required maxLength={80} defaultValue={member.name} className="input" aria-label="Nome" />
+            <input key={`email:${member.id}:${member.email ?? ""}`} name="email" type="email" defaultValue={member.email ?? ""} placeholder="email (opcional)" className="input" aria-label="Email" />
           </div>
           {editState.error ? <p role="alert" className="text-xs text-debt">{editState.error}</p> : null}
           <div className="flex items-center gap-2">
@@ -146,6 +146,7 @@ function MemberRow({
           <select
             id={`acc-${member.id}`}
             name="userId"
+            key={`acc:${member.id}:${member.linkedUserId ?? ""}`}
             defaultValue={member.linkedUserId ?? ""}
             className="select h-9 w-auto py-1 text-xs"
           >

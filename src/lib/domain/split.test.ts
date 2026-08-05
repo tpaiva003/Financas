@@ -6,7 +6,7 @@ const A = "user-a";
 const B = "user-b";
 const users = [A, B];
 
-describe("computeShares — EQUAL (default 50/50)", () => {
+describe("computeShares, EQUAL (default 50/50)", () => {
   it("divide igual e a soma bate certo", () => {
     const shares = computeShares(2501, equalSplit(), users);
     expect(shares[A]! + shares[B]!).toBe(2501);
@@ -15,7 +15,7 @@ describe("computeShares — EQUAL (default 50/50)", () => {
   });
 });
 
-describe("computeShares — PERCENT", () => {
+describe("computeShares, PERCENT", () => {
   it("aplica 70/30", () => {
     const shares = computeShares(1000, percentSplit({ [A]: 70, [B]: 30 }), users);
     expect(shares[A]).toBe(700);
@@ -29,7 +29,7 @@ describe("computeShares — PERCENT", () => {
   });
 });
 
-describe("computeShares — SHARES", () => {
+describe("computeShares, SHARES", () => {
   it("divide por quotas (2:1)", () => {
     const shares = computeShares(900, { type: "SHARES", weights: { [A]: 2, [B]: 1 } }, users);
     expect(shares[A]).toBe(600);
@@ -38,7 +38,7 @@ describe("computeShares — SHARES", () => {
   });
 });
 
-describe("computeShares — FIXED", () => {
+describe("computeShares, FIXED", () => {
   it("usa montantes fixos quando somam o total", () => {
     const shares = computeShares(1000, { type: "FIXED", weights: { [A]: 250, [B]: 750 } }, users);
     expect(shares[A]).toBe(250);
@@ -52,7 +52,7 @@ describe("computeShares — FIXED", () => {
   });
 });
 
-describe("computeShares — valores negativos (reembolso)", () => {
+describe("computeShares, valores negativos (reembolso)", () => {
   it("divide um reembolso 50/50 mantendo a soma", () => {
     const shares = computeShares(-1001, equalSplit(), users);
     expect(shares[A]! + shares[B]!).toBe(-1001);

@@ -39,7 +39,7 @@ export function CategoryCombobox({
         list={listId}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Sem categoria — escreve para procurar"
+        placeholder="Sem categoria, escreve para procurar"
         autoComplete="off"
         className="input"
       />

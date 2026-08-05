@@ -64,13 +64,13 @@ export function InviteUserForm({
       <input
         name="spaceName"
         maxLength={80}
-        placeholder="Nome do primeiro ambiente (ex.: Casa) — opcional"
+        placeholder="Nome do primeiro ambiente (ex.: Casa), opcional"
         className="input mt-2"
         aria-label="Nome do primeiro ambiente"
       />
       <p className="mt-2 text-xs text-fg-faint">
         Conta independente, com ambiente próprio: a pessoa entra e está sozinha
-        lá dentro. Os ambientes dela não aparecem aqui, nem os teus lá — e a tua
+        lá dentro. Os ambientes dela não aparecem aqui, nem os teus lá. A tua
         conta não aparece em lado nenhum na app dela.
       </p>
       {state.error ? (

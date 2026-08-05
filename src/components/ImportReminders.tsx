@@ -29,7 +29,7 @@ function ptDate(iso: string): string {
  * Lembretes de importação por banco (REQ-IMP-8).
  *
  * Mostra, para cada banco, quando foi a última importação, se já está na hora
- * da próxima e — o mais útil — a partir de que data se deve importar, para não
+ * da próxima e, o mais útil, a partir de que data se deve importar, para não
  * sobrepor o que já está registado.
  */
 export function ImportReminders({ spaces }: { spaces: SpaceReminders[] }) {
@@ -78,8 +78,8 @@ export function ImportReminders({ spaces }: { spaces: SpaceReminders[] }) {
                   </p>
                   {r.fromDate ? (
                     <p className="mt-0.5 text-xs text-fg-faint">
-                      Importar a partir de <span className="text-fg-muted">{ptDate(r.fromDate)}</span>
-                      {" "}— o que vem antes já está registado.
+                      Importar a partir de <span className="text-fg-muted">{ptDate(r.fromDate)}</span>.
+                      O que vem antes já está registado.
                     </p>
                   ) : null}
                 </div>
@@ -93,6 +93,7 @@ export function ImportReminders({ spaces }: { spaces: SpaceReminders[] }) {
                       Periodicidade de {r.label || r.source}
                     </label>
                     <select
+                      key={`freq:${space.spaceId}:${r.source}:${r.frequency}`}
                       id={`freq-${space.spaceId}-${r.source}`}
                       name="frequency"
                       defaultValue={r.frequency}

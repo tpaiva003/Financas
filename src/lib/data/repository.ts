@@ -1,5 +1,5 @@
 /**
- * Camada de dados — interface do repositório.
+ * Camada de dados, interface do repositório.
  *
  * A app fala sempre com esta interface; existem duas implementações:
  *  - MockRepository: em memória, com seed (app navegável sem Supabase).
@@ -18,6 +18,7 @@ import type {
   Split,
   ClassificationRule,
   Membership,
+  AssetKind,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -144,6 +145,23 @@ export interface ImportReminder {
   active: boolean;
   createdAt: string;
 }
+
+/** Bem, investimento ou dívida do património de um ambiente. */
+export interface Asset {
+  id: string;
+  spaceId: string;
+  name: string;
+  kind: AssetKind;
+  quantity?: number | null;
+  unitCostCents?: number | null;
+  unitPriceCents?: number | null;
+  valueCents?: number | null;
+  purchasedAt?: string | null;
+  notes?: string | null;
+  updatedAt?: string | null;
+}
+
+export type CreateAssetInput = Omit<Asset, "id" | "updatedAt"> & { createdBy?: string | null };
 
 /** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
 export interface SpendingGoal {
@@ -428,6 +446,12 @@ export interface Repository {
     createdBy?: string | null;
   }): Promise<void>;
   deleteSpendingGoal(spaceId: string, categoryId: string | null): Promise<void>;
+
+  // Património: bens, investimentos e dívidas.
+  listAssets(spaceId: string): Promise<Asset[]>;
+  createAsset(input: CreateAssetInput): Promise<Asset>;
+  updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void>;
+  deleteAsset(id: string, spaceId: string): Promise<void>;
 
   /** Nº de despesas por aprovar no ambiente. */
   countPendingApprovals(spaceId: string): Promise<number>;

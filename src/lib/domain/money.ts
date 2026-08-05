@@ -59,7 +59,7 @@ export function allocateByWeights(amount: number, weights: number[]): number[] {
   // Cêntimos que faltam atribuir (sempre >= 0, pois floor <= exact).
   let leftover = amount - allocated;
 
-  // Resto fracionário por bucket — quem tiver maior resto recebe +1 primeiro.
+  // Resto fracionário por bucket, quem tiver maior resto recebe +1 primeiro.
   const order = exact
     .map((x, i) => ({ i, frac: x - floors[i]! }))
     .sort((a, b) => b.frac - a.frac);

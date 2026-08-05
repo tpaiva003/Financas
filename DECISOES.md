@@ -4,14 +4,14 @@ Registo das decisões autónomas (de baixo risco) tomadas durante o
 desenvolvimento, conforme `CLAUDE.md`. Decisões que afetam o modelo de dados de
 forma significativa ficam assinaladas para confirmação.
 
-## Fase 1 — Fundação do MVP (esta entrega)
+## Fase 1, Fundação do MVP (esta entrega)
 
 ### Stack e versões
 - **Next.js 14.2 (App Router) + React 18.3 + TypeScript + Tailwind 3.4.** Optou-se
   pela combinação estável e bem conhecida em vez do bleeding-edge (Next 15 / React 19
   / Tailwind 4) para garantir builds previsíveis. A stack pedida (Next/TS/Tailwind/PWA,
   Auth.js, Supabase) mantém-se.
-- **Auth.js / NextAuth v5 (beta)** — é a forma padrão de integrar SSO no App Router.
+- **Auth.js / NextAuth v5 (beta)**, é a forma padrão de integrar SSO no App Router.
 - **Vitest** para testes da lógica de domínio (rápido, bom suporte TS).
 - **Zod** para validação de input nas Server Actions.
 
@@ -22,7 +22,7 @@ forma significativa ficam assinaladas para confirmação.
 - Camada de dados atrás de uma interface `Repository` (`src/lib/data/`) com duas
   implementações: `MockRepository` (em memória, com seed) e `SupabaseRepository`.
 
-### Modelo monetário (assinalado — afeta dados)
+### Modelo monetário (assinalado, afeta dados)
 - **Todos os valores em cêntimos inteiros** (`amount_cents`, `bigint`). Evita erros
   de vírgula flutuante e torna o saldo exatamente reconciliável. Valores negativos
   são válidos (reembolsos/estornos, REQ-SPL-4).
@@ -37,7 +37,7 @@ forma significativa ficam assinaladas para confirmação.
 - O saldo é **explicável**: `computeBalance` devolve as contribuições por
   despesa/acerto (página `/saldo`).
 
-### UID de deduplicação (assinalado — fonte de verdade)
+### UID de deduplicação (assinalado, fonte de verdade)
 - A especificação diz que o UID estável vem da lógica **Python existente**. Essa
   lógica **não está neste repositório**. Implementou-se uma referência em TS
   (`normalize.ts`, FNV-1a 64-bit sobre campos normalizados) usada para entradas
@@ -53,12 +53,12 @@ forma significativa ficam assinaladas para confirmação.
   verdade usada no domínio e na BD (`app_users.id`, `expenses.payer_id`, …). Os
   **emails** vêm do `ALLOWED_EMAILS` por ordem (1.º = Tiago, 2.º = Clara), por isso
   trocar os emails reais não parte a ligação às linhas existentes. (Antes os ids
-  eram derivados do email por slug — mudou-se ao ligar os emails reais.)
+  eram derivados do email por slug, mudou-se ao ligar os emails reais.)
 - **Login de desenvolvimento** (`AUTH_DEV_LOGIN=true`): provider de credenciais que
   permite entrar como um dos emails da allow-list **sem SSO real**, para a app ser
   navegável localmente sem configurar OAuth. **NUNCA ligar em produção.**
 
-### Privacidade e RLS (assinalado — segurança)
+### Privacidade e RLS (assinalado, segurança)
 - No MVP, o acesso a dados é **server-side** com a *service-role key* e as regras de
   privacidade das despesas pessoais são aplicadas na **camada de aplicação** (o
   repositório filtra por `owner_id`/`visible_to_partner`).
@@ -86,7 +86,7 @@ Activo/Bankinter) com pré-visualização e dedup ligados à UI; editor visual d
 regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 (precisa de credenciais). Fases 2/3 conforme o REQUISITOS.md.
 
-## Pós-MVP — design, landing e auth interim
+## Pós-MVP, design, landing e auth interim
 
 ### Design
 - Redesenho para tema **escuro editorial premium**: tipografia *Space Grotesk*
@@ -113,7 +113,7 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   caem numa tabela `contact_messages` e aparecem no inbox `/mensagens`, visível
   só ao admin.
 
-## Fase 3 — Backlog de melhorias (12 itens)
+## Fase 3, Backlog de melhorias (12 itens)
 
 ### Divisão "só de um(a)" (#6)
 - Representada como `PERCENT` com 100% para o dono e 0% para os restantes.
@@ -127,13 +127,13 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   civil), para o relatório ser útil fora do mês corrente. Média móvel = média
   dos últimos 3 meses **com dados**.
 
-### Mensagens — admin (#9, #10, #11)
+### Mensagens, admin (#9, #10, #11)
 - Migração 0004: `archived_at` e `notes` em `contact_messages`.
 - Arquivar (separador Ativas | Arquivadas), badge de não lidas no topo (nav
   desktop + atalho mobile, só admin) e notas internas por mensagem.
 - `countUnreadContactMessages` é tolerante caso a coluna ainda não exista.
 
-### Categorias por ambiente (#12) — assinalado (afeta dados)
+### Categorias por ambiente (#12), assinalado (afeta dados)
 - Migração 0005: `space_id text` (FK `spaces`, `on delete cascade`) em
   `categories`. `space_id NULL` = categoria **padrão** (em todos os ambientes);
   não editável. Cada ambiente acrescenta as suas (ex.: Casamento, Férias).
@@ -143,9 +143,9 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 ### Editar/eliminar participantes (#7)
 - `updateMember` / `deleteMember` (só no próprio ambiente). Eliminar é
   bloqueado quando o participante tem conta associada, é o único, ou tem
-  despesas/acertos (FK sem cascade) — preserva a explicabilidade do saldo.
+  despesas/acertos (FK sem cascade), preserva a explicabilidade do saldo.
 
-### Fecho de período: pagar/transitar + colapsar (#1, #4) — assinalado (afeta dados)
+### Fecho de período: pagar/transitar + colapsar (#1, #4), assinalado (afeta dados)
 - Migração 0006: `settled_at` em `expenses`. É **apenas um marcador de UI**: o
   cálculo do saldo continua a considerar todas as despesas confirmadas, pelo que
   o saldo permanece explicável. Reversível (`reopenExpenses`).
@@ -164,22 +164,22 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   `recurring_id` em `expenses` com índice único `(recurring_id, transaction_date)`
   para idempotência. A tabela original (0001), vazia e sem uso, foi recriada.
 - Lógica pura e testada em `src/lib/domain/recurring.ts` (`nextOccurrence`,
-  `enumerateDue`) — frequência semanal/mensal/anual, com clamp do dia ao último
+  `enumerateDue`), frequência semanal/mensal/anual, com clamp do dia ao último
   do mês. 10 testes.
 - **Geração preguiçosa** (`recurring-service.ts`): como não há cron, as
   ocorrências em atraso são materializadas ao abrir o Dashboard ou os
   Recorrentes. Idempotente (verifica ocorrência + índice único) e tolerante a
-  falhas (try/catch — nunca bloqueia a app).
+  falhas (try/catch, nunca bloqueia a app).
 - **Valor fixo** → despesa `confirmed` (entra logo no saldo). **Valor variável**
   → despesa `pending`; só entra no saldo depois de confirmar o valor real
   (REQ-REC-2). `computeBalance` já ignora `pending`, por isso o saldo mantém-se
   correto e explicável.
 - Página `/recorrentes`: "por confirmar", lista de templates (pausar, retomar,
-  saltar, terminar, eliminar — REQ-REC-4) e formulário de criação.
+  saltar, terminar, eliminar, REQ-REC-4) e formulário de criação.
 - **Import de extratos** fica pendente até o utilizador partilhar exemplos de
   export dos bancos (Activo/Bankinter) para mapear colunas.
 
-## Fase 4 — UX + role de submissão
+## Fase 4, UX + role de submissão
 
 ### Melhorias de UX (lote de 11)
 - Filtro de despesas **ao vivo** (sem botão), lista **agrupada por data**,
@@ -189,7 +189,7 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
   paga** pelo próprio. A divisão por percentagem mostra também o **valor (€)** de
   cada parte.
 
-### Role de submissão com aprovação (#9) — assinalado (afeta dados/auth)
+### Role de submissão com aprovação (#9), assinalado (afeta dados/auth)
 - Migração 0008: `members.role` ('full' | 'submitter') e, em `expenses`,
   `approval_status` ('pending'|'rejected'|null), `approver_id`, `submitted_by`.
 - **Allow-list passa a vir também da BD**: além dos 2 utilizadores base (env),
@@ -199,7 +199,7 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - Um **submitter** é um participante **não-pleno**: não entra no saldo. Ao criar
   uma despesa escolhe pagador/divisão **entre os membros plenos** e um
   **aprovador**; a despesa fica `pending` e só entra no saldo após aprovação
-  (`countsTowardsBalance` exclui pending/rejected — saldo continua explicável).
+  (`countsTowardsBalance` exclui pending/rejected, saldo continua explicável).
 - `getSpaceContext` expõe `fullMembers` e `viewerRole`. As páginas financeiras
   usam `fullMembers`. Os submitters são redirecionados para /despesas e as ações
   sensíveis (acertos, recorrentes, categorias, membros, edição) recusam-nos.
@@ -210,7 +210,7 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - Adiadas a pedido do utilizador (precisam de chaves VAPID e, em iOS, da PWA
   instalada). Ficam como trabalho futuro.
 
-## Fase 5 — Importação de extratos (REQ-IMP)
+## Fase 5, Importação de extratos (REQ-IMP)
 
 - **Parser em TypeScript**, não Python: o repositório nunca teve a lógica Python
   (ficou do lado do utilizador), por isso foi reimplementada em TS. O UID
@@ -235,10 +235,10 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - **Lotes reversíveis** (migração 0009): cada importação fica registada e pode
   ser anulada. Se a migração ainda não estiver aplicada, a importação **continua
   a funcionar** (dedup intacto), perdendo-se apenas o "anular lote".
-- **PDF (Universo, Wizink) fica para a fase seguinte** — Tier 2, precisa de
+- **PDF (Universo, Wizink) fica para a fase seguinte**, Tier 2, precisa de
   extração de texto de PDF.
 
-### Extratos em PDF — cartão Universo (Tier 2)
+### Extratos em PDF, cartão Universo (Tier 2)
 - `pdf-parse` extrai o texto; o parsing das linhas fica em
   `src/lib/import/pdf-universo.ts`, **puro e testado** (7 testes com linhas
   reais). O PDF é convertido numa grelha [data, descrição, valor], reaproveitando
@@ -258,7 +258,7 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 ### Import em períodos já registados: pessoal vs partilhada
 - Caso real: as contas partilhadas de um período já estão acertadas, mas falta o
   histórico pessoal. O import passa a permitir **incluir esse período marcando
-  as despesas como pessoais** — entram na análise do próprio e **não mexem no
+  as despesas como pessoais**, entram na análise do próprio e **não mexem no
   saldo** (`countsTowardsBalance` exige `kind === "shared"`).
 - Aviso **em tempo real** quando a seleção inclui linhas de período já coberto,
   a distinguir o risco: partilhadas alteram o saldo desse período (destaque a
@@ -278,7 +278,7 @@ incluindo a coluna `expenses.import_batch_id`, que passou de uuid para text.
 - O import deixou de usar silenciosamente o ambiente **ativo**: passa a haver um
   **seletor de ambiente de destino** no passo 1. Isto importa porque o dedup, o
   guard de sobreposição, as categorias e os participantes são **todos por
-  ambiente** — daí a escolha ter de ser feita ANTES da pré-visualização.
+  ambiente**, daí a escolha ter de ser feita ANTES da pré-visualização.
 - `getTargetSpace(ctx, spaceId)` resolve o ambiente pedido, garantindo que o
   utilizador pertence a ele (e recusa submitters). A pré-visualização transporta
   `spaceId`, `spaceName`, categorias e participantes DESSE ambiente, e o destino
@@ -316,7 +316,7 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
   se transferem entre ambientes; linhas enviadas para outro ambiente ficam em
   partes iguais. Documentado no tipo do payload.
 
-## Fase 6 — Usabilidade do import e gestão de contas
+## Fase 6, Usabilidade do import e gestão de contas
 
 - **Legibilidade dos dropdowns:** as `option` são desenhadas pelo sistema e, mesmo
   com `color-scheme: dark`, saíam cinzentas e ilegíveis. Passam a ter as cores da
@@ -324,7 +324,7 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
 - **Aplicar categoria a semelhantes:** `similarityKey` (puro, 7 testes) reduz a
   descrição ao comerciante, ignorando o tipo de operação ("Compra", "DD", "Trf"),
   números e referências. Ao classificar uma linha, a app **propõe** aplicar às
-  semelhantes — nunca o faz sozinha (invariante REQ-CLF-3).
+  semelhantes, nunca o faz sozinha (invariante REQ-CLF-3).
 - **Vários extratos de uma vez:** o import aceita múltiplos ficheiros. Ficheiros
   não reconhecidos são reportados sem bloquear os restantes, e movimentos
   repetidos entre ficheiros que se sobrepõem são marcados "repetida nos
@@ -336,10 +336,10 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
 - **Associar conta a um participante** (`linkMemberAccountAction`): é o que
   identifica a MESMA pessoa em ambientes diferentes e desbloqueia a
   transferência de saldo entre ambientes. Antes, a única forma de ligar uma
-  conta era "Dar acesso", que tornava a pessoa um *submitter* — não servia para
+  conta era "Dar acesso", que tornava a pessoa um *submitter*, não servia para
   participantes plenos. Impede associar a mesma conta a dois participantes.
 
-## Fase 7 — Relatórios, ruído e ordem dos ambientes
+## Fase 7, Relatórios, ruído e ordem dos ambientes
 
 - **Relatórios com período** (3/6/12 meses ou tudo, por omissão 12): sem isto os
   totais misturavam anos e não diziam nada. Passam a excluir despesas pendentes
@@ -356,13 +356,13 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
   e por teclado. A leitura tolera a coluna não existir (fallback para a ordem de
   criação), e a ação falha em silêncio se a migração não estiver aplicada.
 
-## Fase 8 — Comparações nos relatórios e contas independentes
+## Fase 8, Comparações nos relatórios e contas independentes
 
 ### Relatórios
 - **Modo de comparação** (`BaselineMode`): mês anterior, **média dos meses
   anteriores** ou **homólogo** (mesmo mês do ano passado). As categorias passam
   a comparar contra a referência escolhida, não só contra o mês anterior.
-- A média **exclui o mês atual** — comparar um mês consigo próprio dilui o
+- A média **exclui o mês atual**, comparar um mês consigo próprio dilui o
   desvio e engana.
 - A comparação usa **todo o histórico**, mesmo quando os totais mostrados são só
   do período escolhido: sem isso o homólogo nunca teria dados.
@@ -370,7 +370,7 @@ importar o mesmo ficheiro várias vezes era trabalho a mais.
   limitado aos últimos 12 meses para continuar legível no telemóvel.
 - 6 testes novos para os modos de comparação.
 
-### Privacidade — corrigido um problema sério
+### Privacidade, corrigido um problema sério
 `getSpaceContext` tinha um fallback: quem não tivesse ambientes caía no "casa".
 Combinado com `viewerMemberId = members[0].id`, um utilizador novo aterrava nas
 contas de outra pessoa **e** era tratado como o primeiro participante desse
@@ -380,7 +380,7 @@ não há fallback para outro participante.
 ### Convidar alguém para experimentar
 - `inviteUserAction` (só admin) cria uma **conta independente**: não fica ligada
   a nenhum ambiente do anfitrião. Os ambientes do convidado não aparecem na app
-  do anfitrião nem o contrário — o isolamento é por participação em ambientes.
+  do anfitrião nem o contrário, o isolamento é por participação em ambientes.
 - O convite está em Mensagens, incluindo um botão por mensagem de contacto que
   pré-preenche nome e email de quem pediu para experimentar.
 - **Limite honesto:** isto é isolamento ao nível da aplicação. Quem administra o
@@ -437,7 +437,7 @@ A janela é ajustável no relatório (3, 6 ou 12 meses).
 **Metas:** tecto mensal por categoria, ou do ambiente inteiro, editável no
 próprio relatório (apagar o valor remove a meta). Estado: abaixo, perto (≥80%)
 ou acima. Ficam em `spending_goals`, com o total a usar `category_id` nulo e um
-índice único sobre `coalesce(category_id, '__total__')` — em Postgres dois NULL
+índice único sobre `coalesce(category_id, '__total__')`, em Postgres dois NULL
 são distintos e sem isto podiam nascer várias metas totais.
 
 ## Barras de período com média e homólogo (substitui o foco nas metas)
@@ -464,16 +464,16 @@ quando existe meta.
 As cores passaram de hex fixo no Tailwind para variáveis CSS em canais RGB
 (`rgb(var(--c-fg) / <alpha-value>)`), o que mantém os modificadores de opacidade
 (`bg-panel/80`, `border-fg/30`) a funcionar. O tema de dia usa papel quente, não
-branco clínico, e escurece o verde e o vermelho — os originais não tinham
+branco clínico, e escurece o verde e o vermelho, os originais não tinham
 contraste suficiente sobre fundo claro.
 
 A escolha fica no browser (localStorage), não na conta: é uma preferência do
-aparelho — a mesma pessoa pode querer noite no telemóvel e dia no portátil. Um
+aparelho, a mesma pessoa pode querer noite no telemóvel e dia no portátil. Um
 script inline no `<head>` aplica-a antes de pintar, para não haver flash.
 
 ## "Última que pagaste" vs "Último registo teu"
 
-Eram ambíguos. "Pagaste" filtra por pagador — inclui despesas registadas pela
+Eram ambíguos. "Pagaste" filtra por pagador, inclui despesas registadas pela
 outra pessoa em que tu és o pagador. "Registaste" filtra por quem meteu os dados
 e passa a mostrar o **dia do registo**, não a data da despesa: é essa a pergunta
 ("quando é que atualizei isto pela última vez"). Ambos os cartões explicam agora
@@ -483,17 +483,17 @@ o que contam.
 
 Passou de um mês para 14 (jul/2025 a ago/2026, com o último mês a meio, como um
 mês a decorrer). Sem histórico não há média nem homólogo e metade dos relatórios
-fica vazia. Os valores variam de forma determinística — nada aleatório, para as
+fica vazia. Os valores variam de forma determinística, nada aleatório, para as
 capturas e os testes darem sempre o mesmo.
 
 ## Multi-inquilino: o ambiente é a unidade de isolamento
 
 Uma pessoa vê um ambiente se, e só se, existir um participante desse ambiente
-ligado à conta dela. Daí sai tudo — despesas, saldos, categorias, lembretes,
+ligado à conta dela. Daí sai tudo, despesas, saldos, categorias, lembretes,
 metas. As regras estão em `domain/tenancy.ts`, puras e testadas.
 
 **Fuga fechada:** `listKnownAccounts()` devolvia TODAS as contas da plataforma e
-era mostrada no ecrã de participantes a qualquer utilizador — um cliente externo
+era mostrada no ecrã de participantes a qualquer utilizador, um cliente externo
 via o nome e o email do dono e de quem mais usasse a app. Passa a devolver só
 contas com que se partilha pelo menos um ambiente. Numa app multi-inquilino
 ninguém pode sequer descobrir que as outras contas existem.
@@ -508,8 +508,81 @@ de banco aprendidos. Nunca descrições, valores ou saldos.
 
 Vale a pena ser claro sobre o limite: como a app fala com o Postgres pela
 service-role, quem tem as chaves do projeto consegue tecnicamente ler os dados.
-O que a decisão garante é que **o produto não expõe isso** — não há ecrã que
+O que a decisão garante é que **o produto não expõe isso**, não há ecrã que
 mostre as despesas de um cliente, o dono não aparece dentro do ambiente dele, e
 a consola foi desenhada para gerir, não para espreitar. Uma garantia mais forte
 exigiria cifra do lado do cliente, com o custo de perder classificação, dedup e
 relatórios do lado do servidor.
+
+## Menu: quatro secções, e o topo não cresce
+
+O menu tinha nove entradas e ganhava mais uma por cada funcionalidade nova. Não
+escala: mais funcionalidades não podem significar mais escolhas à frente de quem
+entra. Passa a haver quatro secções, por intenção:
+
+- **Saldo**, quanto devo ou me devem agora
+- **Despesas**, registar e trazer (lista, importar, recorrentes)
+- **Análise**, olhar para trás (resumo, categorias, evolução)
+- **Património**, o que tenho e para onde vou
+
+O que é ocasional (acertos, ambiente) ou administrativo (mensagens, consola) foi
+para um menu "Mais". As páginas de cada secção aparecem por dentro dela, numa
+segunda linha, e a barra do telemóvel usa as mesmas quatro secções, para o mapa
+mental ser um só. Há um teste que falha se voltarem a pendurar-se páginas no
+topo.
+
+Os relatórios eram um rolo interminável. Passam a três vistas, cada uma a
+responder a uma pergunta: como estou, em que gasto, como evoluiu.
+
+## Comerciantes: marcas conhecidas antes de adivinhar
+
+O agrupamento por comerciante usava as duas primeiras palavras da descrição, o
+que falha no caso mais comum: "CONTINENTE MODELO MATOSINHOS" e "CONT BOM DIA
+PORTO" são o mesmo sítio e contavam separados.
+
+A ordem passa a ser: **apelido confirmado pelo utilizador**, depois **marca
+conhecida** (lista de cadeias portuguesas com as suas variantes), e só depois as
+primeiras palavras. Quanto mais humano o sinal, mais peso tem.
+
+Para o que sobra, `suggestMerges` propõe juntas prováveis (prefixo, quase igual,
+primeira palavra específica) que o utilizador confirma. **Nunca junta sozinha**:
+um agrupamento errado estraga relatórios de forma difícil de detetar, por isso o
+custo de perguntar é muito menor do que o de adivinhar mal. A confirmação vira
+apelido e vale daí em diante.
+
+A IA fica como último recurso, depois destes três passos, para o que nenhum
+apanhar.
+
+## Domínio rachar.pt
+
+`metadataBase` passa a apontar para o domínio, para os URLs partilhados ficarem
+absolutos. O domínio real vive em `NEXT_PUBLIC_SITE_URL` e `AUTH_URL`, para o
+ambiente local continuar a funcionar sem tocar em código.
+
+## Quem pode entrar: a regra estava presa ao mundo antigo
+
+A verificação do SSO só olhava para a lista de emails nas variáveis de ambiente,
+herança de quando a app era para duas pessoas. Depois de passar a ter contas na
+base de dados, isso deixou de bater certo: quem fosse convidado entrava por
+palavra-chave mas era **barrado no SSO**, sem explicação. Ninguém tinha dado por
+isso porque o SSO ainda não estava ligado.
+
+A regra passa a estar em `domain/access.ts`, pura e testada: palavra-chave passa
+(já validada antes), SSO passa se o email estiver nas variáveis, se já houver
+conta, ou se o registo aberto estiver ligado.
+
+O **registo aberto está desligado por omissão** e exige
+`AUTH_OPEN_REGISTRATION=true`. Abrir o registo é uma decisão de produto, com
+custos e obrigações, e não pode acontecer por descuido de configuração. Com ele
+ligado, a primeira entrada por SSO cria a conta e o ambiente próprio.
+
+A decisão mudou de sítio: estava em `auth.config.ts`, que corre no edge e não
+tem acesso a dados, e passou para `auth.ts`, que corre em Node, que é onde o
+início de sessão acontece.
+
+## Páginas de privacidade e termos
+
+Públicas, porque a Google as exige acessíveis sem sessão para aprovar o ecrã de
+consentimento, e porque quem está a decidir se cria conta deve poder lê-las
+antes. Escritas a partir do que a app faz, não de um modelo: se o comportamento
+mudar, estas páginas mudam com ele.

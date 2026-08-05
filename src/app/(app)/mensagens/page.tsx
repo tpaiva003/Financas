@@ -107,11 +107,18 @@ function MessageCard({ m, archivedView }: { m: ContactMessage; archivedView: boo
         {m.message}
       </p>
 
-      {/* Notas internas — o que foi feito sobre esta mensagem. */}
+      {/* Notas internas, o que foi feito sobre esta mensagem. */}
       <form action={setMessageNotesAction} className="mt-4 border-t border-hair pt-4">
         <input type="hidden" name="id" value={m.id} />
         <label htmlFor={`notes-${m.id}`} className="label">Nota interna</label>
+        {/*
+          A `key` inclui a nota gravada de propósito. Este campo não é
+          controlado, por isso o `defaultValue` só vale quando ele nasce: sem
+          isto, ao recarregar a lista (arquivar, marcar como lida) o React
+          reutilizava a caixa e o texto de uma mensagem aparecia noutra.
+        */}
         <textarea
+          key={`${m.id}:${m.notes ?? ""}`}
           id={`notes-${m.id}`}
           name="notes"
           rows={2}

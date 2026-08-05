@@ -69,7 +69,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Fundo com um brilho subtil no topo — vibe editorial/premium. */
+  /* Fundo com um brilho subtil no topo, vibe editorial/premium. */
   body::before {
     content: "";
     position: fixed;

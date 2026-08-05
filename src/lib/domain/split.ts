@@ -15,7 +15,7 @@ export interface SplitValidationResult {
 
 /**
  * Valida uma divisão para um dado conjunto de participantes e montante.
- * Não lança — devolve o resultado para a UI poder mostrar o erro.
+ * Não lança, devolve o resultado para a UI poder mostrar o erro.
  */
 export function validateSplit(
   split: Split,

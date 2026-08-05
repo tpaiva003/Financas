@@ -19,7 +19,7 @@ export async function generateDueRecurring(spaceId: string, asOf?: string): Prom
   try {
     templates = await repo.listRecurring(spaceId);
   } catch {
-    return 0; // tabela indisponível / migração por aplicar — não bloqueia a app
+    return 0; // tabela indisponível / migração por aplicar, não bloqueia a app
   }
 
   const today = asOf ?? new Date().toISOString().slice(0, 10);
@@ -58,7 +58,7 @@ export async function generateDueRecurring(spaceId: string, asOf?: string): Prom
         });
         generated += 1;
       } catch {
-        // Colisão de unicidade (gerada entretanto) — ignora.
+        // Colisão de unicidade (gerada entretanto), ignora.
       }
     }
 

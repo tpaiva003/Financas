@@ -11,7 +11,7 @@ export function ServiceWorkerRegister() {
     if (process.env.NODE_ENV !== "production") return;
     const onLoad = () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {
-        /* falha silenciosa — a app continua a funcionar sem offline */
+        /* falha silenciosa, a app continua a funcionar sem offline */
       });
     };
     window.addEventListener("load", onLoad);
