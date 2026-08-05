@@ -11,8 +11,11 @@
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { randomUUID } from "node:crypto";
 import { authConfig } from "./auth.config";
 import { userByEmail } from "./users";
+import { isEmailAllowed, isOpenRegistrationEnabled } from "./env";
+import { canSignIn } from "./domain";
 import { hashPassword, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
 
@@ -49,4 +52,54 @@ providers.push(
   }),
 );
 
-export const { handlers, auth, signIn, signOut } = NextAuth({ ...authConfig, providers });
+/**
+ * Quem pode entrar, decidido aqui e não em `auth.config.ts`.
+ *
+ * A verificação precisa de consultar a base de dados (as contas criadas na app
+ * não vivem em variáveis de ambiente) e o `auth.config.ts` corre no edge, onde
+ * não há acesso a dados. Este ficheiro corre em Node, que é onde o início de
+ * sessão acontece de facto.
+ */
+const signInCallback: NonNullable<NextAuthConfig["callbacks"]>["signIn"] = async ({
+  user,
+  account,
+}) => {
+  const provider = account?.provider ?? "password";
+  const email = (user.email ?? "").toLowerCase();
+  if (!email) return false;
+
+  const repo = getRepository();
+  const existing = userByEmail(email) ?? (await repo.getAppUserByEmail(email).catch(() => null));
+
+  const allowed = canSignIn({
+    provider,
+    isEnvAllowed: isEmailAllowed(email),
+    hasAccount: Boolean(existing),
+    openRegistration: isOpenRegistrationEnabled(),
+  });
+  if (!allowed) return false;
+
+  // Registo aberto e primeira entrada por SSO: cria-se a conta agora. O
+  // ambiente próprio nasce no primeiro acesso (ver `getSpaceContext`), com a
+  // pessoa sozinha lá dentro.
+  if (provider !== "password" && !existing) {
+    await repo
+      .createAppUser({
+        id: `usr_${randomUUID()}`,
+        email,
+        name: user.name?.trim() || email.split("@")[0]!,
+      })
+      .catch(() => {
+        // Se a criação falhar, deixamos entrar na mesma: o pior que acontece é
+        // a conta ser criada na visita seguinte.
+      });
+  }
+
+  return true;
+};
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
+  providers,
+  callbacks: { ...authConfig.callbacks, signIn: signInCallback },
+});

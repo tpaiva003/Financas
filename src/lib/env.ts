@@ -24,6 +24,16 @@ export function isDevLoginEnabled(): boolean {
 }
 
 /**
+ * Registo aberto: qualquer pessoa com conta Google/Microsoft se pode registar
+ * sozinha. Desligado por omissão, porque abrir o registo é uma decisão de
+ * produto (traz custos, obrigações de RGPD e abre a porta a abuso), não algo
+ * que deva acontecer por descuido de configuração.
+ */
+export function isOpenRegistrationEnabled(): boolean {
+  return process.env.AUTH_OPEN_REGISTRATION === "true";
+}
+
+/**
  * Modo de dados. "mock" usa um repositório em memória (app navegável sem
  * Supabase). "supabase" usa o Supabase real. Default: mock se faltar config.
  */

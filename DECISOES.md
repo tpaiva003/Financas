@@ -558,3 +558,31 @@ apanhar.
 `metadataBase` passa a apontar para o domínio, para os URLs partilhados ficarem
 absolutos. O domínio real vive em `NEXT_PUBLIC_SITE_URL` e `AUTH_URL`, para o
 ambiente local continuar a funcionar sem tocar em código.
+
+## Quem pode entrar: a regra estava presa ao mundo antigo
+
+A verificação do SSO só olhava para a lista de emails nas variáveis de ambiente,
+herança de quando a app era para duas pessoas. Depois de passar a ter contas na
+base de dados, isso deixou de bater certo: quem fosse convidado entrava por
+palavra-chave mas era **barrado no SSO**, sem explicação. Ninguém tinha dado por
+isso porque o SSO ainda não estava ligado.
+
+A regra passa a estar em `domain/access.ts`, pura e testada: palavra-chave passa
+(já validada antes), SSO passa se o email estiver nas variáveis, se já houver
+conta, ou se o registo aberto estiver ligado.
+
+O **registo aberto está desligado por omissão** e exige
+`AUTH_OPEN_REGISTRATION=true`. Abrir o registo é uma decisão de produto, com
+custos e obrigações, e não pode acontecer por descuido de configuração. Com ele
+ligado, a primeira entrada por SSO cria a conta e o ambiente próprio.
+
+A decisão mudou de sítio: estava em `auth.config.ts`, que corre no edge e não
+tem acesso a dados, e passou para `auth.ts`, que corre em Node, que é onde o
+início de sessão acontece.
+
+## Páginas de privacidade e termos
+
+Públicas, porque a Google as exige acessíveis sem sessão para aprovar o ecrã de
+consentimento, e porque quem está a decidir se cria conta deve poder lê-las
+antes. Escritas a partir do que a app faz, não de um modelo: se o comportamento
+mudar, estas páginas mudam com ele.

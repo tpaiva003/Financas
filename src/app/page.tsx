@@ -229,8 +229,12 @@ function SiteFooter() {
             Feito no Porto
           </span>
         </span>
-        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-fg-faint">
-          Acesso por convite · Os teus dados são teus
+        {/* A Google exige estas duas páginas acessíveis sem sessão para
+            aprovar o ecrã de consentimento do SSO. */}
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.12em] text-fg-faint">
+          <Link href="/privacidade" className="hover:text-fg-muted">Privacidade</Link>
+          <Link href="/termos" className="hover:text-fg-muted">Termos</Link>
+          <span>Os teus dados são teus</span>
         </p>
       </div>
     </footer>
