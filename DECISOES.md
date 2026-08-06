@@ -998,3 +998,54 @@ um browser. Não é uma porta aberta: exige o `CRON_SECRET`, não lê nem devolv
 dados de ninguém, e só mexe em cotações, que são factos públicos. E **não altera
 preços de ativos**: quem os escreve continua a ser a visita à página, que é onde
 se sabe a que ambiente pertencem e onde se pode dizer o que aconteceu.
+
+## Ler cotações não é ler as mil mais antigas
+
+O MSFT aparecia na página de Ativos a **172,42 €, com "fecho de 28/07/2020"** ao
+lado, quando valia 495 dólares. A data estava certa e o preço também: a série
+realmente acabava ali.
+
+A API do Supabase corta em **mil linhas por pedido, sem dizer nada**. Dez anos de
+fechos diários são mais de dois mil e quinhentos, e a leitura, por ordem
+cronológica, trazia os **mil mais antigos**. O "último" era a milésima linha, de
+julho de 2020. Um corte silencioso é pior do que um erro, porque o número errado
+apresenta-se como certo — com a data ao lado a dar-lhe credibilidade.
+
+A leitura passa a ser paginada. E quem só quer o preço de agora deixa de arrastar
+dez anos de histórico pela rede: pede a última linha e mais nada.
+
+Ao corrigir isto apareceu o irmão do problema: o botão "Atualizar" gravava a
+cotação **em bruto**, sem converter. A atualização automática convertia; esta
+não. Um MSFT a 495 dólares ficava a 495 €. **Dois caminhos que escrevem o mesmo
+campo têm de aplicar as mesmas regras**, senão o valor certo depende de que botão
+se carregou.
+
+## Uma camada de IA para ler ficheiros de corretora
+
+A deteção de colunas por cabeçalhos conhecidos funciona bem no ficheiro para que
+foi afinada e falha no seguinte. Cada corretora escreve o que lhe apetece:
+"Produto" numa, "Instrument" noutra, "Valor local" numa terceira, e a moeda numa
+coluna sem cabeçalho nenhum. Ir acrescentando sinónimos à lista de cada vez que
+aparece um formato novo é uma corrida que se perde sempre — os utilizadores
+trazem formatos que ninguém previu.
+
+Quando a deteção falha, pergunta-se a um modelo. Com dois limites que definem a
+coisa toda:
+
+**O modelo escolhe colunas. Não lê dados.** A resposta é uma lista de índices.
+Quem lê os montantes, deduplica e converte moedas continua a ser o código
+determinístico e testado. Um modelo a somar dinheiro é um erro à espera de
+acontecer; um modelo a dizer "aquela coluna chama-se Preços mas é o preço
+unitário" é exactamente o que ele faz bem. Assim os invariantes do domínio nunca
+passam por aqui.
+
+**Nada do que ele diga entra sem ser verificado.** Um índice fora da grelha, uma
+linha de cabeçalho que não existe, um decimal onde devia estar um inteiro — a
+resposta é descartada inteira e volta-se ao mapeamento à mão. Entre apontar a
+coluna errada e não apontar nenhuma, a segunda dá para corrigir.
+
+Sobe o cabeçalho e até catorze linhas de exemplo, truncadas. O ficheiro não sobe.
+Sem `ANTHROPIC_API_KEY` a funcionalidade não existe e a importação fica como
+estava. E o que a IA mapeou aparece marcado como tal na pré-visualização, com o
+que ela percebeu escrito ao lado: um mapeamento que ninguém confirmou tem de se
+identificar.

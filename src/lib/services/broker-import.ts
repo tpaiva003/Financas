@@ -29,6 +29,14 @@ import {
   type HoldingRow,
 } from "@/lib/import/holdings";
 import { headerColumns, headerFingerprint, type Grid } from "@/lib/import/columns";
+import {
+  renderSample,
+  sampleForModel,
+  toHoldingMapping,
+  toTradeMapping,
+  type AiMappingAnswer,
+} from "@/lib/import/ai-mapping";
+import { aiMappingAvailable, readMappingWithAi } from "@/lib/services/ai-mapping-service";
 import { getRepository } from "@/lib/data";
 import { isForeign } from "@/lib/domain";
 
@@ -53,6 +61,10 @@ export interface BrokerFilePreview {
   fingerprint: string | null;
   header: string[];
   mapping: Record<string, number> | null;
+  /** Foi a leitura assistida que apontou as colunas deste ficheiro. */
+  readByAi: boolean;
+  /** O que a leitura assistida percebeu, para se poder conferir. */
+  aiNote: string | null;
   /** Movimentos, agrupados por produto. */
   groups: TradeGroup[];
   /** Posições. */
@@ -77,6 +89,8 @@ const VAZIO = {
   fingerprint: null,
   header: [] as string[],
   mapping: null,
+  readByAi: false,
+  aiNote: null as string | null,
   groups: [] as TradeGroup[],
   holdings: [] as HoldingRow[],
   totalRows: 0,
@@ -112,6 +126,10 @@ export async function buildBrokerPreview(params: {
   const soLugar = params.files.length === 1;
 
   const files: BrokerFilePreview[] = [];
+  // Os ficheiros de uma corretora vêm quase sempre em lote e todos com o mesmo
+  // formato (um por ano, um por conta). Guardar a resposta pelo aspeto das
+  // primeiras linhas evita pagar a mesma pergunta uma vez por ficheiro.
+  const respostasIa = new Map<string, AiMappingAnswer | null>();
 
   for (const file of params.files) {
     const { grid, problem } = await readGrid(file);
@@ -141,67 +159,123 @@ export async function buildBrokerPreview(params: {
       }
     }
 
-    // Movimentos primeiro: um ficheiro com datas a sério é um extrato de
-    // transações, e vale mais do que a fotografia das posições.
-    tradeMapping = tradeMapping ?? detectTradeMapping(grid);
+    /**
+     * Tenta um par de mapeamentos e, se der linhas, guarda a pré-visualização.
+     *
+     * Movimentos primeiro: um ficheiro com datas a sério é um extrato de
+     * transações, e vale mais do que a fotografia das posições.
+     */
+    const tentar = (
+      trades: TradeMapping | null,
+      holdings: HoldingMapping | null,
+      readByAi: boolean,
+      aiNote: string | null,
+    ): boolean => {
+      if (trades) {
+        const rows = rowsToTrades(grid, trades);
+        if (rows.length > 0) {
+          const groups: TradeGroup[] = groupTradesByName(rows).map((g) => {
+            const existing = assetByName.get(g.name.trim().toLowerCase()) ?? null;
+            const mine = existing
+              ? existingTrades
+                  .filter((t) => t.assetId === existing.id)
+                  .map((t) => ({
+                    date: t.date,
+                    kind: t.kind as string,
+                    quantity: t.quantity ?? 0,
+                    // Compara-se pelo valor como veio no ficheiro, não pelo
+                    // convertido: o gravado está em euros e o lido pode estar
+                    // noutra moeda.
+                    amountCents: t.originalAmountCents ?? t.amountCents,
+                  }))
+              : [];
+            const { fresh, duplicates } = newTradesOnly(g.trades, mine);
+            return {
+              name: g.name,
+              trades: fresh,
+              existingAssetId: existing?.id ?? null,
+              duplicates,
+            };
+          });
 
-    if (tradeMapping) {
-      const rows = rowsToTrades(grid, tradeMapping);
-      if (rows.length > 0) {
-        const groups: TradeGroup[] = groupTradesByName(rows).map((g) => {
-          const existing = assetByName.get(g.name.trim().toLowerCase()) ?? null;
-          const mine = existing
-            ? existingTrades
-                .filter((t) => t.assetId === existing.id)
-                .map((t) => ({
-                  date: t.date,
-                  kind: t.kind as string,
-                  quantity: t.quantity ?? 0,
-                  // Compara-se pelo valor como veio no ficheiro, não pelo
-                  // convertido: o gravado está em euros e o lido pode estar
-                  // noutra moeda.
-                  amountCents: t.originalAmountCents ?? t.amountCents,
-                }))
-            : [];
-          const { fresh, duplicates } = newTradesOnly(g.trades, mine);
-          return { name: g.name, trades: fresh, existingAssetId: existing?.id ?? null, duplicates };
-        });
-
-        files.push({
-          ...VAZIO,
-          fileName: file.name,
-          kind: "movimentos",
-          mappingLabel: describeTradeMapping(grid, tradeMapping),
-          sample,
-          fingerprint: headerFingerprint(grid, tradeMapping.headerRow),
-          header: headerColumns(grid, tradeMapping.headerRow),
-          mapping: { ...tradeMapping } as unknown as Record<string, number>,
-          groups: groups.filter((g) => g.trades.length > 0 || g.duplicates > 0),
-          totalRows: rows.length,
-          duplicates: groups.reduce((s, g) => s + g.duplicates, 0),
-          missingFx: rows.filter((t) => isForeign(t.currency) && !t.fxRate).length,
-        });
-        continue;
+          files.push({
+            ...VAZIO,
+            fileName: file.name,
+            kind: "movimentos",
+            mappingLabel: describeTradeMapping(grid, trades),
+            sample,
+            fingerprint: headerFingerprint(grid, trades.headerRow),
+            header: headerColumns(grid, trades.headerRow),
+            mapping: { ...trades } as unknown as Record<string, number>,
+            readByAi,
+            aiNote,
+            groups: groups.filter((g) => g.trades.length > 0 || g.duplicates > 0),
+            totalRows: rows.length,
+            duplicates: groups.reduce((s, g) => s + g.duplicates, 0),
+            missingFx: rows.filter((t) => isForeign(t.currency) && !t.fxRate).length,
+          });
+          return true;
+        }
       }
+
+      // Sem datas: será uma lista de posições.
+      if (holdings) {
+        const rows = rowsToHoldings(grid, holdings);
+        if (rows.length > 0) {
+          files.push({
+            ...VAZIO,
+            fileName: file.name,
+            kind: "posicoes",
+            mappingLabel: describeHoldingMapping(grid, holdings),
+            sample,
+            fingerprint: headerFingerprint(grid, holdings.headerRow),
+            header: headerColumns(grid, holdings.headerRow),
+            mapping: { ...holdings } as unknown as Record<string, number>,
+            readByAi,
+            aiNote,
+            holdings: rows,
+            totalRows: rows.length,
+          });
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (
+      tentar(
+        tradeMapping ?? detectTradeMapping(grid),
+        holdingMapping ?? detectHoldingMapping(grid),
+        false,
+        null,
+      )
+    ) {
+      continue;
     }
 
-    // Sem datas: será uma lista de posições.
-    holdingMapping = holdingMapping ?? detectHoldingMapping(grid);
-    if (holdingMapping) {
-      const rows = rowsToHoldings(grid, holdingMapping);
-      if (rows.length > 0) {
-        files.push({
-          ...VAZIO,
-          fileName: file.name,
-          kind: "posicoes",
-          mappingLabel: describeHoldingMapping(grid, holdingMapping),
-          sample,
-          fingerprint: headerFingerprint(grid, holdingMapping.headerRow),
-          header: headerColumns(grid, holdingMapping.headerRow),
-          mapping: { ...holdingMapping } as unknown as Record<string, number>,
-          holdings: rows,
-          totalRows: rows.length,
-        });
+    /**
+     * A deteção não chegou: pergunta-se a um modelo que colunas são quais.
+     *
+     * É aqui que entra, e só aqui. Os cabeçalhos conhecidos resolvem os formatos
+     * que já vimos; isto resolve os que ninguém previu, que são a maioria dos
+     * que os utilizadores trazem. O modelo aponta colunas e mais nada — a
+     * leitura dos valores, a deduplicação e o câmbio continuam no código de
+     * sempre.
+     */
+    let aiProblem: string | null = null;
+    if (aiMappingAvailable()) {
+      const chave = renderSample(sampleForModel(grid));
+      let answer = respostasIa.get(chave) ?? null;
+      if (!respostasIa.has(chave)) {
+        const lida = await readMappingWithAi(grid);
+        answer = lida.answer;
+        aiProblem = lida.problem;
+        respostasIa.set(chave, answer);
+      }
+      if (
+        answer &&
+        tentar(toTradeMapping(answer, grid), toHoldingMapping(answer, grid), true, answer.notas)
+      ) {
         continue;
       }
     }
@@ -211,6 +285,7 @@ export async function buildBrokerPreview(params: {
       fileName: file.name,
       sample,
       problem:
+        aiProblem ??
         "Não reconheci as colunas. Carrega só este ficheiro para poderes apontá-las à mão.",
     });
   }

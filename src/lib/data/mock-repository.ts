@@ -735,6 +735,11 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
+  async latestQuote(symbol: string): Promise<StoredQuote | null> {
+    const all = await this.listQuotes(symbol);
+    return all.length > 0 ? all[all.length - 1]! : null;
+  }
+
   async quoteCurrency(symbol: string): Promise<string | null> {
     return getStore().quoteCurrencies[symbol] ?? null;
   }

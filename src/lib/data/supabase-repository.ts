@@ -1159,16 +1159,58 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  /**
+   * As cotações de um símbolo, por ordem cronológica.
+   *
+   * **Lê-se por páginas porque a API do Supabase corta em mil linhas, calada.**
+   * Dez anos de fechos diários são mais de dois mil e quinhentos, e sem paginação
+   * o que chegava eram os **mil mais antigos**. O efeito era este: o MSFT
+   * mostrava o fecho de 28/07/2020 como se fosse o de hoje, com a data certa ao
+   * lado, porque a série realmente acabava ali. Um corte silencioso é pior do que
+   * um erro, porque o número errado apresenta-se como certo.
+   */
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const db = getSupabaseAdmin();
-    let q = db.from("quotes").select("quote_date, close_cents").eq("symbol", symbol);
-    if (fromDate) q = q.gte("quote_date", fromDate);
-    const { data, error } = await q.order("quote_date", { ascending: true });
+    const PAGE = 1000;
+    const out: StoredQuote[] = [];
+    // Um limite de sanidade: mesmo que algo corra mal, isto não fica a rodar.
+    for (let offset = 0; offset < 50_000; offset += PAGE) {
+      let q = db.from("quotes").select("quote_date, close_cents").eq("symbol", symbol);
+      if (fromDate) q = q.gte("quote_date", fromDate);
+      const { data, error } = await q
+        .order("quote_date", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error) throw new Error(error.message);
+      const rows = data ?? [];
+      for (const r of rows as any[]) {
+        out.push({ date: String(r.quote_date).slice(0, 10), closeCents: Number(r.close_cents) });
+      }
+      if (rows.length < PAGE) break;
+    }
+    return out;
+  }
+
+  /**
+   * Só o último fecho.
+   *
+   * Existe para quem quer o preço de agora e não a série: atualizar o valor de um
+   * investimento não precisa de dez anos de histórico a atravessar a rede.
+   */
+  async latestQuote(symbol: string): Promise<StoredQuote | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("quotes")
+      .select("quote_date, close_cents")
+      .eq("symbol", symbol)
+      .order("quote_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
-      date: String(r.quote_date).slice(0, 10),
-      closeCents: Number(r.close_cents),
-    }));
+    if (!data) return null;
+    return {
+      date: String((data as any).quote_date).slice(0, 10),
+      closeCents: Number((data as any).close_cents),
+    };
   }
 
   async quoteCurrency(symbol: string): Promise<string | null> {
