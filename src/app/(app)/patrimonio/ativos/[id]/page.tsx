@@ -14,7 +14,11 @@ import {
   type TradeKind,
 } from "@/lib/domain";
 import { TradeForm } from "@/components/TradeForm";
-import { deleteAssetTradeAction, updateAssetPriceAction } from "@/app/(app)/actions";
+import {
+  deleteAssetTradeAction,
+  fetchAssetQuoteAction,
+  updateAssetPriceAction,
+} from "@/app/(app)/actions";
 
 export const metadata = { title: "Investimento · Rachar" };
 export const dynamic = "force-dynamic";
@@ -82,27 +86,47 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           .
         </p>
 
-        {/* O preço atual continua à mão até haver cotações automáticas. */}
-        <form action={updateAssetPriceAction} className="mt-4 flex flex-wrap items-end gap-2">
-          <input type="hidden" name="id" value={asset.id} />
-          <div>
-            <label className="label" htmlFor="preco">Preço atual por unidade</label>
-            <input
-              key={`p:${asset.id}:${asset.unitPriceCents ?? ""}`}
-              id="preco"
-              name="unitPrice"
-              inputMode="decimal"
-              defaultValue={
-                asset.unitPriceCents === null || asset.unitPriceCents === undefined
-                  ? ""
-                  : (asset.unitPriceCents / 100).toFixed(2).replace(".", ",")
-              }
-              placeholder="125,00"
-              className="input w-36"
-            />
-          </div>
-          <button type="submit" className="btn-ghost h-11 px-3 text-xs">Atualizar</button>
-        </form>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          {/* À mão continua a valer: nem tudo tem símbolo, e nem toda a gente
+              quer depender de uma fonte externa para ver a sua carteira. */}
+          <form action={updateAssetPriceAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="id" value={asset.id} />
+            <div>
+              <label className="label" htmlFor="preco">Preço atual por unidade</label>
+              <input
+                key={`p:${asset.id}:${asset.unitPriceCents ?? ""}`}
+                id="preco"
+                name="unitPrice"
+                inputMode="decimal"
+                defaultValue={
+                  asset.unitPriceCents === null || asset.unitPriceCents === undefined
+                    ? ""
+                    : (asset.unitPriceCents / 100).toFixed(2).replace(".", ",")
+                }
+                placeholder="125,00"
+                className="input w-36"
+              />
+            </div>
+            <button type="submit" className="btn-ghost h-11 px-3 text-xs">Gravar</button>
+          </form>
+
+          {asset.symbol ? (
+            <form action={fetchAssetQuoteAction}>
+              <input type="hidden" name="id" value={asset.id} />
+              <input type="hidden" name="symbol" value={asset.symbol} />
+              <button type="submit" className="btn-ghost h-11 px-3 text-xs">
+                Buscar cotação ({asset.symbol})
+              </button>
+            </form>
+          ) : null}
+        </div>
+
+        {!asset.symbol ? (
+          <p className="mt-2 text-xs text-fg-faint">
+            Sem símbolo de bolsa, o preço é sempre escrito à mão. Podes indicá-lo
+            em Ativos, no Editar deste investimento.
+          </p>
+        ) : null}
       </section>
 
       {ret ? (

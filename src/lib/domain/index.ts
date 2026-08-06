@@ -20,3 +20,4 @@ export * from "./returns";
 export * from "./onboarding";
 export * from "./positions";
 export * from "./fx";
+export * from "./quotes";

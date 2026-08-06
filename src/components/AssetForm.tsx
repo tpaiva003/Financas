@@ -22,6 +22,7 @@ export interface AssetFormValues {
   monthlyPaymentCents?: number | null;
   termMonths?: number | null;
   rateKind?: string | null;
+  symbol?: string | null;
 }
 
 /** Cêntimos para o texto que se escreve num campo: 123456 dá "1234,56". */
@@ -154,15 +155,34 @@ export function AssetForm({ asset }: { asset?: AssetFormValues }) {
       )}
 
       {isInvestment ? (
-        <div>
-          <label className="label" htmlFor={`asset-date-inv-${uid}`}>Data de compra (opcional)</label>
-          <input
-            id={`asset-date-inv-${uid}`}
-            name="purchasedAt"
-            type="date"
-            defaultValue={asset?.purchasedAt ?? ""}
-            className="input sm:max-w-xs"
-          />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor={`asset-date-inv-${uid}`}>Data de compra (opcional)</label>
+            <input
+              id={`asset-date-inv-${uid}`}
+              name="purchasedAt"
+              type="date"
+              defaultValue={asset?.purchasedAt ?? ""}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor={`asset-symbol-${uid}`}>Símbolo na bolsa (opcional)</label>
+            <input
+              id={`asset-symbol-${uid}`}
+              name="symbol"
+              maxLength={20}
+              defaultValue={asset?.symbol ?? ""}
+              placeholder="vwce.de"
+              className="input"
+            />
+            <p className="mt-1 text-xs text-fg-faint">
+              Com o símbolo, o preço atual passa a poder ser buscado sozinho. O
+              sufixo é a praça: <span className="text-fg-muted">.de</span> para a
+              Xetra, <span className="text-fg-muted">.uk</span> para Londres,{" "}
+              <span className="text-fg-muted">.us</span> para os Estados Unidos.
+            </p>
+          </div>
         </div>
       ) : null}
 
