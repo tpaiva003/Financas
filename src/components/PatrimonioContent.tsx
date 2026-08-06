@@ -9,6 +9,7 @@ import {
   annualInterestCents,
   buildLoan,
   buildNetWorth,
+  derivePosition,
   formatCents,
   formatMonths,
   payoffMonth,
@@ -16,6 +17,7 @@ import {
   type AssetKind,
   type AssetView,
   type RateKind,
+  type Trade,
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
 import { AssetForm } from "@/components/AssetForm";
@@ -35,7 +37,18 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
 
   const repo = getRepository();
   // A tabela pode não existir se a migração 0013 ainda não correu.
-  const assets: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
+  const stored: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
+  // Movimentos datados: quando existem, são eles que dizem quantas unidades se
+  // tem e quanto custaram. A posição escrita à mão fica intocada por baixo.
+  const trades = await repo.listAssetTrades(ctx.space.id).catch(() => []);
+  const tradesByAsset = new Map<string, Trade[]>();
+  for (const t of trades) {
+    tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t as Trade]);
+  }
+  const assets = stored.map((a) => {
+    const d = derivePosition(a, tradesByAsset.get(a.id) ?? []);
+    return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+  });
   const net = buildNetWorth(assets);
 
   // Gasto anual sugerido para o FIRE: a partir das despesas reais do ambiente,
@@ -249,7 +262,16 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                 <p className="label mb-0 px-5 pt-4">{ASSET_KIND_LABELS[kind]}</p>
                 <ul className="divide-y divide-hair2">
                   {(byKind.get(kind) ?? []).map((a) => (
-                    <AssetRow key={a.id} asset={a} today={today} />
+                    <AssetRow
+                      key={a.id}
+                      asset={a}
+                      // O formulário edita o que está GRAVADO, não a posição
+                      // derivada: senão gravar sem tocar em nada reescrevia a
+                      // entrada manual com os números dos movimentos.
+                      stored={stored.find((s) => s.id === a.id) ?? null}
+                      today={today}
+                      tradeCount={(tradesByAsset.get(a.id) ?? []).length}
+                    />
                   ))}
                 </ul>
               </div>
@@ -277,7 +299,17 @@ function formatMonthYear(ym: string | null): string {
   });
 }
 
-function AssetRow({ asset: a, today }: { asset: AssetView; today: string }) {
+function AssetRow({
+  asset: a,
+  stored,
+  today,
+  tradeCount,
+}: {
+  asset: AssetView;
+  stored: Asset | null;
+  today: string;
+  tradeCount: number;
+}) {
   const isInvestment = a.kind === "investimento";
   const isDebt = a.kind === "divida";
   const rateLabel =
@@ -304,7 +336,16 @@ function AssetRow({ asset: a, today }: { asset: AssetView; today: string }) {
     <li className="px-5 py-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-fg">{a.name}</p>
+        {isInvestment ? (
+          <Link
+            href={`/patrimonio/ativos/${a.id}`}
+            className="truncate text-sm font-medium text-fg underline-offset-4 hover:underline"
+          >
+            {a.name} →
+          </Link>
+        ) : (
+          <p className="truncate text-sm font-medium text-fg">{a.name}</p>
+        )}
         <p className="mt-0.5 font-mono text-[11px] text-fg-faint">
           {isInvestment ? (
             <>
@@ -312,6 +353,7 @@ function AssetRow({ asset: a, today }: { asset: AssetView; today: string }) {
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
                 ? `, hoje a ${formatCents(a.unitPriceCents)}`
                 : ", sem preço atual"}
+              {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
             </>
           ) : (
             a.purchasedAt ?? ""
@@ -422,13 +464,20 @@ function AssetRow({ asset: a, today }: { asset: AssetView; today: string }) {
           Editar
         </summary>
         <div className="mt-3 rounded-xl border border-hair bg-panel2/20 p-4">
+          {tradeCount > 0 ? (
+            <p className="mb-3 text-xs text-fg-faint">
+              As unidades e o custo vêm dos {tradeCount} movimentos registados.
+              O que escreveres aqui fica guardado, mas só volta a valer se
+              apagares os movimentos.
+            </p>
+          ) : null}
           <AssetForm
             asset={{
               id: a.id,
               name: a.name,
               kind: a.kind,
-              quantity: a.quantity,
-              unitCostCents: a.unitCostCents,
+              quantity: stored?.quantity ?? a.quantity,
+              unitCostCents: stored?.unitCostCents ?? a.unitCostCents,
               unitPriceCents: a.unitPriceCents,
               valueCents: a.valueCents,
               purchasedAt: a.purchasedAt,

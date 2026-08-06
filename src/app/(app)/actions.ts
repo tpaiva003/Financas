@@ -25,6 +25,8 @@ import {
   validateSplit,
   nextOccurrence,
   accountsVisibleTo,
+  isForeign,
+  toEurCents,
   type Split,
 } from "@/lib/domain";
 
@@ -1497,6 +1499,104 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
       unitPriceCents: price === null ? null : toCents(price),
     })
     .catch(() => {});
+  revalidatePath("/patrimonio");
+}
+
+// ---- Movimentos dos investimentos -----------------------------------------
+
+const TRADE_KINDS = ["compra", "venda", "dividendo", "custo"] as const;
+
+/**
+ * Regista uma compra, venda, dividendo ou custo com data.
+ *
+ * O valor guardado é sempre em euros. Se a operação foi noutra moeda, converte-se
+ * aqui com a taxa indicada e guarda-se também o valor original, para o registo
+ * se poder conferir depois sem refazer contas.
+ */
+export async function addAssetTradeAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  if (!assetId) return { error: "Falta o investimento." };
+
+  const rawKind = String(formData.get("kind") ?? "compra");
+  const kind = (TRADE_KINDS as readonly string[]).includes(rawKind)
+    ? (rawKind as (typeof TRADE_KINDS)[number])
+    : "compra";
+
+  const date = String(formData.get("date") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Indica a data." };
+
+  const quantity = parseNumber(formData.get("quantity"));
+  const unitPrice = parseNumber(formData.get("unitPrice"));
+  const amount = parseNumber(formData.get("amount"));
+
+  if ((kind === "compra" || kind === "venda") && (quantity === null || quantity <= 0)) {
+    return { error: "Indica quantas unidades." };
+  }
+
+  // O valor pode vir escrito, ou sair de unidades x preço.
+  const rawAmount =
+    amount !== null && amount !== 0
+      ? Math.abs(toCents(amount))
+      : quantity !== null && unitPrice !== null
+        ? Math.abs(Math.round(quantity * toCents(unitPrice)))
+        : null;
+  if (rawAmount === null || rawAmount <= 0) {
+    return { error: "Indica o valor, ou o preço por unidade." };
+  }
+
+  const currency = String(formData.get("currency") ?? "EUR").trim().toUpperCase();
+  const foreign = isForeign(currency);
+  const fxRate = parseNumber(formData.get("fxRate"));
+
+  let amountCents = rawAmount;
+  if (foreign) {
+    if (fxRate === null || fxRate <= 0) {
+      return { error: `Indica a taxa de câmbio de ${currency} para euro.` };
+    }
+    const eur = toEurCents(rawAmount, fxRate);
+    if (eur === null || eur <= 0) return { error: "Taxa de câmbio inválida." };
+    amountCents = eur;
+  }
+
+  try {
+    await getRepository().createAssetTrade({
+      spaceId: ctx.space.id,
+      assetId,
+      date,
+      kind,
+      quantity: kind === "compra" || kind === "venda" ? quantity : null,
+      // O preço por unidade fica em euros, como o resto.
+      unitPriceCents:
+        quantity && quantity > 0 && (kind === "compra" || kind === "venda")
+          ? Math.round(amountCents / quantity)
+          : null,
+      amountCents,
+      currency: foreign ? currency : null,
+      originalAmountCents: foreign ? rawAmount : null,
+      fxRate: foreign ? fxRate : null,
+      notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar o movimento." };
+  }
+
+  revalidatePath("/patrimonio");
+  return { ok: true, message: "Movimento registado." };
+}
+
+export async function deleteAssetTradeAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().deleteAssetTrade(id, ctx.space.id).catch(() => {});
   revalidatePath("/patrimonio");
 }
 

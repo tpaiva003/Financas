@@ -18,3 +18,5 @@ export * from "./access";
 export * from "./income";
 export * from "./returns";
 export * from "./onboarding";
+export * from "./positions";
+export * from "./fx";

@@ -26,7 +26,9 @@ import type {
   ImportReminder,
   SpendingGoal,
   Asset,
+  AssetTrade,
   CreateAssetInput,
+  CreateAssetTradeInput,
   Income,
   CreateIncomeInput,
   Membership,
@@ -67,6 +69,7 @@ interface Store {
   importReminders: ImportReminder[];
   spendingGoals: SpendingGoal[];
   assets: Asset[];
+  assetTrades: AssetTrade[];
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
 }
@@ -92,6 +95,7 @@ function getStore(): Store {
       importReminders: [],
       spendingGoals: [],
       assets: [],
+      assetTrades: [],
       income: [],
       resetTokens: [],
     };
@@ -665,6 +669,27 @@ export class MockRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.assets = store.assets.filter((a) => !(a.id === id && a.spaceId === spaceId));
+  }
+
+  async listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]> {
+    return getStore()
+      .assetTrades.filter((t) => t.spaceId === spaceId && (!assetId || t.assetId === assetId))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade> {
+    const trade: AssetTrade = {
+      ...input,
+      id: `atr_${randomUUID()}`,
+      createdAt: new Date().toISOString(),
+    };
+    getStore().assetTrades.push(trade);
+    return trade;
+  }
+
+  async deleteAssetTrade(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.assetTrades = store.assetTrades.filter((t) => !(t.id === id && t.spaceId === spaceId));
   }
 
   async unlinkUserFromMembers(userId: string): Promise<void> {

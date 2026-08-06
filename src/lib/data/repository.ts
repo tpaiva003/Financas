@@ -172,6 +172,36 @@ export interface Asset {
 
 export type CreateAssetInput = Omit<Asset, "id" | "updatedAt"> & { createdBy?: string | null };
 
+/**
+ * Um movimento datado de um investimento: compra, venda, dividendo ou custo.
+ *
+ * `amountCents` é sempre em euros, que é o dinheiro que saiu mesmo da conta.
+ * Quando a operação foi noutra moeda, guarda-se também o valor original e a
+ * taxa, para o registo ficar auditável sem obrigar a refazer contas.
+ */
+export interface AssetTrade {
+  id: string;
+  spaceId: string;
+  assetId: string;
+  /** "AAAA-MM-DD". */
+  date: string;
+  kind: "compra" | "venda" | "dividendo" | "custo";
+  quantity?: number | null;
+  unitPriceCents?: number | null;
+  amountCents: number;
+  /** Moeda original, quando não foi euro. */
+  currency?: string | null;
+  originalAmountCents?: number | null;
+  /** Unidades da moeda original por euro. */
+  fxRate?: number | null;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export type CreateAssetTradeInput = Omit<AssetTrade, "id" | "createdAt"> & {
+  createdBy?: string | null;
+};
+
 /** Dinheiro que entra: ordenado, trabalhos paralelos, juros, dividendos. */
 export interface Income {
   id: string;
@@ -488,6 +518,10 @@ export interface Repository {
   createAsset(input: CreateAssetInput): Promise<Asset>;
   updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void>;
   deleteAsset(id: string, spaceId: string): Promise<void>;
+  /** Movimentos de todos os investimentos do ambiente, ou só de um. */
+  listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
+  createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
+  deleteAssetTrade(id: string, spaceId: string): Promise<void>;
 
   // Rendimento.
   listIncome(spaceId: string): Promise<Income[]>;

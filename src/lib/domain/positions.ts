@@ -1,0 +1,256 @@
+/**
+ * Posições a partir de movimentos datados.
+ *
+ * Uma posição escrita à mão ("tenho 100 unidades a 92 EUR") diz o que se tem
+ * hoje e não diz nada sobre como lá se chegou. Sem as datas das compras não há
+ * forma de responder à pergunta que interessa: **quanto rendeu o meu dinheiro**,
+ * sabendo que ele foi entrando aos poucos.
+ *
+ * Com movimentos datados, a posição deixa de ser escrita e passa a ser
+ * calculada. Duas regras que evitam os erros clássicos:
+ *
+ * 1. **Os movimentos substituem a posição manual, nunca se somam a ela.** Quem
+ *    registou "100 unidades" à mão e depois lança as três compras que fizeram
+ *    essas 100 unidades não pode acabar com 200. Enquanto houver movimentos,
+ *    mandam eles; se forem todos apagados, volta a valer o que estava escrito.
+ * 2. **Custo médio ponderado**, não FIFO. É o que as corretoras mostram e o que
+ *    torna o custo unitário comparável com a cotação. Para efeitos fiscais em
+ *    Portugal a regra é FIFO, e este número não serve para o IRS.
+ *
+ * Lógica pura, sem acesso a dados.
+ */
+
+import type { CashFlow } from "./returns";
+import { xirr } from "./returns";
+
+export type TradeKind = "compra" | "venda" | "dividendo" | "custo";
+
+export const TRADE_KIND_LABELS: Record<TradeKind, string> = {
+  compra: "Compra",
+  venda: "Venda",
+  dividendo: "Dividendo",
+  custo: "Comissão ou imposto",
+};
+
+export interface Trade {
+  id: string;
+  /** "AAAA-MM-DD". */
+  date: string;
+  kind: TradeKind;
+  /** Unidades transacionadas (compras e vendas). */
+  quantity?: number | null;
+  /** Preço por unidade, em cêntimos de euro. */
+  unitPriceCents?: number | null;
+  /** Dinheiro movimentado, em cêntimos de euro, sempre positivo. */
+  amountCents: number;
+}
+
+export interface Position {
+  /** Unidades que restam. */
+  quantity: number;
+  /** Custo do que ainda se tem, em cêntimos. */
+  costCents: number;
+  /** Custo médio por unidade, em cêntimos. */
+  unitCostCents: number | null;
+  /** Dinheiro que entrou na posição: compras mais comissões. */
+  investedCents: number;
+  /** Dinheiro que saiu por vendas. */
+  proceedsCents: number;
+  dividendsCents: number;
+  /** Ganho já realizado: vendas menos o custo do que foi vendido. */
+  realizedGainCents: number;
+  /** Fluxos datados, prontos para a TIR. */
+  flows: CashFlow[];
+  firstDate: string | null;
+  lastDate: string | null;
+  /** Venderam-se mais unidades do que as que havia: as contas não fecham. */
+  oversold: boolean;
+}
+
+const EMPTY: Position = {
+  quantity: 0,
+  costCents: 0,
+  unitCostCents: null,
+  investedCents: 0,
+  proceedsCents: 0,
+  dividendsCents: 0,
+  realizedGainCents: 0,
+  flows: [],
+  firstDate: null,
+  lastDate: null,
+  oversold: false,
+};
+
+/** Quanto dinheiro um movimento representa, com o sinal do ponto de vista da carteira. */
+export function tradeAmountCents(t: Trade): number {
+  // Quando o valor não vem escrito, sai de unidades x preço. É o caso dos
+  // ficheiros de corretora que trazem as duas colunas e não o total.
+  if (t.amountCents) return Math.abs(Math.round(t.amountCents));
+  const qty = t.quantity ?? 0;
+  const price = t.unitPriceCents ?? 0;
+  return Math.abs(Math.round(qty * price));
+}
+
+export function buildPosition(trades: Trade[]): Position {
+  if (trades.length === 0) return EMPTY;
+
+  const sorted = [...trades].sort((a, b) =>
+    a.date === b.date ? a.id.localeCompare(b.id) : a.date < b.date ? -1 : 1,
+  );
+
+  let quantity = 0;
+  let costCents = 0;
+  let investedCents = 0;
+  let proceedsCents = 0;
+  let dividendsCents = 0;
+  let realizedGainCents = 0;
+  let oversold = false;
+  const flows: CashFlow[] = [];
+
+  for (const t of sorted) {
+    const amount = tradeAmountCents(t);
+    const qty = Math.abs(t.quantity ?? 0);
+
+    switch (t.kind) {
+      case "compra": {
+        quantity += qty;
+        costCents += amount;
+        investedCents += amount;
+        flows.push({ date: t.date, amountCents: amount });
+        break;
+      }
+      case "venda": {
+        // Custo médio à data da venda: é o que sai da posição com as unidades.
+        const avg = quantity > 0 ? costCents / quantity : 0;
+        const sold = Math.min(qty, quantity);
+        if (qty > quantity) oversold = true;
+        const costOfSold = Math.round(avg * sold);
+        quantity -= sold;
+        costCents -= costOfSold;
+        proceedsCents += amount;
+        realizedGainCents += amount - costOfSold;
+        flows.push({ date: t.date, amountCents: -amount });
+        break;
+      }
+      case "dividendo": {
+        // Não mexe no custo: é rendimento, não é devolução de capital.
+        dividendsCents += amount;
+        realizedGainCents += amount;
+        flows.push({ date: t.date, amountCents: -amount });
+        break;
+      }
+      case "custo": {
+        // Comissões e impostos são dinheiro que se pôs e não comprou unidades.
+        costCents += amount;
+        investedCents += amount;
+        flows.push({ date: t.date, amountCents: amount });
+        break;
+      }
+    }
+  }
+
+  // A posição pode fechar a zero com cêntimos de sobra por arredondamento.
+  if (quantity <= 0) {
+    quantity = 0;
+    costCents = 0;
+  }
+
+  return {
+    quantity,
+    costCents,
+    unitCostCents: quantity > 0 ? Math.round(costCents / quantity) : null,
+    investedCents,
+    proceedsCents,
+    dividendsCents,
+    realizedGainCents,
+    flows,
+    firstDate: sorted[0]!.date,
+    lastDate: sorted.at(-1)!.date,
+    oversold,
+  };
+}
+
+export interface DerivedPosition {
+  quantity: number | null;
+  unitCostCents: number | null;
+  /** A posição vem dos movimentos e não do que foi escrito à mão. */
+  derived: boolean;
+  /** A posição calculada, quando há movimentos. */
+  position: Position | null;
+}
+
+/**
+ * A posição a usar para um ativo: a dos movimentos, se houver, senão a manual.
+ *
+ * É aqui que vive a regra de não duplicar. Quem escreveu "100 unidades" à mão e
+ * depois lança as três compras que fizeram essas 100 unidades tem de continuar
+ * com 100, não com 200. E apagar os movimentos devolve o que estava escrito, em
+ * vez de deixar o ativo a zero: a entrada manual nunca é reescrita por trás.
+ */
+export function derivePosition(
+  asset: { quantity?: number | null; unitCostCents?: number | null },
+  trades: Trade[],
+): DerivedPosition {
+  if (trades.length === 0) {
+    return {
+      quantity: asset.quantity ?? null,
+      unitCostCents: asset.unitCostCents ?? null,
+      derived: false,
+      position: null,
+    };
+  }
+  const position = buildPosition(trades);
+  return {
+    quantity: position.quantity,
+    unitCostCents: position.unitCostCents,
+    derived: true,
+    position,
+  };
+}
+
+export interface PositionReturn {
+  /** O que a posição vale hoje, em cêntimos. */
+  currentValueCents: number;
+  /** Valorização ainda por realizar. */
+  unrealizedGainCents: number | null;
+  /** Tudo somado: valorização, mais-valias realizadas e dividendos. */
+  totalGainCents: number | null;
+  /** Rentabilidade simples sobre o investido, sem contar com o tempo. */
+  simpleReturnPct: number | null;
+  /**
+   * TIR anualizada: a taxa que o dinheiro rendeu, tendo em conta quando entrou.
+   *
+   * É a resposta certa para uma carteira com reforços. A rentabilidade simples
+   * trata um euro metido o mês passado como igual a um euro metido há cinco
+   * anos, e isso empola ou afunda o número consoante os reforços.
+   */
+  annualPct: number | null;
+}
+
+export function buildPositionReturn(
+  position: Position,
+  currentUnitPriceCents: number | null | undefined,
+  today: string,
+): PositionReturn {
+  // Sem cotação, a posição vale o que custou: melhor do que inventar ganho.
+  const priced = currentUnitPriceCents !== null && currentUnitPriceCents !== undefined;
+  const currentValueCents = priced
+    ? Math.round(position.quantity * currentUnitPriceCents)
+    : position.costCents;
+
+  const unrealizedGainCents = priced ? currentValueCents - position.costCents : null;
+  const totalGainCents =
+    unrealizedGainCents === null ? null : unrealizedGainCents + position.realizedGainCents;
+
+  return {
+    currentValueCents,
+    unrealizedGainCents,
+    totalGainCents,
+    simpleReturnPct:
+      totalGainCents === null || position.investedCents <= 0
+        ? null
+        : (totalGainCents / position.investedCents) * 100,
+    annualPct:
+      position.flows.length === 0 ? null : xirr(position.flows, currentValueCents, today),
+  };
+}

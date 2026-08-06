@@ -19,7 +19,9 @@ import type {
   ImportReminder,
   SpendingGoal,
   Asset,
+  AssetTrade,
   CreateAssetInput,
+  CreateAssetTradeInput,
   Income,
   CreateIncomeInput,
   Membership,
@@ -1075,6 +1077,47 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]> {
+    const db = getSupabaseAdmin();
+    let q = db.from("asset_trades").select("*").eq("space_id", spaceId);
+    if (assetId) q = q.eq("asset_id", assetId);
+    const { data, error } = await q.order("trade_date", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToAssetTrade);
+  }
+
+  async createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade> {
+    const db = getSupabaseAdmin();
+    const id = `atr_${randomUUID()}`;
+    const { data, error } = await db
+      .from("asset_trades")
+      .insert({
+        id,
+        space_id: input.spaceId,
+        asset_id: input.assetId,
+        trade_date: input.date,
+        kind: input.kind,
+        quantity: input.quantity ?? null,
+        unit_price_cents: input.unitPriceCents ?? null,
+        amount_cents: input.amountCents,
+        currency: input.currency ?? null,
+        original_amount_cents: input.originalAmountCents ?? null,
+        fx_rate: input.fxRate ?? null,
+        notes: input.notes ?? null,
+        created_by: input.createdBy ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return rowToAssetTrade(data);
+  }
+
+  async deleteAssetTrade(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("asset_trades").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   async unlinkUserFromMembers(userId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
@@ -1347,6 +1390,24 @@ export class SupabaseRepository implements Repository {
       .is("read_at", null);
     return fallback.count ?? 0;
   }
+}
+
+function rowToAssetTrade(r: any): AssetTrade {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    assetId: r.asset_id,
+    date: String(r.trade_date).slice(0, 10),
+    kind: r.kind,
+    quantity: r.quantity === null || r.quantity === undefined ? null : Number(r.quantity),
+    unitPriceCents: r.unit_price_cents ?? null,
+    amountCents: Number(r.amount_cents ?? 0),
+    currency: r.currency ?? null,
+    originalAmountCents: r.original_amount_cents ?? null,
+    fxRate: r.fx_rate === null || r.fx_rate === undefined ? null : Number(r.fx_rate),
+    notes: r.notes ?? null,
+    createdAt: r.created_at ?? null,
+  };
 }
 
 function rowToAsset(r: any): Asset {
