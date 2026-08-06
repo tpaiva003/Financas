@@ -786,3 +786,36 @@ página diz sempre qual foi usado e de que dia é o fecho.
 
 Quando não há cotações, diz-se isso. Um preço velho identificado como velho é
 informação; um preço inventado não é.
+
+## PWA: o que faltava para ser mesmo instalável
+
+O manifest e o service worker já existiam, mas os ícones eram só SVG, e com isso
+a app **não era instalável em lado nenhum**: o Chrome exige um PNG de 192 e um
+de 512 para sequer considerar a instalação, e o iOS ignora os ícones do manifest
+por completo, usa o `apple-touch-icon`, também em PNG. Sem ele, "Adicionar ao
+ecrã principal" mete uma miniatura da página em vez da marca, que é a diferença
+entre parecer uma app e parecer um atalho.
+
+Os PNG são gerados a partir do SVG da marca, **renderizados em cada tamanho** e
+não redimensionados a partir de um só, para os cantos e o corte do disco ficarem
+nítidos a 192 como a 512.
+
+**O convite a instalar tem de ser diferente nos dois sistemas.** O Android
+dispara `beforeinstallprompt` e dá para mostrar um botão a sério. O iOS não
+dispara nada: instalar é Partilhar → Adicionar ao ecrã principal, e não há forma
+de o pedir por código. A única coisa útil é dizer onde carregar, com as palavras
+que aparecem no ecrã. E só se mostra no Safari: no iPhone, o Chrome e o Firefox
+não conseguem instalar, e mandar lá a pessoa era mandá-la a lado nenhum.
+
+## Revisão em telemóvel
+
+Duas coisas que só se veem num ecrã de 390 pixels:
+
+**Os primeiros passos tinham o botão ao lado do texto**, o que espremia a
+descrição para meia dúzia de palavras por linha. Um passo que se lê mal não
+convida a dar passo nenhum. No telemóvel o botão passa para baixo.
+
+**O botão flutuante aparecia por cima do formulário de nova despesa**, e tapava
+o campo da descrição. Um botão de "criar" por cima do ecrã de criar não leva a
+lado nenhum. A regra de onde ele aparece cresceu duas vezes por causa de
+defeitos reais, por isso saiu do componente para um módulo com testes.

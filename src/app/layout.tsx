@@ -24,6 +24,17 @@ export const metadata: Metadata = {
   title: "Rachar · Contas à Moda do Porto",
   description: "Rachar, dividir contas partilhadas sem dramas. Nascido no Porto.",
   manifest: "/manifest.webmanifest",
+  // O iOS ignora os ícones do manifest: usa o apple-touch-icon, e só em PNG.
+  // Sem ele, "Adicionar ao ecrã principal" mete uma miniatura da página em vez
+  // da marca, que é a diferença entre parecer uma app e parecer um atalho.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

@@ -8,6 +8,7 @@ import { getAllReminders, pendingReminders } from "@/lib/services/reminder-servi
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { OnboardingCard } from "@/components/OnboardingCard";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { buildOnboarding } from "@/lib/domain";
 import { cookies } from "next/headers";
 
@@ -85,6 +86,8 @@ export default async function DashboardPage() {
       />
 
       {onboarding ? <OnboardingCard onboarding={onboarding} /> : null}
+
+      <InstallPrompt />
 
       {pendingApprovals.length > 0 ? (
         <Link
