@@ -119,6 +119,36 @@ export default async function PlataformaPage() {
         </p>
       </section>
 
+      {stats.features.length > 0 ? (
+        <section>
+          <h2 className="eyebrow mb-1">O que é usado</h2>
+          <p className="mb-3 text-sm text-fg-muted">
+            Em quantos ambientes cada parte da app é usada. Sem isto só se via a
+            despesa, e uma funcionalidade que ninguém usa é uma funcionalidade a
+            manter por nada.
+          </p>
+          <ul className="card divide-y divide-hair2 p-0">
+            {[...stats.features]
+              .sort((a, b) => b.spaces - a.spaces || b.records - a.records)
+              .map((f) => (
+                <li key={f.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <span className="truncate text-sm text-fg">{f.label}</span>
+                  <span className="shrink-0 font-mono text-xs tnum text-fg-faint">
+                    {f.spaces === 0 ? (
+                      <span className="text-fg-faint">ninguém</span>
+                    ) : (
+                      <>
+                        {f.spaces} {f.spaces === 1 ? "ambiente" : "ambientes"} ·{" "}
+                        {f.records} {f.records === 1 ? "registo" : "registos"}
+                      </>
+                    )}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section>
         <h2 className="eyebrow mb-3">Ambientes</h2>
         {stats.spaces.length === 0 ? (
@@ -161,6 +191,16 @@ export default async function PlataformaPage() {
   );
 }
 
+/** Nomes curtos para as etiquetas de cada ambiente. */
+const FEATURE_LABELS: Record<string, string> = {
+  patrimonio: "património",
+  investimentos: "investimentos",
+  rendimentos: "rendimentos",
+  recorrentes: "recorrentes",
+  importacoes: "importações",
+  metas: "metas",
+};
+
 function Stat({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="card p-4">
@@ -200,6 +240,17 @@ function SpaceRow({ space, cutoff }: { space: SpaceSummary; cutoff: string }) {
           {fmt(space.lastActivity)}
         </span>
       </div>
+
+      {/* Que partes da app este ambiente usa. Só os nomes, nunca o conteúdo. */}
+      {space.features.length > 0 ? (
+        <div className="flex w-full flex-wrap gap-1.5">
+          {space.features.map((f) => (
+            <span key={f} className="chip border-hair text-fg-faint">
+              {FEATURE_LABELS[f] ?? f}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </li>
   );
 }

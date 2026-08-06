@@ -588,6 +588,19 @@ export class MockRepository implements Repository {
   }
 
   async getPlatformStats(): Promise<PlatformStats> {
+    const featuresOf = (spaceId: string): string[] => {
+      const st = getStore();
+      const usa: [string, { spaceId: string }[]][] = [
+        ["patrimonio", st.assets],
+        ["investimentos", st.assetTrades],
+        ["rendimentos", st.income],
+        ["recorrentes", st.recurring],
+        ["importacoes", st.importBatches],
+        ["metas", st.spendingGoals],
+      ];
+      return usa.filter(([, rows]) => rows.some((r) => r.spaceId === spaceId)).map(([id]) => id);
+    };
+
     const store = getStore();
     const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
     const spaces = store.spaces.map((s) => {
@@ -603,8 +616,20 @@ export class MockRepository implements Repository {
         expenseCount: expenses.length,
         lastActivity,
         createdAt: s.createdAt,
+        features: featuresOf(s.id),
       };
     });
+
+    // Uso por funcionalidade, só por ambiente: nunca conteúdo.
+    const porFuncionalidade = [
+      { id: "patrimonio", label: "Património", rows: store.assets },
+      { id: "investimentos", label: "Movimentos de investimentos", rows: store.assetTrades },
+      { id: "rendimentos", label: "Rendimentos", rows: store.income },
+      { id: "recorrentes", label: "Recorrentes", rows: store.recurring },
+      { id: "importacoes", label: "Importações", rows: store.importBatches },
+      { id: "metas", label: "Metas de despesa", rows: store.spendingGoals },
+    ];
+
     return {
       accountCount: store.appUsers.length,
       spaceCount: spaces.length,
@@ -612,6 +637,12 @@ export class MockRepository implements Repository {
       activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
       spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
       templates: store.importTemplates.map((t) => ({ label: t.label, uses: t.uses })),
+      features: porFuncionalidade.map((f) => ({
+        id: f.id,
+        label: f.label,
+        spaces: new Set(f.rows.map((r: { spaceId: string }) => r.spaceId)).size,
+        records: f.rows.length,
+      })),
       warnings: [],
     };
   }

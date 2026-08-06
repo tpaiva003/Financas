@@ -7,10 +7,13 @@ const empty: ProbeState = {};
 
 const CORES: Record<string, string> = {
   ok: "text-credit",
-  "simbolo-desconhecido": "text-debt",
+  bloqueada: "text-debt",
+  "simbolo-desconhecido": "text-fg-muted",
   "sem-rede": "text-debt",
   "resposta-estranha": "text-debt",
 };
+
+const FONTES: Record<string, string> = { yahoo: "Yahoo Finance", stooq: "Stooq" };
 
 /**
  * Saber se as cotações funcionam, e porquê quando não funcionam.
@@ -40,27 +43,50 @@ export function QuoteDiagnostic() {
       ) : null}
 
       {state.probes ? (
-        <ul className="mt-4 space-y-3">
-          {state.probes.map((p) => (
-            <li key={p.symbol} className="border-t border-hair2 pt-3 first:border-0 first:pt-0">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-mono text-sm text-fg">{p.symbol}</span>
-                <span className="font-mono text-[11px] tnum text-fg-faint">
-                  {p.httpStatus !== null ? `HTTP ${p.httpStatus} · ` : ""}
-                  {p.ms} ms
-                </span>
-              </div>
-              <p className={`mt-0.5 text-sm ${CORES[p.verdict] ?? "text-fg-muted"}`}>
-                {p.message}
-              </p>
-              {p.firstLine ? (
-                <p className="mt-1 truncate font-mono text-[11px] text-fg-faint">
-                  {p.firstLine}
+        <>
+          {/* O veredicto que interessa primeiro: alguma fonte serve? */}
+          <p className="mt-4 text-sm">
+            {state.probes.some((p) => p.verdict === "ok") ? (
+              <span className="text-credit">
+                Há fonte a funcionar:{" "}
+                {[...new Set(state.probes.filter((p) => p.verdict === "ok").map((p) => FONTES[p.source] ?? p.source))].join(", ")}.
+              </span>
+            ) : (
+              <span className="text-debt">
+                Nenhuma fonte devolveu cotações. Enquanto assim for, os preços têm
+                de ser escritos à mão.
+              </span>
+            )}
+          </p>
+
+          <ul className="mt-4 space-y-3">
+            {state.probes.map((p) => (
+              <li
+                key={`${p.source}:${p.symbol}`}
+                className="border-t border-hair2 pt-3 first:border-0 first:pt-0"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm text-fg">
+                    <span className="text-fg-muted">{FONTES[p.source] ?? p.source}</span>{" "}
+                    <span className="font-mono">{p.querySymbol}</span>
+                  </span>
+                  <span className="font-mono text-[11px] tnum text-fg-faint">
+                    {p.httpStatus !== null ? `HTTP ${p.httpStatus} · ` : ""}
+                    {p.ms} ms
+                  </span>
+                </div>
+                <p className={`mt-0.5 text-sm ${CORES[p.verdict] ?? "text-fg-muted"}`}>
+                  {p.message}
                 </p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+                {p.firstLine ? (
+                  <p className="mt-1 truncate font-mono text-[11px] text-fg-faint">
+                    {p.firstLine}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
     </section>
   );

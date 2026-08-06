@@ -17,9 +17,10 @@ export default async function ImportarCarteiraPage() {
           Importar da corretora
         </h1>
         <p className="mt-1 text-sm text-fg-muted">
-          Traz o que já tens na corretora, em vez de o escreveres a um a um. Se
-          a corretora for nova para nós, ensinas o formato e fica aprendido para
-          quem vier a seguir.
+          Traz o que já tens na corretora, em vez de o escreveres a um a um.
+          Aceita vários ficheiros de uma vez e percebe sozinho o que cada um é.
+          Se a corretora for nova para nós, ensinas o formato e fica aprendido
+          para quem vier a seguir.
         </p>
       </div>
 

@@ -4,75 +4,112 @@ import { revalidatePath } from "next/cache";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import {
-  buildHoldingsPreview,
-  HoldingsImportError,
-  type HoldingsPreview,
-} from "@/lib/services/holdings-import";
-import type { HoldingMapping } from "@/lib/import/holdings";
+  buildBrokerPreview,
+  type BrokerPreview,
+  type TradeGroup,
+} from "@/lib/services/broker-import";
+import { commitTradesImport } from "@/lib/services/trades-import";
+import type { TradeMapping } from "@/lib/import/trades";
+import type { HoldingMapping, HoldingRow } from "@/lib/import/holdings";
 
-export interface HoldingsState {
+export interface BrokerState {
   error?: string;
   ok?: boolean;
   message?: string;
-  preview?: HoldingsPreview;
-  sample?: { fileName: string; rows: string[][] } | null;
+  preview?: BrokerPreview;
 }
 
-/** Colunas indicadas à mão, quando a deteção falha. */
-function readManual(formData: FormData): HoldingMapping | null {
-  if (String(formData.get("manual") ?? "") !== "1") return null;
-  const num = (n: string, fallback = -1) => {
-    const raw = String(formData.get(n) ?? "").trim();
-    if (raw === "") return fallback;
-    const v = Number(raw);
-    return Number.isFinite(v) ? v : fallback;
-  };
-  const m: HoldingMapping = {
-    headerRow: Math.max(0, num("headerRow", 0)),
-    nameCol: num("nameCol"),
-    quantityCol: num("quantityCol"),
-    unitCostCol: num("unitCostCol"),
-    unitPriceCol: num("unitPriceCol"),
-    marketValueCol: num("marketValueCol"),
-  };
-  // O mínimo útil é saber o quê e quanto.
-  if (m.nameCol < 0 || m.quantityCol < 0) return null;
-  return m;
+function num(formData: FormData, name: string, fallback = -1): number {
+  const raw = String(formData.get(name) ?? "").trim();
+  if (raw === "") return fallback;
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : fallback;
 }
 
-export async function previewHoldingsAction(
-  _prev: HoldingsState,
+/**
+ * Colunas indicadas à mão.
+ *
+ * O mesmo painel serve os dois tipos de ficheiro: se apontarem uma coluna de
+ * datas, é um extrato de movimentos; se não, é uma lista de posições. É a mesma
+ * regra que a deteção automática usa, e não fazia sentido serem duas.
+ */
+function readManual(formData: FormData): {
+  trades: TradeMapping | null;
+  holdings: HoldingMapping | null;
+} {
+  if (String(formData.get("manual") ?? "") !== "1") return { trades: null, holdings: null };
+
+  const headerRow = Math.max(0, num(formData, "headerRow", 0));
+  const nameCol = num(formData, "nameCol");
+  const quantityCol = num(formData, "quantityCol");
+  const dateCol = num(formData, "dateCol");
+  if (nameCol < 0 || quantityCol < 0) return { trades: null, holdings: null };
+
+  if (dateCol >= 0) {
+    return {
+      trades: {
+        headerRow,
+        dateCol,
+        nameCol,
+        quantityCol,
+        priceCol: num(formData, "priceCol"),
+        amountCol: num(formData, "amountCol"),
+        currencyCol: num(formData, "currencyCol"),
+        fxRateCol: num(formData, "fxRateCol"),
+        kindCol: num(formData, "kindCol"),
+      },
+      holdings: null,
+    };
+  }
+
+  return {
+    trades: null,
+    holdings: {
+      headerRow,
+      nameCol,
+      quantityCol,
+      unitCostCol: num(formData, "unitCostCol"),
+      unitPriceCol: num(formData, "priceCol"),
+      marketValueCol: num(formData, "amountCol"),
+    },
+  };
+}
+
+export async function previewBrokerAction(
+  _prev: BrokerState,
   formData: FormData,
-): Promise<HoldingsState> {
+): Promise<BrokerState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { error: "Escolhe um ficheiro." };
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Escolhe pelo menos um ficheiro." };
+  if (files.length > 10) return { error: "Dez ficheiros de cada vez, no máximo." };
 
+  const manual = readManual(formData);
   try {
-    const preview = await buildHoldingsPreview({ file, manualMapping: readManual(formData) });
+    const preview = await buildBrokerPreview({
+      spaceId: ctx.space.id,
+      files,
+      manualTrades: manual.trades,
+      manualHoldings: manual.holdings,
+    });
     return { preview };
-  } catch (e) {
-    if (e instanceof HoldingsImportError) return { error: e.message, sample: e.sample ?? null };
-    return { error: "Não consegui processar o ficheiro." };
+  } catch {
+    return { error: "Não consegui processar os ficheiros." };
   }
 }
 
-export async function commitHoldingsAction(
-  _prev: HoldingsState,
+export async function commitBrokerAction(
+  _prev: BrokerState,
   formData: FormData,
-): Promise<HoldingsState> {
+): Promise<BrokerState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
 
   let payload: {
-    rows: {
-      name: string;
-      quantity: number;
-      unitCostCents: number | null;
-      unitPriceCents: number | null;
-    }[];
+    groups: TradeGroup[];
+    holdings: HoldingRow[];
     saveTemplate?: {
       fingerprint: string;
       label: string;
@@ -85,12 +122,12 @@ export async function commitHoldingsAction(
   } catch {
     return { error: "Dados inválidos." };
   }
-  if (!payload.rows?.length) return { error: "Não escolheste nenhuma posição." };
+  if (!payload.groups?.length && !payload.holdings?.length) {
+    return { error: "Não escolheste nada para importar." };
+  }
 
   const repo = getRepository();
 
-  // Formato confirmado por uma pessoa: fica na biblioteca para a próxima, de
-  // qualquer corretora e para qualquer utilizador.
   const tpl = payload.saveTemplate;
   if (tpl?.fingerprint && tpl.label.trim()) {
     await repo
@@ -106,25 +143,63 @@ export async function commitHoldingsAction(
       });
   }
 
-  let imported = 0;
-  for (const r of payload.rows) {
-    if (!r.name || !r.quantity) continue;
-    await repo.createAsset({
-      spaceId: ctx.space.id,
-      name: r.name.slice(0, 120),
-      kind: "investimento",
-      quantity: r.quantity,
-      unitCostCents: r.unitCostCents,
-      unitPriceCents: r.unitPriceCents,
-      valueCents: null,
-      purchasedAt: null,
-      notes: null,
-      createdBy: ctx.user.id,
-    });
-    imported += 1;
+  const partes: string[] = [];
+
+  try {
+    if (payload.groups?.length) {
+      const r = await commitTradesImport({
+        spaceId: ctx.space.id,
+        userId: ctx.user.id,
+        groups: payload.groups,
+      });
+      partes.push(`${r.tradesImported} movimento(s)`);
+      if (r.assetsCreated > 0) partes.push(`${r.assetsCreated} investimento(s) criado(s)`);
+      if (r.skippedNoFx > 0) {
+        partes.push(`${r.skippedNoFx} deixado(s) de fora por falta de câmbio`);
+      }
+    }
+
+    // Uma posição com o mesmo nome atualiza o que já lá está, em vez de criar um
+    // segundo ativo igual. Importar duas vezes não duplica a carteira.
+    if (payload.holdings?.length) {
+      const assets = await repo.listAssets(ctx.space.id).catch(() => []);
+      const porNome = new Map(assets.map((a) => [a.name.trim().toLowerCase(), a]));
+      let criados = 0;
+      let atualizados = 0;
+      for (const h of payload.holdings) {
+        if (!h.name || !h.quantity) continue;
+        const existente = porNome.get(h.name.trim().toLowerCase());
+        if (existente) {
+          await repo.updateAsset(existente.id, ctx.space.id, {
+            quantity: h.quantity,
+            unitCostCents: h.unitCostCents,
+            unitPriceCents: h.unitPriceCents,
+          });
+          atualizados += 1;
+        } else {
+          await repo.createAsset({
+            spaceId: ctx.space.id,
+            name: h.name.slice(0, 120),
+            kind: "investimento",
+            quantity: h.quantity,
+            unitCostCents: h.unitCostCents,
+            unitPriceCents: h.unitPriceCents,
+            valueCents: null,
+            purchasedAt: null,
+            notes: null,
+            createdBy: ctx.user.id,
+          });
+          criados += 1;
+        }
+      }
+      if (criados > 0) partes.push(`${criados} posição(ões) nova(s)`);
+      if (atualizados > 0) partes.push(`${atualizados} posição(ões) atualizada(s)`);
+    }
+  } catch {
+    return { error: "Não consegui gravar tudo. O que entrou até aqui ficou." };
   }
 
   revalidatePath("/patrimonio");
   revalidatePath("/patrimonio/ativos");
-  return { ok: true, message: `${imported} posição(ões) importada(s).` };
+  return { ok: true, message: `Importado: ${partes.join(", ")}.` };
 }

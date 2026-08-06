@@ -277,6 +277,27 @@ export interface SpaceSummary {
   /** Data da despesa mais recente (não o seu conteúdo). */
   lastActivity: string | null;
   createdAt: string;
+  /** Que funcionalidades este ambiente usa, por id. Só isso, nunca o conteúdo. */
+  features: string[];
+}
+
+/**
+ * Quanto é que cada parte da app é usada.
+ *
+ * A consola só contava despesas, e com isso não se sabia se alguém chegou a
+ * usar o património, os rendimentos ou as recorrentes. Uma funcionalidade que
+ * ninguém usa é uma funcionalidade a manter por nada, e sem esta medida não há
+ * forma de saber qual é.
+ *
+ * Continua a valer a regra da consola: contagens, nunca conteúdo.
+ */
+export interface FeatureUsage {
+  id: string;
+  label: string;
+  /** Em quantos ambientes se usa. */
+  spaces: number;
+  /** Quantos registos ao todo. */
+  records: number;
 }
 
 export interface PlatformStats {
@@ -289,6 +310,8 @@ export interface PlatformStats {
   spaces: SpaceSummary[];
   /** Formatos de banco aprendidos e quantas vezes já serviram. */
   templates: { label: string; uses: number }[];
+  /** Que partes da app são usadas, e por quantos ambientes. */
+  features: FeatureUsage[];
   /**
    * O que não foi possível ler, em texto. A consola mostra o resto na mesma:
    * um número em falta não pode deitar abaixo a página inteira.
