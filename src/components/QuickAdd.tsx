@@ -2,20 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { showsQuickAdd } from "./quick-add-rules";
 
-/**
- * Botão flutuante de adicionar.
- *
- * Adiciona sempre uma DESPESA, e por isso só aparece onde despesas são o
- * assunto. No património ou nos rendimentos era enganador: parecia que ia
- * acrescentar um bem ou um ordenado, e essas páginas já têm o seu formulário à
- * mão. Um atalho que faz outra coisa do que aparenta é pior do que não existir.
- */
-const HIDDEN_ON = ["/patrimonio", "/rendimentos"];
-
+/** Botão flutuante de adicionar. A regra de onde aparece vive em `quick-add-rules`. */
 export function QuickAdd() {
   const pathname = usePathname();
-  if (HIDDEN_ON.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
+  if (!showsQuickAdd(pathname)) return null;
 
   return (
     <Link
