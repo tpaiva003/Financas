@@ -586,3 +586,102 @@ Públicas, porque a Google as exige acessíveis sem sessão para aprovar o ecrã
 consentimento, e porque quem está a decidir se cria conta deve poder lê-las
 antes. Escritas a partir do que a app faz, não de um modelo: se o comportamento
 mudar, estas páginas mudam com ele.
+
+## Rendimento, e porque a secção passou a chamar-se Movimentos
+
+Faltava metade da história: a app sabia para onde o dinheiro ia mas não de onde
+vinha. Sem isso não há taxa de poupança, que é o indicador que diz se se está a
+ir a algum lado.
+
+Duas decisões que mudam os números:
+
+- **O valor pedido é o líquido recebido**, não o bruto. É o que se pode gastar,
+  e é sobre isso que a taxa de poupança faz sentido.
+- **A média de vários meses pesa pelo dinheiro, não pelos meses.** É o total
+  poupado a dividir pelo total recebido. A média das percentagens daria o mesmo
+  peso a um mês de 500 € e a um de 5000 €, e um mês fraco com boa percentagem
+  mascararia um mês forte com má.
+
+Separa-se rendimento **ativo** (salário, trabalhos paralelos), que para se a
+pessoa parar de trabalhar, de **passivo** (juros, dividendos, rendas), que não
+para. A percentagem de despesas já coberta por rendimento passivo é o mesmo
+indicador do FIRE, mas com dinheiro que entrou mesmo em vez de uma projeção.
+
+**A secção "Despesas" passou a "Movimentos".** Desde que há rendimentos, trata
+do dinheiro nos dois sentidos, e o nome antigo escondia metade. Foi a alternativa
+a criar uma quinta secção no topo, que era exatamente o que se tinha combinado
+não fazer.
+
+## Email: convite e recuperação de palavra-chave
+
+Até aqui, convidar alguém não avisava ninguém: criava-se a conta e a pessoa não
+sabia. O convite passa a enviar email, e a mensagem de resultado **diz se o
+email saiu mesmo**, com o motivo quando falha, em vez de fingir sucesso.
+
+O envio fala com a API do Resend por HTTP, sem SDK: é um pedido só. E **nunca
+deita a app abaixo**: se a chave faltar ou o envio falhar, regista-se e segue-se.
+Um convite que não chega é chato; uma app que rebenta a meio de criar uma conta
+é pior.
+
+**Recuperação de palavra-chave.** Guarda-se o hash do token, nunca o token: quem
+ler a tabela não entra em conta nenhuma. Validade de uma hora, uso único, e a
+marcação de usado acontece antes de devolver o utilizador, para dois pedidos
+simultâneos não valerem os dois.
+
+O formulário responde **sempre a mesma coisa**, exista a conta ou não. Dizer
+"esse email não está registado" transformava-o numa forma de descobrir quem usa
+a app, o que numa app de finanças partilhadas não é inofensivo.
+
+Os emails usam a identidade da marca, em HTML de tabelas com estilos em linha,
+porque os clientes de email continuam a ignorar CSS moderno. A marca vai em SVG
+embutido, já que imagens externas são bloqueadas por omissão.
+
+## O botão flutuante deixou de mentir
+
+Adiciona sempre uma despesa, mas aparecia no património e nos rendimentos, onde
+parecia que ia acrescentar um bem ou um ordenado. Passa a esconder-se nessas
+páginas, que já têm o seu formulário à mão. Um atalho que faz outra coisa do que
+aparenta é pior do que não existir.
+
+## Juros e amortização
+
+O património sabia quanto vale cada coisa e não sabia o que ela faz. Um depósito
+a prazo a 3% e o mesmo dinheiro parado à ordem apareciam iguais; uma dívida de
+150 mil não dizia quando acaba. Passa a guardar-se a **taxa anual** em qualquer
+bem e, nas dívidas, a **prestação e o prazo**.
+
+**A conta da dívida é feita mês a mês, não pela fórmula fechada.** São algumas
+centenas de iterações, tempo nenhum, e é exato: apanha a última prestação (que é
+quase sempre mais pequena que as outras) e não acumula erro de arredondamento em
+cêntimos, como a fórmula acumula.
+
+**A prestação real ganha ao prazo.** Se estiverem os dois preenchidos, manda a
+prestação, porque é o que sai da conta todos os meses; o prazo só serve para a
+estimar quando ela não é conhecida. Quem paga acima da prestação acaba antes, e
+a app tem de mostrar isso em vez do plano teórico.
+
+**Quando a prestação não cobre os juros, diz-se isso.** Devolver "faltam 1.200
+meses" era tecnicamente verdade e praticamente inútil: o que ali se passa é que
+a dívida está a crescer.
+
+No resumo mostram-se as duas metades lado a lado, o que os bens rendem por ano e
+o que as dívidas custam por ano, porque é essa a conta que responde a **amortizar
+ou investir**. Nas dívidas conta-se o juro do próximo ano à taxa atual, não o
+juro total até ao fim: é esse que se compara com o que o dinheiro renderia.
+
+## Editar um bem, em vez de apagar e voltar a criar
+
+A ação de gravar já aceitava um `id` desde o início, mas o formulário nunca o
+enviava: para corrigir um valor era preciso apagar e escrever tudo de novo. O
+mesmo formulário passa a servir os dois casos, e abre-se dentro da própria linha
+com um `<details>` nativo, sem JavaScript à mistura.
+
+## Três funções mortas, removidas
+
+`pairwiseStatement`, `testRuleAgainstHistory` e `detectDuplicates` não eram
+chamadas por nada além dos próprios testes. A última era a mais perigosa: uma
+**segunda implementação da deduplicação**, invariante do domínio, a par da que o
+serviço de importação usa de facto (que pergunta à base de dados só pelos UIDs
+do ficheiro, em vez de carregar as despesas todas). Duas implementações do mesmo
+invariante é como se começa a ter duas respostas diferentes para a mesma
+pergunta. Ficou a que corre em produção.

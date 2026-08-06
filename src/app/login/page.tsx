@@ -61,6 +61,7 @@ export default function LoginPage({
               isolados desde que passou a multi-inquilino. */}
           <p className="eyebrow">
             Encriptado ·{" "}
+            <Link href="/recuperar" className="hover:text-fg-muted">Esqueci-me</Link> ·{" "}
             <Link href="/privacidade" className="hover:text-fg-muted">Privacidade</Link> ·{" "}
             <Link href="/termos" className="hover:text-fg-muted">Termos</Link>
           </p>

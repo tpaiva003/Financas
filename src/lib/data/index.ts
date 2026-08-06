@@ -48,4 +48,6 @@ export type {
   SpaceSummary,
   Asset,
   CreateAssetInput,
+  Income,
+  CreateIncomeInput,
 } from "./repository";

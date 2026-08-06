@@ -22,8 +22,9 @@ export default function PrivacidadePage() {
     >
       <LegalSection title="Quem é responsável">
         <p>
-          A Rachar é gerida por <strong>[nome ou empresa]</strong>, com sede em{" "}
-          <strong>[morada]</strong> e contribuinte <strong>[NIF]</strong>. Para
+          A Rachar é gerida pela <strong>Desperta Dedicação Unipessoal Lda.</strong>,
+          com sede na Praceta Alferes Pereira 210, 4400-099 Vila Nova de Gaia, e
+          NIF <strong>514089784</strong>. Para
           qualquer questão sobre os teus dados, escreve para{" "}
           <a href="mailto:ola@rachar.pt" className="underline underline-offset-2">
             ola@rachar.pt

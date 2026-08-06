@@ -1,66 +1,16 @@
 /**
- * Deduplicação e reconciliação (REQ-IMP-4, REQ-IMP-5, REQ-DAT-1).
+ * Reconciliação entre o que foi metido à mão e o que vem no extrato
+ * (REQ-IMP-5, REQ-DAT-1).
  *
- * Invariante: a mesma transação nunca entra duas vezes.
+ * A deduplicação propriamente dita (o invariante de que a mesma transação nunca
+ * entra duas vezes) vive no serviço de importação, que a faz contra a base de
+ * dados perguntando só pelos UIDs do ficheiro. Aqui trata-se do caso que os
+ * UIDs não apanham: a mesma despesa escrita à mão antes de chegar o extrato,
+ * que não tem UID em comum nenhum e mesmo assim é a mesma compra.
  */
 
 import { stableUid } from "./normalize";
 import type { Expense, NormalizedTransaction } from "./types";
-
-export interface DedupRow {
-  transaction: NormalizedTransaction;
-  uid: string;
-  /** Já existe uma despesa com este UID? */
-  isDuplicate: boolean;
-  /** Id da despesa existente que casa (se duplicado). */
-  existingExpenseId?: string;
-}
-
-export interface DedupResult {
-  rows: DedupRow[];
-  newCount: number;
-  duplicateCount: number;
-}
-
-/**
- * Classifica transações de um import contra o conjunto de UIDs já existentes.
- * Duplicados internos (o mesmo UID repetido dentro do próprio ficheiro) também
- * são marcados, só a primeira ocorrência conta como nova.
- */
-export function detectDuplicates(
-  incoming: NormalizedTransaction[],
-  existing: Pick<Expense, "id" | "uid">[],
-): DedupResult {
-  const existingByUid = new Map<string, string>();
-  for (const e of existing) existingByUid.set(e.uid, e.id);
-
-  const seenInBatch = new Set<string>();
-  const rows: DedupRow[] = [];
-  let newCount = 0;
-  let duplicateCount = 0;
-
-  for (const tx of incoming) {
-    const uid = stableUid(tx);
-    const existingId = existingByUid.get(uid);
-    const isDup = existingId !== undefined || seenInBatch.has(uid);
-
-    if (isDup) {
-      duplicateCount += 1;
-    } else {
-      newCount += 1;
-      seenInBatch.add(uid);
-    }
-
-    rows.push({
-      transaction: tx,
-      uid,
-      isDuplicate: isDup,
-      existingExpenseId: existingId,
-    });
-  }
-
-  return { rows, newCount, duplicateCount };
-}
 
 export interface ReconciliationSuggestion {
   transaction: NormalizedTransaction;

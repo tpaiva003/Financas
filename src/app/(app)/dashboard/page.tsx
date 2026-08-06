@@ -7,6 +7,9 @@ import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
 import { formatCents } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
+import { OnboardingCard } from "@/components/OnboardingCard";
+import { buildOnboarding } from "@/lib/domain";
+import { cookies } from "next/headers";
 
 export const metadata = { title: "Saldo · Rachar" };
 export const dynamic = "force-dynamic";
@@ -41,6 +44,18 @@ export default async function DashboardPage() {
 
   const totalToSettle = transfers.reduce((s, t) => s + t.amountCents, 0);
 
+  // Primeiros passos: completam-se sozinhos a partir dos dados, e podem ser
+  // dispensados por quem já sabe o que anda a fazer.
+  const dispensado = cookies().get("rachar_onboarding")?.value === "off";
+  const onboarding = dispensado
+    ? null
+    : buildOnboarding({
+        expenseCount: recent.filter((e) => !e.deletedAt).length,
+        memberCount: ctx.members.length,
+        importCount: (await repo.listImportBatches(ctx.space.id).catch(() => [])).length,
+        incomeCount: (await repo.listIncome(ctx.space.id).catch(() => [])).length,
+      });
+
   // Lembretes de importação: o aviso visual de que há extratos por trazer.
   const dueImports = pendingReminders(
     await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
@@ -68,6 +83,8 @@ export default async function DashboardPage() {
         totalToSettle={totalToSettle}
         nameOf={nameOf}
       />
+
+      {onboarding ? <OnboardingCard onboarding={onboarding} /> : null}
 
       {pendingApprovals.length > 0 ? (
         <Link

@@ -32,10 +32,13 @@ export const SECTIONS: NavSection[] = [
   { href: "/dashboard", label: "Saldo" },
   {
     href: "/despesas",
-    label: "Despesas",
-    matches: ["/despesas", "/importar", "/recorrentes", "/aprovacoes"],
+    // "Movimentos" e não "Despesas": desde que há rendimentos, a secção trata
+    // do dinheiro nos dois sentidos, e chamar-lhe despesas escondia metade.
+    label: "Movimentos",
+    matches: ["/despesas", "/rendimentos", "/importar", "/recorrentes", "/aprovacoes"],
     children: [
-      { href: "/despesas", label: "Lista" },
+      { href: "/despesas", label: "Despesas" },
+      { href: "/rendimentos", label: "Rendimentos" },
       { href: "/importar", label: "Importar" },
       { href: "/recorrentes", label: "Recorrentes" },
     ],
@@ -57,6 +60,7 @@ export const SECTIONS: NavSection[] = [
       { href: "/patrimonio/ativos", label: "Ativos" },
       { href: "/patrimonio/dividas", label: "Dívidas" },
       { href: "/patrimonio/fire", label: "FIRE" },
+      { href: "/patrimonio/importar", label: "Importar" },
     ],
   },
 ];

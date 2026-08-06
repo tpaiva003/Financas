@@ -27,6 +27,8 @@ import type {
   SpendingGoal,
   Asset,
   CreateAssetInput,
+  Income,
+  CreateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -65,6 +67,8 @@ interface Store {
   importReminders: ImportReminder[];
   spendingGoals: SpendingGoal[];
   assets: Asset[];
+  income: Income[];
+  resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -88,6 +92,8 @@ function getStore(): Store {
       importReminders: [],
       spendingGoals: [],
       assets: [],
+      income: [],
+      resetTokens: [],
     };
   }
   return globalForStore.__financasStore;
@@ -659,6 +665,59 @@ export class MockRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.assets = store.assets.filter((a) => !(a.id === id && a.spaceId === spaceId));
+  }
+
+  async unlinkUserFromMembers(userId: string): Promise<void> {
+    for (const m of getStore().members) {
+      if (m.linkedUserId === userId) m.linkedUserId = null;
+    }
+  }
+
+  async deleteAccountAndSoleSpaces(userId: string): Promise<void> {
+    const store = getStore();
+    const mine = store.members.filter((m) => m.linkedUserId === userId).map((m) => m.spaceId);
+    const soleSpaces = [...new Set(mine)].filter(
+      (sid) => store.members.filter((m) => m.spaceId === sid).length === 1,
+    );
+    store.expenses = store.expenses.filter((e) => !soleSpaces.includes(e.spaceId ?? ""));
+    store.members = store.members.filter((m) => !soleSpaces.includes(m.spaceId));
+    store.spaces = store.spaces.filter((s) => !soleSpaces.includes(s.id));
+    await this.unlinkUserFromMembers(userId);
+    store.appUsers = store.appUsers.filter((u) => u.id !== userId);
+  }
+
+  async createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<void> {
+    getStore().resetTokens.push({ ...input });
+  }
+
+  async consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | null> {
+    const t = getStore().resetTokens.find(
+      (x) => x.tokenHash === tokenHash && !x.usedAt && x.expiresAt > new Date().toISOString(),
+    );
+    if (!t) return null;
+    t.usedAt = new Date().toISOString();
+    return { userId: t.userId };
+  }
+
+  async listIncome(spaceId: string): Promise<Income[]> {
+    return getStore()
+      .income.filter((i) => i.spaceId === spaceId)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const entry: Income = { ...input, id: `inc_${randomUUID()}` };
+    getStore().income.push(entry);
+    return entry;
+  }
+
+  async deleteIncome(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.income = store.income.filter((i) => !(i.id === id && i.spaceId === spaceId));
   }
 
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {

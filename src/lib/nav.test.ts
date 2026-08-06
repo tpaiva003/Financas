@@ -9,16 +9,19 @@ describe("estrutura do menu", () => {
     expect(SECTIONS).toHaveLength(4);
     expect(SECTIONS.map((s) => s.label)).toEqual([
       "Saldo",
-      "Despesas",
+      "Movimentos",
       "Análise",
       "Património",
     ]);
   });
 
-  it("importar e recorrentes vivem dentro de Despesas", () => {
-    const despesas = SECTIONS.find((s) => s.label === "Despesas")!;
-    expect(despesas.children?.map((c) => c.href)).toEqual([
+  it("despesas e rendimentos vivem juntos, nos movimentos", () => {
+    // O dinheiro anda nos dois sentidos: separá-los em secções diferentes
+    // obrigava a saltar de sítio para ver a mesma história.
+    const mov = SECTIONS.find((s) => s.label === "Movimentos")!;
+    expect(mov.children?.map((c) => c.href)).toEqual([
       "/despesas",
+      "/rendimentos",
       "/importar",
       "/recorrentes",
     ]);
@@ -44,6 +47,7 @@ describe("Património", () => {
       "Ativos",
       "Dívidas",
       "FIRE",
+      "Importar",
     ]);
   });
 });
@@ -55,15 +59,15 @@ describe("isSectionActive", () => {
     expect(isSectionActive(saldo, "/despesas")).toBe(false);
   });
 
-  it("acende Despesas nas páginas que lhe pertencem", () => {
-    const despesas = SECTIONS.find((s) => s.label === "Despesas")!;
-    for (const p of ["/despesas", "/importar", "/recorrentes", "/aprovacoes"]) {
+  it("acende Movimentos nas páginas que lhe pertencem", () => {
+    const despesas = SECTIONS.find((s) => s.label === "Movimentos")!;
+    for (const p of ["/despesas", "/rendimentos", "/importar", "/recorrentes", "/aprovacoes"]) {
       expect(isSectionActive(despesas, p)).toBe(true);
     }
   });
 
   it("acende em subpáginas", () => {
-    const despesas = SECTIONS.find((s) => s.label === "Despesas")!;
+    const despesas = SECTIONS.find((s) => s.label === "Movimentos")!;
     expect(isSectionActive(despesas, "/despesas/nova")).toBe(true);
     expect(isSectionActive(despesas, "/despesas/abc/editar")).toBe(true);
   });
@@ -76,7 +80,8 @@ describe("isSectionActive", () => {
 
 describe("sectionOf", () => {
   it("encontra a secção da página", () => {
-    expect(sectionOf("/importar")?.label).toBe("Despesas");
+    expect(sectionOf("/importar")?.label).toBe("Movimentos");
+    expect(sectionOf("/rendimentos")?.label).toBe("Movimentos");
     expect(sectionOf("/patrimonio")?.label).toBe("Património");
   });
 

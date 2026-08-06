@@ -19,6 +19,7 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
+import { sendInvite, emailConfigured } from "@/lib/email/send";
 import {
   toCents,
   validateSplit,
@@ -1230,11 +1231,19 @@ export async function inviteUserAction(
     // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
   }
 
+  // Sem email, a pessoa não sabe que foi convidada, e o convite não serve de
+  // nada. Por isso o resultado diz sempre se a mensagem chegou a sair.
+  const mail = await sendInvite(email, name);
+
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
   return {
     ok: true,
-    message: `${name} já pode entrar com ${email}. Ambiente "${spaceName}" criado, só com ela.`,
+    message: mail.sent
+      ? `${name} recebeu um email com as instruções. Ambiente "${spaceName}" criado, só com ela.`
+      : `Conta criada e ambiente "${spaceName}" pronto, mas o email NÃO foi enviado${
+          emailConfigured() ? ` (${mail.reason})` : " (envio de email por configurar)"
+        }. Diz-lhe tu para entrar em rachar.pt com ${email}.`,
   };
 }
 
@@ -1425,6 +1434,16 @@ export async function saveAssetAction(
     return { error: "Indica o valor." };
   }
 
+  // Taxa e plano de amortização. A taxa serve os dois lados: num depósito diz
+  // o que rende, numa dívida diz o que custa. A prestação e o prazo só fazem
+  // sentido em dívidas, e guardam-se apenas aí para não ficarem valores
+  // órfãos numa conta à ordem.
+  const rate = parseNumber(formData.get("interestRatePct"));
+  const monthlyPayment = parseNumber(formData.get("monthlyPayment"));
+  const term = parseNumber(formData.get("termMonths"));
+  const rawRateKind = String(formData.get("rateKind") ?? "").trim();
+  const isDebt = kind === "divida";
+
   const patch = {
     spaceId: ctx.space.id,
     name: name.slice(0, 120),
@@ -1436,6 +1455,13 @@ export async function saveAssetAction(
     valueCents: kind === "investimento" ? null : value !== null ? toCents(Math.abs(value)) : null,
     purchasedAt: String(formData.get("purchasedAt") ?? "").trim() || null,
     notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+    interestRatePct: rate !== null && rate >= 0 ? rate : null,
+    monthlyPaymentCents:
+      isDebt && monthlyPayment !== null && monthlyPayment > 0
+        ? toCents(Math.abs(monthlyPayment))
+        : null,
+    termMonths: isDebt && term !== null && term > 0 ? Math.round(term) : null,
+    rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
   };
 
   const id = String(formData.get("id") ?? "").trim();
@@ -1472,4 +1498,120 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
     })
     .catch(() => {});
   revalidatePath("/patrimonio");
+}
+
+// ---- Rendimento -----------------------------------------------------------
+
+const INCOME_KINDS = ["salario", "extra", "juros", "dividendos", "renda", "outro"] as const;
+
+export async function saveIncomeAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) return { error: "Descreve o rendimento." };
+
+  const cents = parseAmountCents(formData.get("amount"));
+  if (cents === null || Number.isNaN(cents)) return { error: "Indica o valor recebido." };
+
+  const date = String(formData.get("date") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Data inválida." };
+
+  const rawKind = String(formData.get("kind") ?? "salario");
+  const kind = (INCOME_KINDS as readonly string[]).includes(rawKind)
+    ? (rawKind as (typeof INCOME_KINDS)[number])
+    : "outro";
+
+  try {
+    await getRepository().createIncome({
+      spaceId: ctx.space.id,
+      kind,
+      description: description.slice(0, 120),
+      amountCents: cents,
+      date,
+      recurring: String(formData.get("recurring") ?? "") === "on",
+      notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar. A tabela de rendimentos pode faltar." };
+  }
+
+  revalidatePath("/rendimentos");
+  revalidatePath("/relatorios");
+  return { ok: true, message: `${description} registado.` };
+}
+
+export async function deleteIncomeAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await getRepository().deleteIncome(id, ctx.space.id).catch(() => {});
+  revalidatePath("/rendimentos");
+  revalidatePath("/relatorios");
+}
+
+// ---- Remover contas da plataforma -----------------------------------------
+
+/**
+ * Retira o acesso de alguém à plataforma.
+ *
+ * NÃO apaga o histórico. Os participantes que estavam ligados a esta conta
+ * ficam sem ligação, o que significa que as despesas continuam a contar para o
+ * saldo de quem partilha o ambiente. Apagar as despesas de uma pessoa
+ * desequilibrava contas alheias que já podem ter sido acertadas, e isso não é
+ * reversível.
+ *
+ * Para apagar mesmo os dados (pedido de RGPD), há `deleteAccountDataAction`.
+ */
+export async function removeAccountAccessAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  if (!userId) return;
+  // O dono da plataforma não se pode remover a si próprio por engano.
+  if (userId === user.id) return;
+
+  const repo = getRepository();
+  await repo.unlinkUserFromMembers(userId).catch(() => {});
+  await repo.deleteAppUser(userId).catch(() => {});
+
+  revalidatePath("/plataforma");
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Apaga a conta E os ambientes onde a pessoa estava sozinha.
+ *
+ * Ambientes partilhados ficam de pé: as contas das outras pessoas não podem
+ * desaparecer porque uma delas saiu.
+ */
+export async function deleteAccountDataAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!isAdmin(user.id)) return;
+  if (String(formData.get("confirmar") ?? "") !== "apagar") return;
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  if (!userId || userId === user.id) return;
+
+  const repo = getRepository();
+  await repo.deleteAccountAndSoleSpaces(userId).catch(() => {});
+
+  revalidatePath("/plataforma");
+  revalidatePath("/", "layout");
+}
+
+/** Dispensa os primeiros passos. Fica num cookie: é preferência de ecrã. */
+export async function dismissOnboardingAction(): Promise<void> {
+  cookies().set("rachar_onboarding", "off", {
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+    sameSite: "lax",
+  });
+  revalidatePath("/dashboard");
 }

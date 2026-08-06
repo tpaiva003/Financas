@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandMark } from "@/components/BrandMark";
 
 /**
  * Moldura das páginas legais (privacidade, termos).
@@ -22,7 +23,8 @@ export function LegalLayout({
     <div className="min-h-[100dvh]">
       <header className="border-b border-hair">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-baseline gap-2">
+          <Link href="/" className="flex items-center gap-2">
+            <BrandMark />
             <span className="font-display text-[15px] font-semibold tracking-tight">Rachar</span>
             <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint sm:inline">
               Contas à moda do Porto

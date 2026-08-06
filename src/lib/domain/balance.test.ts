@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeBalance, pairwiseStatement, countsTowardsBalance, simplifyDebts } from "./balance";
+import { computeBalance, countsTowardsBalance, simplifyDebts } from "./balance";
 import { equalSplit, percentSplit } from "./split";
 import type { Expense, Settlement, Split } from "./types";
 
@@ -53,12 +53,6 @@ describe("computeBalance", () => {
     });
     expect(netByUser[A]).toBe(5000);
     expect(netByUser[B]).toBe(-5000);
-
-    const stmt = pairwiseStatement(netByUser, A, B);
-    expect(stmt.settled).toBe(false);
-    expect(stmt.debtorId).toBe(B);
-    expect(stmt.creditorId).toBe(A);
-    expect(stmt.amountCents).toBe(5000);
   });
 
   it("o net soma sempre zero entre os dois", () => {
@@ -81,7 +75,6 @@ describe("computeBalance", () => {
     });
     expect(netByUser[A]).toBe(0);
     expect(netByUser[B]).toBe(0);
-    expect(pairwiseStatement(netByUser, A, B).settled).toBe(true);
   });
 
   it("despesas pessoais NÃO entram no saldo", () => {

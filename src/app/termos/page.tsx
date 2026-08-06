@@ -86,7 +86,9 @@ export default function TermosPage() {
 
       <LegalSection title="Alterações e contacto">
         <p>
-          Se estes termos mudarem de forma relevante, avisamos. Para qualquer
+          A Rachar é gerida pela <strong>Desperta Dedicação Unipessoal Lda.</strong>,
+          NIF 514089784, com sede na Praceta Alferes Pereira 210, 4400-099 Vila
+          Nova de Gaia. Se estes termos mudarem de forma relevante, avisamos. Para qualquer
           questão,{" "}
           <a href="mailto:ola@rachar.pt" className="underline underline-offset-2">
             ola@rachar.pt

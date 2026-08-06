@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { stableUid, normalizeText, canonicalKey } from "./normalize";
-import { detectDuplicates, suggestReconciliation } from "./dedup";
+import { suggestReconciliation } from "./dedup";
 import type { Expense, NormalizedTransaction } from "./types";
 
 function tx(p: Partial<NormalizedTransaction> & { amountCents: number }): NormalizedTransaction {
@@ -69,28 +69,6 @@ function expenseFromTx(t: NormalizedTransaction, over: Partial<Expense> = {}): E
     ...over,
   };
 }
-
-describe("detectDuplicates", () => {
-  it("marca transações já existentes e conta novas", () => {
-    const t1 = tx({ amountCents: 1000, description: "Continente" });
-    const t2 = tx({ amountCents: 2000, description: "Galp" });
-    const existing = [{ id: "e1", uid: stableUid(t1) }];
-
-    const result = detectDuplicates([t1, t2], existing);
-    expect(result.duplicateCount).toBe(1);
-    expect(result.newCount).toBe(1);
-    expect(result.rows[0]!.isDuplicate).toBe(true);
-    expect(result.rows[0]!.existingExpenseId).toBe("e1");
-    expect(result.rows[1]!.isDuplicate).toBe(false);
-  });
-
-  it("importar o mesmo ficheiro duas vezes não cria duplicados (dedup interno)", () => {
-    const t1 = tx({ amountCents: 1000, description: "Continente" });
-    const result = detectDuplicates([t1, t1], []);
-    expect(result.newCount).toBe(1);
-    expect(result.duplicateCount).toBe(1);
-  });
-});
 
 describe("suggestReconciliation", () => {
   it("sugere casar uma despesa manual com a transação importada equivalente", () => {

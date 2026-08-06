@@ -20,6 +20,8 @@ import type {
   SpendingGoal,
   Asset,
   CreateAssetInput,
+  Income,
+  CreateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1036,6 +1038,10 @@ export class SupabaseRepository implements Repository {
         value_cents: input.valueCents ?? null,
         purchased_at: input.purchasedAt ?? null,
         notes: input.notes ?? null,
+        interest_rate_pct: input.interestRatePct ?? null,
+        monthly_payment_cents: input.monthlyPaymentCents ?? null,
+        term_months: input.termMonths ?? null,
+        rate_kind: input.rateKind ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1055,6 +1061,10 @@ export class SupabaseRepository implements Repository {
     if (patch.valueCents !== undefined) row.value_cents = patch.valueCents;
     if (patch.purchasedAt !== undefined) row.purchased_at = patch.purchasedAt;
     if (patch.notes !== undefined) row.notes = patch.notes;
+    if (patch.interestRatePct !== undefined) row.interest_rate_pct = patch.interestRatePct;
+    if (patch.monthlyPaymentCents !== undefined) row.monthly_payment_cents = patch.monthlyPaymentCents;
+    if (patch.termMonths !== undefined) row.term_months = patch.termMonths;
+    if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1062,6 +1072,124 @@ export class SupabaseRepository implements Repository {
   async deleteAsset(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db.from("assets").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async unlinkUserFromMembers(userId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("members")
+      .update({ linked_user_id: null })
+      .eq("linked_user_id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAccountAndSoleSpaces(userId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+
+    const { data: mine, error } = await db
+      .from("members")
+      .select("space_id")
+      .eq("linked_user_id", userId);
+    if (error) throw new Error(error.message);
+
+    // Só se apagam ambientes onde esta pessoa estava sozinha: os partilhados
+    // pertencem também a quem lá ficou.
+    const spaceIds = [...new Set((mine ?? []).map((m: any) => m.space_id as string))];
+    for (const spaceId of spaceIds) {
+      const { count } = await db
+        .from("members")
+        .select("id", { count: "exact", head: true })
+        .eq("space_id", spaceId);
+      if ((count ?? 0) <= 1) {
+        // As tabelas dependentes caem por "on delete cascade".
+        await db.from("spaces").delete().eq("id", spaceId);
+      }
+    }
+
+    await this.unlinkUserFromMembers(userId);
+    await db.from("password_reset_tokens").delete().eq("user_id", userId);
+    await db.from("app_users").delete().eq("id", userId);
+  }
+
+  async createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("password_reset_tokens").insert({
+      id: `prt_${randomUUID()}`,
+      user_id: input.userId,
+      token_hash: input.tokenHash,
+      expires_at: input.expiresAt,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("password_reset_tokens")
+      .select("id, user_id, expires_at, used_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.used_at || new Date(data.expires_at as string) < new Date()) return null;
+
+    // Marca-se como usado ANTES de devolver: um token só serve uma vez, mesmo
+    // que dois pedidos cheguem ao mesmo tempo.
+    const { error: e2 } = await db
+      .from("password_reset_tokens")
+      .update({ used_at: new Date().toISOString() })
+      .eq("id", data.id as string)
+      .is("used_at", null);
+    if (e2) throw new Error(e2.message);
+
+    return { userId: data.user_id as string };
+  }
+
+  async listIncome(spaceId: string): Promise<Income[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("income")
+      .select("*")
+      .eq("space_id", spaceId)
+      .order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      spaceId: r.space_id,
+      kind: r.kind,
+      description: r.description,
+      amountCents: r.amount_cents,
+      date: r.date,
+      recurring: Boolean(r.recurring),
+      notes: r.notes ?? null,
+    }));
+  }
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const db = getSupabaseAdmin();
+    const id = `inc_${randomUUID()}`;
+    const { error } = await db.from("income").insert({
+      id,
+      space_id: input.spaceId,
+      kind: input.kind,
+      description: input.description,
+      amount_cents: input.amountCents,
+      date: input.date,
+      recurring: input.recurring,
+      notes: input.notes ?? null,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { ...input, id };
+  }
+
+  async deleteIncome(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("income").delete().eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -1233,6 +1361,10 @@ function rowToAsset(r: any): Asset {
     valueCents: r.value_cents ?? null,
     purchasedAt: r.purchased_at ?? null,
     notes: r.notes ?? null,
+    interestRatePct: r.interest_rate_pct === null || r.interest_rate_pct === undefined ? null : Number(r.interest_rate_pct),
+    monthlyPaymentCents: r.monthly_payment_cents ?? null,
+    termMonths: r.term_months ?? null,
+    rateKind: r.rate_kind ?? null,
     updatedAt: r.updated_at ?? null,
   };
 }

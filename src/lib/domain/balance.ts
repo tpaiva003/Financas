@@ -138,33 +138,3 @@ export function simplifyDebts(netByUser: Record<UserId, number>): Transfer[] {
   }
   return transfers;
 }
-
-export interface PairwiseStatement {
-  settled: boolean;
-  /** Quem deve (só presente se não estiver saldado). */
-  debtorId?: UserId;
-  /** A quem deve. */
-  creditorId?: UserId;
-  /** Quanto o devedor deve ao credor (absoluto, cêntimos). */
-  amountCents: number;
-}
-
-/**
- * Traduz os nets de dois utilizadores numa frase "quem deve a quem e quanto".
- */
-export function pairwiseStatement(
-  netByUser: Record<UserId, number>,
-  userA: UserId,
-  userB: UserId,
-): PairwiseStatement {
-  const a = netByUser[userA] ?? 0;
-  if (a === 0) {
-    return { settled: true, amountCents: 0 };
-  }
-  if (a > 0) {
-    // A está em crédito → B deve a A.
-    return { settled: false, debtorId: userB, creditorId: userA, amountCents: a };
-  }
-  // A está em dívida → A deve a B.
-  return { settled: false, debtorId: userA, creditorId: userB, amountCents: -a };
-}
