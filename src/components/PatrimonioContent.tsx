@@ -399,6 +399,16 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
                   ? ` Cotação ${b.symbol}, fecho de ${new Date(`${b.lastDate}T00:00:00Z`).toLocaleDateString("pt-PT")}.`
                   : ""}
               </p>
+              {/* Um índice cotado noutra moeda mede o mercado e o câmbio à
+                  mistura. Dizê-lo evita que uma diferença vinda do dólar seja
+                  lida como se viesse do mercado. */}
+              {b.comparison && b.currency && b.currency !== "EUR" ? (
+                <p className="mt-1 text-[11px] text-fg-muted">
+                  Este está cotado em {b.currency}, por isso a diferença acima
+                  inclui o câmbio e não é só mercado. É a alternativa que havia:
+                  o equivalente em euros não deu cotações.
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>

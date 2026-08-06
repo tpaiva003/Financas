@@ -34,7 +34,7 @@ export async function probeQuotesAction(
   // "MSFT", o que interessa saber é se "msft.us" funciona.
   const symbols = [
     ...new Set([
-      ...BENCHMARKS.flatMap((b) => b.symbols),
+      ...BENCHMARKS.flatMap((b) => b.symbols.map((s) => s.symbol)),
       ...registados.flatMap((r) => symbolCandidates(r)),
     ]),
   ].slice(0, 8);

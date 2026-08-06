@@ -946,3 +946,20 @@ ambiente com o que ele usa.
 Continua a valer a regra: **contagens e nomes de funcionalidades, nunca
 conteúdo**. Saber que um ambiente usa o património não é o mesmo que ver o que
 lá está, e a consola continua sem poder ver.
+
+## O Yahoo funciona, e os símbolos de reserva cotam em dólares
+
+O teste em produção confirmou: o Yahoo responde a todos os símbolos em 130 a 350
+ms, com milhares de cotações e a última do próprio dia. A Stooq bloqueia os sete.
+
+Mas o mesmo teste mostrou uma armadilha que estava lá em silêncio: os símbolos
+de reserva (`^GSPC`, `IWDA.L`, `URTH`) **cotam todos em dólares**, incluindo o
+IWDA apesar de estar em Londres. Se o principal falhasse, a comparação com o
+índice passava a medir o mercado e o câmbio à mistura, que é exatamente o erro
+que este desenho existe para evitar, e sem ninguém dar por isso.
+
+A moeda passa a estar **declarada em cada símbolo**, e não lida da resposta: é
+conhecimento estável, e declará-la permite pôr os que cotam em euros à frente
+sem depender de qual responde primeiro. Um teste garante essa ordem. Quando só
+houver um em dólares, a página usa-o (mais vale uma comparação imperfeita do que
+nenhuma) mas **diz que a diferença inclui câmbio**.

@@ -37,6 +37,14 @@ export interface BenchmarkResult {
   lastDate: string | null;
   /** Que símbolo é que acabou por servir, dos que se tentaram. */
   symbol: string | null;
+  /**
+   * Em que moeda esse símbolo cota.
+   *
+   * Quando não é euro, a comparação passa a incluir o câmbio, e a página tem de
+   * o dizer: senão uma diferença que vem do dólar lê-se como se viesse do
+   * mercado.
+   */
+  currency: "EUR" | "USD" | null;
 }
 
 export interface PortfolioReturn {
@@ -112,11 +120,15 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   const benchmarks = await Promise.all(
     BENCHMARKS.map(async (b): Promise<BenchmarkResult> => {
       // Tenta os símbolos por ordem, e fica-se pelo primeiro que dê cotações.
+      // A ordem já põe os que cotam em euros à frente, o que importa: um em
+      // dólares mede o mercado e o câmbio à mistura.
       let series = null;
-      for (const symbol of b.symbols) {
-        const attempt = await getQuoteSeries(symbol, { since: firstDate });
+      let usado: (typeof b.symbols)[number] | null = null;
+      for (const candidato of b.symbols) {
+        const attempt = await getQuoteSeries(candidato.symbol, { since: firstDate });
         if (attempt.quotes.length > 0) {
           series = attempt;
+          usado = candidato;
           break;
         }
         series = series ?? attempt;
@@ -130,6 +142,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
           problem: series?.problem ?? "Sem cotações para comparar.",
           lastDate: null,
           symbol: null,
+          currency: null,
         };
       }
       const prices = quotesToPrices(
@@ -144,6 +157,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
         problem: comparison ? null : "Não há cotação na data de hoje para comparar.",
         lastDate: series.lastDate,
         symbol: series.symbol,
+        currency: usado?.currency ?? null,
       };
     }),
   );

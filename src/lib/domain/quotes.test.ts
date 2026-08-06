@@ -106,16 +106,32 @@ describe("BENCHMARKS", () => {
   it("preferem um ETF em euros, não o índice em dólares", () => {
     // O sufixo .de é a Xetra, onde estes ETFs UCITS cotam em euros. É de
     // propósito: comparar euros com dólares mede o mercado e o câmbio à mistura.
-    for (const b of BENCHMARKS) expect(b.symbols[0]!.endsWith(".de")).toBe(true);
+    for (const b of BENCHMARKS) {
+      expect(b.symbols[0]!.symbol.endsWith(".de")).toBe(true);
+      expect(b.symbols[0]!.currency).toBe("EUR");
+    }
   });
 
   it("têm alternativas, para um símbolo que muda não apagar a comparação", () => {
     for (const b of BENCHMARKS) expect(b.symbols.length).toBeGreaterThan(1);
   });
 
+  it("os que cotam em euros vêm antes dos que cotam em dólares", () => {
+    // Não é indiferente: um símbolo em dólares mede o mercado e o câmbio à
+    // mistura. Serve de reserva, mas nunca à frente de um em euros.
+    for (const b of BENCHMARKS) {
+      const moedas = b.symbols.map((s) => s.currency);
+      const ultimoEuro = moedas.lastIndexOf("EUR");
+      const primeiroDolar = moedas.indexOf("USD");
+      if (ultimoEuro !== -1 && primeiroDolar !== -1) {
+        expect(ultimoEuro).toBeLessThan(primeiroDolar);
+      }
+    }
+  });
+
   it("os símbolos são todos válidos para a fonte", () => {
     for (const b of BENCHMARKS) {
-      for (const s of b.symbols) expect(normalizeSymbol(s)).toBe(s);
+      for (const s of b.symbols) expect(normalizeSymbol(s.symbol)).toBe(s.symbol);
     }
   });
 
