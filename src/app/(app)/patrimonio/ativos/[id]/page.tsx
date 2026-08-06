@@ -8,6 +8,7 @@ import {
   buildPosition,
   buildPositionReturn,
   formatCents,
+  formatForeignCents,
   formatRate,
   type AssetKind,
   type Trade,
@@ -42,7 +43,12 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   const assets = await repo.listAssets(ctx.space.id).catch(() => []);
   const asset = assets.find((a) => a.id === params.id);
   if (!asset) notFound();
-  const quoteDate = freshness.find((f) => f.assetId === asset.id)?.quoteDate ?? null;
+  const fresh = freshness.find((f) => f.assetId === asset.id);
+  const quoteDate = fresh?.quoteDate ?? null;
+  const quoteOriginal =
+    fresh?.quoteCents !== null && fresh?.quoteCents !== undefined && fresh.quoteCurrency
+      ? { cents: fresh.quoteCents, currency: fresh.quoteCurrency }
+      : null;
 
   const trades = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
@@ -99,6 +105,11 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             {quoteDate ? (
               <>
                 Fecho de {new Date(`${quoteDate}T00:00:00Z`).toLocaleDateString("pt-PT")}
+                {/* O fecho na moeda da bolsa: é o número que se confere contra
+                    o telemóvel. A conta é em euros, a conferência não. */}
+                {quoteOriginal
+                  ? `, a ${formatForeignCents(quoteOriginal.cents, quoteOriginal.currency)}`
+                  : ""}
                 {quoteDate < today ? ", atualizado sozinho quando há bolsa" : ""}.
               </>
             ) : (

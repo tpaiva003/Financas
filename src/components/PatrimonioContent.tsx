@@ -11,6 +11,7 @@ import {
   buildNetWorth,
   derivePosition,
   formatCents,
+  formatForeignCents,
   formatMonths,
   payoffMonth,
   summariseRates,
@@ -49,6 +50,12 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
   const quoteDateOf = new Map(freshness.map((f) => [f.assetId, f.quoteDate]));
   const quoteProblemOf = new Map(freshness.map((f) => [f.assetId, f.problem]));
+  // O fecho na moeda de origem, que é o número que as pessoas reconhecem.
+  const quoteOriginalOf = new Map(
+    freshness
+      .filter((f) => f.quoteCents !== null && f.quoteCurrency)
+      .map((f) => [f.assetId, { cents: f.quoteCents!, currency: f.quoteCurrency! }]),
+  );
 
   // A tabela pode não existir se a migração 0013 ainda não correu.
   const stored: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
@@ -293,6 +300,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                       stored={stored.find((s) => s.id === a.id) ?? null}
                       quoteDate={quoteDateOf.get(a.id) ?? null}
                       quoteProblem={quoteProblemOf.get(a.id) ?? null}
+                      quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
                       today={today}
                       tradeCount={(tradesByAsset.get(a.id) ?? []).length}
                     />
@@ -447,6 +455,7 @@ function AssetRow({
   stored,
   quoteDate,
   quoteProblem,
+  quoteOriginal,
   today,
   tradeCount,
 }: {
@@ -454,6 +463,8 @@ function AssetRow({
   stored: Asset | null;
   quoteDate: string | null;
   quoteProblem: string | null;
+  /** O fecho na moeda da bolsa, quando não é euro. */
+  quoteOriginal: { cents: number; currency: string } | null;
   today: string;
   tradeCount: number;
 }) {
@@ -508,6 +519,16 @@ function AssetRow({
               {quoteDate && !quoteProblem
                 ? ` (fecho de ${new Date(`${quoteDate}T00:00:00Z`).toLocaleDateString("pt-PT")})`
                 : ""}
+              {/* O fecho como a bolsa o cota. A conta é toda em euros, mas
+                  ninguém confere uma ação americana em euros: quem tem a AAPL vê
+                  270 dólares no telemóvel e é esse número que quer reconhecer
+                  aqui. Vai a seguir e mais apagado — o euro é que manda. */}
+              {quoteOriginal && !quoteProblem ? (
+                <span className="text-fg-faint/70">
+                  {" · "}
+                  {formatForeignCents(quoteOriginal.cents, quoteOriginal.currency)}
+                </span>
+              ) : null}
               {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
             </>
           ) : (

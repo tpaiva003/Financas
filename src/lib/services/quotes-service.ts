@@ -25,6 +25,7 @@ import { fetchReferenceRate } from "./fx-rate";
 import {
   QUOTE_SOURCES,
   forSource,
+  isForeign,
   isStale,
   looksBlocked,
   toEurCents,
@@ -349,6 +350,15 @@ export interface PriceFreshness {
   refreshed: boolean;
   /** Porque é que o preço não foi atualizado, quando não foi. */
   problem: string | null;
+  /**
+   * O fecho **na moeda em que a bolsa o cota**, antes de converter.
+   *
+   * A app calcula em euros e é assim que tem de ser, mas ninguém confere uma
+   * ação americana em euros: quem tem a AAPL vê 270 dólares no telemóvel e quer
+   * reconhecer esse número aqui. Fica ao lado do preço em euros.
+   */
+  quoteCents: number | null;
+  quoteCurrency: string | null;
 }
 
 /**
@@ -417,9 +427,23 @@ export async function refreshStalePrices(
       }
       const symbol = series?.symbol ?? a.symbol!;
       const quoteDate = series?.lastDate ?? null;
+      // O fecho como a bolsa o cota, para se poder conferir com o telemóvel.
+      // Só se mostra quando não é euro: "232,45 € · 232,45 EUR" não diz nada.
+      const original =
+        series && isForeign(series.currency)
+          ? { quoteCents: series.lastCloseCents, quoteCurrency: series.currency }
+          : { quoteCents: null, quoteCurrency: null };
+      const vazio = { quoteCents: null, quoteCurrency: null };
 
       if (series?.lastCloseCents === null || series?.lastCloseCents === undefined) {
-        return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: series?.problem ?? null };
+        return {
+          assetId: a.id,
+          symbol,
+          quoteDate,
+          refreshed: false,
+          problem: series?.problem ?? null,
+          ...vazio,
+        };
       }
 
       // A cotação pode vir noutra moeda: o MSFT vem em dólares. Converter é
@@ -427,22 +451,24 @@ export async function refreshStalePrices(
       const emEuros = await toEurAtDate(series.lastCloseCents, series.currency, quoteDate);
       if (emEuros === null) {
         // Sem câmbio não se grava. Gravar dólares como euros inflacionava o
-        // património e o número errado apresentava-se como certo.
+        // património e o número errado apresentava-se como certo. E não se
+        // mostra o valor original ao lado de um preço em euros que não é o dele.
         return {
           assetId: a.id,
           symbol,
           quoteDate,
           refreshed: false,
           problem: `Cotação em ${series.currency} e sem taxa de câmbio para a converter.`,
+          ...vazio,
         };
       }
 
       // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
       if (emEuros !== a.unitPriceCents) {
         await repo.updateAsset(a.id, spaceId, { unitPriceCents: emEuros }).catch(() => {});
-        return { assetId: a.id, symbol, quoteDate, refreshed: true, problem: null };
+        return { assetId: a.id, symbol, quoteDate, refreshed: true, problem: null, ...original };
       }
-      return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: null };
+      return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: null, ...original };
     }),
   );
 }

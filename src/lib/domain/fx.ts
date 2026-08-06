@@ -52,3 +52,27 @@ export function impliedRate(originalCents: number, eurCents: number): number | n
 export function formatRate(rate: number): string {
   return rate.toFixed(4).replace(".", ",");
 }
+
+/**
+ * Um valor na moeda em que ele é cotado, para se poder conferir.
+ *
+ * A app calcula tudo em euros, e é assim que tem de ser: é a única base sã para
+ * somar património e comparar com um índice. Mas **ninguém confere uma ação
+ * americana em euros**. Quem tem a AAPL vai ao telemóvel, vê 270 dólares, e
+ * quer reconhecer esse número aqui — não uma conversão que já leva o câmbio
+ * pelo meio e que não bate com nada do que vê em mais lado nenhum.
+ *
+ * Por isso o euro manda no cálculo e a moeda de origem aparece ao lado, mais
+ * pequena: uma é a verdade da carteira, a outra é a que se reconhece.
+ *
+ * O código de três letras em vez do símbolo é de propósito: `$` é ambíguo entre
+ * meia dúzia de moedas, e num sítio onde se somam valores isso não pode ficar
+ * ao critério de quem lê.
+ */
+export function formatForeignCents(cents: number, currency: string): string {
+  const valor = (cents / 100).toLocaleString("pt-PT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${valor} ${currency.toUpperCase()}`;
+}
