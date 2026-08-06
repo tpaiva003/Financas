@@ -167,6 +167,8 @@ export interface Asset {
   termMonths?: number | null;
   /** "fixa" ou "variavel". */
   rateKind?: string | null;
+  /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
+  symbol?: string | null;
   updatedAt?: string | null;
 }
 
@@ -201,6 +203,13 @@ export interface AssetTrade {
 export type CreateAssetTradeInput = Omit<AssetTrade, "id" | "createdAt"> & {
   createdBy?: string | null;
 };
+
+/** Uma cotação guardada. Facto público: não pertence a nenhum ambiente. */
+export interface StoredQuote {
+  /** "AAAA-MM-DD". */
+  date: string;
+  closeCents: number;
+}
 
 /** Dinheiro que entra: ordenado, trabalhos paralelos, juros, dividendos. */
 export interface Income {
@@ -520,6 +529,12 @@ export interface Repository {
   deleteAsset(id: string, spaceId: string): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
+  /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
+  listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
+  /** Guarda cotações, sem duplicar as que já lá estão. */
+  saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void>;
+  /** A data da cotação mais recente que temos, para saber se vale a pena ir buscar. */
+  latestQuoteDate(symbol: string): Promise<string | null>;
   createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
   deleteAssetTrade(id: string, spaceId: string): Promise<void>;
 

@@ -20,6 +20,7 @@ import type {
   SpendingGoal,
   Asset,
   AssetTrade,
+  StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
   Income,
@@ -1044,6 +1045,7 @@ export class SupabaseRepository implements Repository {
         monthly_payment_cents: input.monthlyPaymentCents ?? null,
         term_months: input.termMonths ?? null,
         rate_kind: input.rateKind ?? null,
+        symbol: input.symbol ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1067,6 +1069,7 @@ export class SupabaseRepository implements Repository {
     if (patch.monthlyPaymentCents !== undefined) row.monthly_payment_cents = patch.monthlyPaymentCents;
     if (patch.termMonths !== undefined) row.term_months = patch.termMonths;
     if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
+    if (patch.symbol !== undefined) row.symbol = patch.symbol;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1116,6 +1119,50 @@ export class SupabaseRepository implements Repository {
     const db = getSupabaseAdmin();
     const { error } = await db.from("asset_trades").delete().eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
+  }
+
+  async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
+    const db = getSupabaseAdmin();
+    let q = db.from("quotes").select("quote_date, close_cents").eq("symbol", symbol);
+    if (fromDate) q = q.gte("quote_date", fromDate);
+    const { data, error } = await q.order("quote_date", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: any) => ({
+      date: String(r.quote_date).slice(0, 10),
+      closeCents: Number(r.close_cents),
+    }));
+  }
+
+  async saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void> {
+    if (quotes.length === 0) return;
+    const db = getSupabaseAdmin();
+    // A chave é (símbolo, dia): reescrever o mesmo dia é idempotente, e é o que
+    // permite ir buscar séries que se sobrepõem sem pensar no assunto.
+    const rows = quotes.map((q) => ({
+      symbol,
+      quote_date: q.date,
+      close_cents: q.closeCents,
+      fetched_at: new Date().toISOString(),
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await db
+        .from("quotes")
+        .upsert(rows.slice(i, i + 500), { onConflict: "symbol,quote_date" });
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  async latestQuoteDate(symbol: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("quotes")
+      .select("quote_date")
+      .eq("symbol", symbol)
+      .order("quote_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? String(data.quote_date).slice(0, 10) : null;
   }
 
   async unlinkUserFromMembers(userId: string): Promise<void> {
@@ -1426,6 +1473,7 @@ function rowToAsset(r: any): Asset {
     monthlyPaymentCents: r.monthly_payment_cents ?? null,
     termMonths: r.term_months ?? null,
     rateKind: r.rate_kind ?? null,
+    symbol: r.symbol ?? null,
     updatedAt: r.updated_at ?? null,
   };
 }

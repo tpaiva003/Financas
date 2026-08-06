@@ -63,7 +63,20 @@ export function HoldingsImport() {
           </p>
         ) : null}
 
-        {previewState.sample ? <ManualPanel sample={previewState.sample} /> : null}
+        {/* O painel aparece tanto quando a deteção falha como quando ela
+            acerta mal, que é o caso mais comum e o que antes não tinha saída.
+            Fica dentro deste formulário de propósito: o ficheiro continua
+            escolhido, e corrigir uma coluna é carregar outra vez no botão. */}
+        {previewState.sample ? (
+          <ManualPanel sample={previewState.sample} fileName={previewState.sample.fileName} />
+        ) : preview ? (
+          <ManualPanel
+            sample={{ fileName: preview.fileName, rows: preview.sample }}
+            fileName={preview.fileName}
+            current={preview.mapping}
+            correcting
+          />
+        ) : null}
 
         <PreviewButton hasPreview={Boolean(preview)} />
       </form>
@@ -73,9 +86,24 @@ export function HoldingsImport() {
   );
 }
 
-function ManualPanel({ sample }: { sample: { fileName: string; rows: string[][] } }) {
+function ManualPanel({
+  sample,
+  fileName,
+  current,
+  correcting,
+}: {
+  sample: { fileName: string; rows: string[][] };
+  fileName: string;
+  current?: Record<string, number> | null;
+  correcting?: boolean;
+}) {
   const width = sample.rows.reduce((m, r) => Math.max(m, r.length), 0);
-  const [headerRow, setHeaderRow] = useState(0);
+  const [headerRow, setHeaderRow] = useState(current?.headerRow ?? 0);
+  // Sem coluna atribuída, a deteção guarda -1. No formulário isso é "não vem".
+  const pick = (k: string) => {
+    const v = current?.[k];
+    return v === undefined || v === null || v < 0 ? "" : String(v);
+  };
 
   const options = Array.from({ length: width }, (_, i) => {
     const label = (sample.rows[headerRow]?.[i] ?? "").trim();
@@ -90,11 +118,20 @@ function ManualPanel({ sample }: { sample: { fileName: string; rows: string[][] 
     <div className="space-y-4 rounded-xl border border-hair bg-panel2/40 p-4">
       <input type="hidden" name="manual" value="1" />
       <div>
-        <h3 className="label">Ensinar esta corretora</h3>
+        <h3 className="label">{correcting ? "Corrigir as colunas" : "Ensinar esta corretora"}</h3>
         <p className="text-sm text-fg-muted">
-          Não conheço o formato de <span className="text-fg">{sample.fileName}</span>. Diz-me onde
-          estão o ativo e a quantidade. Depois de confirmares, fica aprendido para
-          toda a gente.
+          {correcting ? (
+            <>
+              Se alguma coluna acima saiu trocada, aponta-a aqui e carrega outra
+              vez em ler. O ficheiro <span className="text-fg">{fileName}</span> continua escolhido.
+            </>
+          ) : (
+            <>
+              Não conheço o formato de <span className="text-fg">{fileName}</span>. Diz-me onde
+              estão o ativo e a quantidade. Depois de confirmares, fica aprendido para
+              toda a gente.
+            </>
+          )}
         </p>
       </div>
 
@@ -129,28 +166,28 @@ function ManualPanel({ sample }: { sample: { fileName: string; rows: string[][] 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="h-name">Coluna do ativo</label>
-          <select id="h-name" name="nameCol" className="select" defaultValue="">
+          <select id="h-name" name="nameCol" className="select" defaultValue={pick("nameCol")} key={`nameCol:${pick("nameCol")}`}>
             <option value="">Escolher…</option>
             {options}
           </select>
         </div>
         <div>
           <label className="label" htmlFor="h-qty">Coluna da quantidade</label>
-          <select id="h-qty" name="quantityCol" className="select" defaultValue="">
+          <select id="h-qty" name="quantityCol" className="select" defaultValue={pick("quantityCol")} key={`quantityCol:${pick("quantityCol")}`}>
             <option value="">Escolher…</option>
             {options}
           </select>
         </div>
         <div>
           <label className="label" htmlFor="h-cost">Preço de compra (opcional)</label>
-          <select id="h-cost" name="unitCostCol" className="select" defaultValue="">
+          <select id="h-cost" name="unitCostCol" className="select" defaultValue={pick("unitCostCol")} key={`unitCostCol:${pick("unitCostCol")}`}>
             <option value="">Não vem no ficheiro</option>
             {options}
           </select>
         </div>
         <div>
           <label className="label" htmlFor="h-price">Preço atual (opcional)</label>
-          <select id="h-price" name="unitPriceCol" className="select" defaultValue="">
+          <select id="h-price" name="unitPriceCol" className="select" defaultValue={pick("unitPriceCol")} key={`unitPriceCol:${pick("unitPriceCol")}`}>
             <option value="">Não vem no ficheiro</option>
             {options}
           </select>

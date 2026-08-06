@@ -12,6 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import { refreshAssetPrice } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
   ImportPreview,
@@ -26,6 +27,7 @@ import {
   nextOccurrence,
   accountsVisibleTo,
   isForeign,
+  normalizeSymbol,
   toEurCents,
   type Split,
 } from "@/lib/domain";
@@ -1464,6 +1466,10 @@ export async function saveAssetAction(
         : null,
     termMonths: isDebt && term !== null && term > 0 ? Math.round(term) : null,
     rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
+    symbol:
+      kind === "investimento"
+        ? normalizeSymbol(String(formData.get("symbol") ?? ""))
+        : null,
   };
 
   const id = String(formData.get("id") ?? "").trim();
@@ -1499,6 +1505,23 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
       unitPriceCents: price === null ? null : toCents(price),
     })
     .catch(() => {});
+  revalidatePath("/patrimonio");
+}
+
+/**
+ * Vai buscar a cotação do símbolo e grava-a como preço atual.
+ *
+ * Se a fonte não souber o símbolo, ou estiver em baixo, o preço fica como
+ * estava. Um preço velho identificado como velho é informação; um preço
+ * inventado não é.
+ */
+export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "");
+  const symbol = String(formData.get("symbol") ?? "").trim();
+  if (!id || !symbol) return;
+  await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
   revalidatePath("/patrimonio");
 }
 

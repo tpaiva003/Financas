@@ -48,6 +48,9 @@ export type {
   SpaceSummary,
   Asset,
   CreateAssetInput,
+  AssetTrade,
+  CreateAssetTradeInput,
+  StoredQuote,
   Income,
   CreateIncomeInput,
 } from "./repository";

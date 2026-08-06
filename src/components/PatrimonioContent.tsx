@@ -22,6 +22,7 @@ import {
 import { FireCalculator } from "@/components/FireCalculator";
 import { AssetForm } from "@/components/AssetForm";
 import { deleteAssetAction, updateAssetPriceAction } from "@/app/(app)/actions";
+import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 
 export type PatrimonioView = "resumo" | "ativos" | "dividas" | "fire";
 
@@ -280,12 +281,121 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       </section>
       ) : null}
 
+      {view === "ativos" ? <PortfolioReturnSection spaceId={ctx.space.id} /> : null}
+
       {view === "ativos" || view === "dividas" ? <AssetForm /> : null}
 
       <Link href="/relatorios" className="inline-block text-sm text-fg-muted hover:text-fg">
         Ver relatórios de despesa
       </Link>
     </div>
+  );
+}
+
+/**
+ * Rentabilidade da carteira, e a comparação com os índices.
+ *
+ * A comparação aplica ao índice os mesmos reforços nas mesmas datas. Dizer "o
+ * S&P 500 subiu 20% e eu subi 8%" ignora que a maior parte do dinheiro pode ter
+ * entrado no último mês, e nesse caso os 20% do índice nunca estiveram
+ * disponíveis para esse dinheiro.
+ */
+async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
+  const ret = await buildPortfolioReturn(spaceId).catch(() => null);
+  if (!ret) return null;
+
+  return (
+    <section className="card p-6">
+      <p className="eyebrow mb-4">Rentabilidade da carteira</p>
+
+      <div className="grid gap-5 sm:grid-cols-3">
+        <div>
+          <p className="text-xs text-fg-muted">Investido</p>
+          <p className="mt-0.5 font-mono text-lg tnum text-fg">
+            {formatCents(ret.investedCents)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-fg-muted">Vale hoje</p>
+          <p className="mt-0.5 font-mono text-lg tnum text-fg">
+            {formatCents(ret.currentValueCents)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-fg-muted">Taxa anual (TIR)</p>
+          <p
+            className={`mt-0.5 font-mono text-lg tnum ${
+              ret.annualPct === null ? "text-fg-faint" : ret.annualPct >= 0 ? "text-credit" : "text-debt"
+            }`}
+          >
+            {ret.annualPct === null
+              ? "por calcular"
+              : `${ret.annualPct >= 0 ? "+" : ""}${ret.annualPct.toFixed(1).replace(".", ",")}%`}
+          </p>
+        </div>
+      </div>
+
+      {ret.missingPrice > 0 ? (
+        <p className="mt-3 text-xs text-fg-faint">
+          {ret.missingPrice} investimento(s) sem preço atual: contam pelo que
+          custaram, por isso o valor de hoje está por baixo do real.
+        </p>
+      ) : null}
+
+      <div className="mt-6 border-t border-hair pt-5">
+        <p className="label mb-1">E se tivesse ido para o índice?</p>
+        <p className="mb-4 text-xs text-fg-faint">
+          Os mesmos reforços, nas mesmas datas, aplicados a um ETF em euros. É a
+          única comparação justa: um índice não recebe reforços, e comparar a
+          subida dele com a tua trata todo o teu dinheiro como se tivesse
+          entrado no primeiro dia.
+        </p>
+
+        <ul className="space-y-4">
+          {ret.benchmarks.map((b) => (
+            <li key={b.id}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-medium text-fg">{b.label}</p>
+                {b.comparison ? (
+                  <p
+                    className={`font-mono text-sm tnum ${
+                      b.comparison.differenceCents >= 0 ? "text-credit" : "text-debt"
+                    }`}
+                  >
+                    {b.comparison.differenceCents >= 0 ? "+" : ""}
+                    {formatCents(b.comparison.differenceCents)}
+                  </p>
+                ) : null}
+              </div>
+              {b.comparison ? (
+                <p className="mt-0.5 text-xs text-fg-muted">
+                  No índice terias{" "}
+                  <span className="tnum text-fg">
+                    {formatCents(b.comparison.benchmarkValueCents)}
+                  </span>
+                  , tens{" "}
+                  <span className="tnum text-fg">
+                    {formatCents(b.comparison.portfolioValueCents)}
+                  </span>
+                  .{" "}
+                  {b.comparison.differenceCents >= 0
+                    ? "Estás à frente."
+                    : "Estás atrás."}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-fg-faint">{b.problem}</p>
+              )}
+              <p className="mt-0.5 text-[11px] text-fg-faint">
+                {b.description}
+                {b.symbol && b.lastDate
+                  ? ` Cotação ${b.symbol}, fecho de ${new Date(`${b.lastDate}T00:00:00Z`).toLocaleDateString("pt-PT")}.`
+                  : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -486,6 +596,7 @@ function AssetRow({
               monthlyPaymentCents: a.monthlyPaymentCents,
               termMonths: a.termMonths,
               rateKind: a.rateKind,
+              symbol: stored?.symbol ?? null,
             }}
           />
         </div>

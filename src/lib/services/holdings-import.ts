@@ -36,6 +36,16 @@ export interface HoldingsPreview {
   header: string[];
   mapping: Record<string, number> | null;
   manualMapping: boolean;
+  /**
+   * As primeiras linhas do ficheiro, sempre.
+   *
+   * Antes só vinham quando a deteção falhava por completo, e isso deixava o
+   * pior caso sem saída: a deteção acertar EM PARTE. Quem via a coluna errada
+   * escolhida não tinha como a corrigir, porque o painel de mapeamento só
+   * aparecia depois de um erro. Uma deteção errada é mais comum do que uma
+   * deteção falhada, e é igualmente preciso poder emendá-la.
+   */
+  sample: string[][];
 }
 
 export async function buildHoldingsPreview(params: {
@@ -102,5 +112,6 @@ export async function buildHoldingsPreview(params: {
     header: headerColumns(grid, mapping.headerRow),
     mapping: { ...mapping } as unknown as Record<string, number>,
     manualMapping: Boolean(manualMapping) && !knownTemplate,
+    sample: sample.rows,
   };
 }

@@ -27,6 +27,7 @@ import type {
   SpendingGoal,
   Asset,
   AssetTrade,
+  StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
   Income,
@@ -70,6 +71,7 @@ interface Store {
   spendingGoals: SpendingGoal[];
   assets: Asset[];
   assetTrades: AssetTrade[];
+  quotes: Record<string, StoredQuote[]>;
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
 }
@@ -96,6 +98,7 @@ function getStore(): Store {
       spendingGoals: [],
       assets: [],
       assetTrades: [],
+      quotes: {},
       income: [],
       resetTokens: [],
     };
@@ -690,6 +693,25 @@ export class MockRepository implements Repository {
   async deleteAssetTrade(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.assetTrades = store.assetTrades.filter((t) => !(t.id === id && t.spaceId === spaceId));
+  }
+
+  async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
+    const all = getStore().quotes[symbol] ?? [];
+    return all
+      .filter((q) => !fromDate || q.date >= fromDate)
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void> {
+    const store = getStore();
+    const byDate = new Map((store.quotes[symbol] ?? []).map((q) => [q.date, q]));
+    for (const q of quotes) byDate.set(q.date, q);
+    store.quotes[symbol] = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async latestQuoteDate(symbol: string): Promise<string | null> {
+    const all = getStore().quotes[symbol] ?? [];
+    return all.length === 0 ? null : all.reduce((a, b) => (a.date >= b.date ? a : b)).date;
   }
 
   async unlinkUserFromMembers(userId: string): Promise<void> {

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
-import { HoldingsImport } from "@/components/HoldingsImport";
+import { BrokerImport } from "@/components/BrokerImport";
 
 export const metadata = { title: "Importar da corretora · Rachar" };
 export const dynamic = "force-dynamic";
@@ -17,13 +17,13 @@ export default async function ImportarCarteiraPage() {
           Importar da corretora
         </h1>
         <p className="mt-1 text-sm text-fg-muted">
-          Carrega o extrato de posições e trazemos os teus ativos de uma vez, em
-          vez de os escreveres um a um. Se a corretora for nova para nós, ensinas
-          o formato e fica aprendido para quem vier a seguir.
+          Traz o que já tens na corretora, em vez de o escreveres a um a um. Se
+          a corretora for nova para nós, ensinas o formato e fica aprendido para
+          quem vier a seguir.
         </p>
       </div>
 
-      <HoldingsImport />
+      <BrokerImport />
     </div>
   );
 }

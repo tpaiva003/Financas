@@ -727,3 +727,62 @@ taxa aparece no formulário **antes** de se gravar, junto com o valor em euros
 que vai ficar, para se poder conferir. Uma conversão feita por trás é impossível
 de verificar depois. Se a chamada falhar, não se inventa taxa nenhuma: pede-se à
 mão.
+
+## Importar movimentos, não só posições
+
+O ecrã de importação da corretora só lia **posições**. Um extrato de transações
+metido lá aparecia como "147 posições", algumas com quantidades negativas, que
+são vendas. São ficheiros diferentes a responder a perguntas diferentes, e as
+pessoas não têm de saber a diferença de cor: passa a haver dois separadores, com
+os **movimentos primeiro**, porque valem mais. Com as datas dá para saber o que
+o dinheiro rendeu; com uma fotografia das posições, não.
+
+**O mapeamento das colunas passa a ser sempre corrigível.** Antes o painel só
+aparecia quando a deteção falhava por completo, o que deixava o pior caso sem
+saída nenhuma: a deteção acertar EM PARTE. Quem via uma coluna trocada não tinha
+como a emendar. Uma deteção errada é mais comum do que uma deteção falhada.
+
+**A coluna da moeda muitas vezes não tem cabeçalho.** É assim na Degiro: aparece
+numa coluna sem nome logo a seguir ao valor. Procurar só por um cabeçalho
+chamado "moeda" deixava esses ficheiros a perder o câmbio todo, e uma compra em
+dólares importada como se fosse em euros ficava com o valor errado sem ninguém
+dar por isso. Agora, se não houver cabeçalho, procura-se uma coluna com códigos
+de três letras, de preferência à direita do valor.
+
+**As taxas de câmbio não se leem com o leitor de dinheiro.** "1,0912" tem quatro
+casas decimais, e o leitor de valores monetários vê ali um separador de milhares
+(porque em euros ninguém escreve quatro casas) e devolve 10912.
+
+**A deduplicação conta em vez de comparar chaves.** Duas compras iguais, do mesmo
+produto, no mesmo dia, ao mesmo preço, acontecem a sério: as corretoras partem
+uma ordem grande em várias execuções. Uma chave única por conteúdo apagava essas
+repetições legítimas e deixava a posição errada. Contando, se o ficheiro traz
+três linhas iguais e já lá estão duas, importa-se uma. E compara-se pelo valor
+**como veio no ficheiro**, não pelo convertido: o que está gravado está em euros
+e o que se está a ler está em dólares, e comparar os dois diretamente duplicava
+todas as compras em moeda estrangeira a cada reimportação.
+
+## Cotações, e a comparação com o índice
+
+O preço atual de um investimento era escrito à mão. Passa a poder ser buscado, e
+o que se busca fica guardado num histórico diário por símbolo. Guardar serve
+três coisas: a página desenha-se sem depender de uma chamada externa, a fonte
+não leva com um pedido por visita, e sobretudo a **comparação com o índice
+precisa do histórico**, não do preço de hoje.
+
+A tabela das cotações não tem `space_id` de propósito: a cotação do S&P 500 no
+dia 3 é a mesma para toda a gente. É um cache partilhado de factos públicos.
+
+**Os índices de referência são ETFs UCITS cotados em euros, não o índice em
+dólares.** Um português não compra o S&P 500: compra um ETF que o segue, em
+euros, e leva com o câmbio pelo caminho. Comparar uma carteira em euros com o
+índice em dólares mede duas coisas ao mesmo tempo, o mercado e o dólar, e nos
+anos em que o euro se mexe muito a conclusão sai invertida.
+
+Cada índice tem **vários símbolos por ordem de preferência**. Os códigos das
+praças mudam e os ETFs deixam de ser seguidos; com uma lista, a comparação
+continua a funcionar em vez de desaparecer da página por causa de um símbolo. A
+página diz sempre qual foi usado e de que dia é o fecho.
+
+Quando não há cotações, diz-se isso. Um preço velho identificado como velho é
+informação; um preço inventado não é.
