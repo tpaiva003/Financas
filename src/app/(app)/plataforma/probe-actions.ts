@@ -3,7 +3,7 @@
 import { requireUser } from "@/lib/session";
 import { isAdmin } from "@/lib/users";
 import { getRepository } from "@/lib/data";
-import { BENCHMARKS } from "@/lib/domain";
+import { BENCHMARKS, symbolCandidates } from "@/lib/domain";
 import { probeQuoteSource, type QuoteProbe } from "@/lib/services/quotes-service";
 
 export interface ProbeState {
@@ -30,10 +30,14 @@ export async function probeQuotesAction(
     .listAllAssetSymbols()
     .catch(() => []);
 
-  const symbols = [...new Set([...BENCHMARKS.flatMap((b) => b.symbols), ...registados])].slice(
-    0,
-    12,
-  );
+  // Os símbolos registados entram com as suas variantes: se alguém escreveu
+  // "MSFT", o que interessa saber é se "msft.us" funciona.
+  const symbols = [
+    ...new Set([
+      ...BENCHMARKS.flatMap((b) => b.symbols),
+      ...registados.flatMap((r) => symbolCandidates(r)),
+    ]),
+  ].slice(0, 16);
 
   return { probes: await probeQuoteSource(symbols) };
 }

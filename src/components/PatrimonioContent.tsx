@@ -581,6 +581,26 @@ function AssetRow({
         </p>
       ) : null}
 
+      {/* Porque é que não há preço. "Sem preço atual" sozinho não diz se falta
+          o símbolo, se o símbolo está errado, ou se a fonte falhou, e são
+          coisas diferentes com soluções diferentes. */}
+      {isInvestment && !quoteDate ? (
+        <p className="mt-2 text-xs text-fg-faint">
+          {stored?.symbol ? (
+            <>
+              Símbolo <span className="font-mono text-fg-muted">{stored.symbol}</span>, mas
+              ainda sem cotação. Confere em Plataforma, no teste da fonte.
+            </>
+          ) : (
+            <>
+              Sem símbolo de bolsa: o preço é só o que escreveres. Mete-o no
+              Editar (ex.: <span className="font-mono text-fg-muted">msft.us</span>) para
+              passar a atualizar-se sozinho.
+            </>
+          )}
+        </p>
+      ) : null}
+
       {a.notes ? <p className="mt-2 text-xs text-fg-faint">{a.notes}</p> : null}
 
       <details className="mt-2">

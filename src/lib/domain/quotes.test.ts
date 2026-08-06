@@ -7,6 +7,7 @@ import {
   normalizeSymbol,
   parseStooqCsv,
   quotesToPrices,
+  symbolCandidates,
 } from "./quotes";
 
 const CSV = `Date,Open,High,Low,Close,Volume
@@ -119,5 +120,27 @@ describe("BENCHMARKS", () => {
     expect(benchmarkById("sp500")!.label).toBe("S&P 500");
     expect(benchmarkById("world")!.label).toBe("MSCI World");
     expect(benchmarkById("nao-existe")).toBeNull();
+  });
+});
+
+describe("symbolCandidates", () => {
+  it("um ticker sem sufixo tenta primeiro as praças explícitas", () => {
+    // "MSFT" sem sufixo é ambíguo para a fonte, que indexa várias bolsas. As
+    // formas explícitas vão à frente para não vir o instrumento errado.
+    expect(symbolCandidates("MSFT")).toEqual(["msft.us", "msft.de", "msft"]);
+  });
+
+  it("um símbolo com sufixo é usado tal e qual", () => {
+    expect(symbolCandidates("sxr8.de")).toEqual(["sxr8.de"]);
+    expect(symbolCandidates("iwda.uk")).toEqual(["iwda.uk"]);
+  });
+
+  it("um índice não leva sufixo nenhum", () => {
+    expect(symbolCandidates("^spx")).toEqual(["^spx"]);
+  });
+
+  it("lixo não gera candidatos", () => {
+    expect(symbolCandidates("")).toEqual([]);
+    expect(symbolCandidates("isto não é um símbolo")).toEqual([]);
   });
 });

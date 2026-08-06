@@ -859,3 +859,20 @@ referência e com os símbolos que estão mesmo registados, e diz qual dos três
 Corre no servidor de propósito: é ele que vai buscar as cotações em produção, e
 testar a partir do browser respondia a outra pergunta. Fica atrás do dono da
 plataforma, porque é diagnóstico e não conteúdo de ninguém.
+
+## Um ticker escrito à mão não é o símbolo da fonte
+
+Quem regista uma ação escreve "MSFT", não "msft.us". E sem sufixo de praça a
+fonte não o encontra, ou pior, pode encontrar um instrumento com o mesmo nome
+noutra bolsa. Um preço errado que não se identifica como errado é o pior
+resultado possível numa app de finanças.
+
+Passa a tentar-se as formas prováveis por ordem, com as **explícitas à frente** e
+a ambígua no fim: `msft.us`, `msft.de`, `msft`. A que funcionar fica gravada, para
+não se andar a tentar três de cada vez para sempre. Um símbolo que já traga
+sufixo, ou um índice como `^spx`, é usado tal e qual: quem o escreveu sabia o que
+queria.
+
+E a linha do investimento passa a dizer **porque é que não há preço**. "Sem preço
+atual" sozinho não distingue faltar o símbolo, o símbolo estar errado, ou a fonte
+ter falhado, e são três coisas com três soluções.
