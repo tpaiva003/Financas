@@ -1049,3 +1049,34 @@ Sem `ANTHROPIC_API_KEY` a funcionalidade não existe e a importação fica como
 estava. E o que a IA mapeou aparece marcado como tal na pré-visualização, com o
 que ela percebeu escrito ao lado: um mapeamento que ninguém confirmou tem de se
 identificar.
+
+## O corte dos mil não era das cotações, era da API toda
+
+Depois de corrigir as cotações ficou a pergunta certa: se a API do Supabase corta
+aos mil, onde é que isso ainda está a acontecer? Foram vinte e sete consultas sem
+tecto. Hoje só as cotações passam a barreira (17369 linhas contra 191 despesas),
+mas duas das outras são bombas com temporizador:
+
+- **`listExpenses`** — o saldo calcula-se sobre isto, e o saldo **tem de ser
+  sempre explicável até às despesas que o compõem**. Um casal com alguns anos de
+  registos chega às mil sem dar por isso, e a partir daí o saldo fica errado sem
+  nada a assinalá-lo.
+- **`listAssetTrades`** — um extrato de corretora traz centenas de linhas de uma
+  vez e a posição atual sai da soma de todas. Cortar dava uma carteira imaginária.
+
+O que falha aqui não falha quando alguém mexe no código, falha quando a tabela
+cresce. Nenhum teste de desenvolvimento o apanha, porque em desenvolvimento não
+há mil linhas de nada.
+
+Por isso a correção não é um `.range()` em cada sítio: é **um leitor paginado
+partilhado**, para quem escrever a próxima consulta não ter de se lembrar do
+limite. As cotações passaram a usá-lo também, em vez de repetirem a paginação.
+
+Sobre ordenar do mais recente para o mais antigo, que foi a ideia que trouxe aqui:
+está certa como **defesa**, e é o que as despesas, os rendimentos e as mensagens
+de contacto já fazem. Não resolve — uma leitura cortada continua a mentir — mas
+muda a direção da falha, e isso conta. Cortada por cima perde-se o presente, que
+é o que quase toda a gente está a olhar; cortada por baixo perde-se o passado,
+que ninguém nota que desapareceu. As `contact_messages` ficam assim de propósito:
+são uma caixa de entrada, e mostrar as mil mais recentes é o comportamento certo,
+não um remendo.

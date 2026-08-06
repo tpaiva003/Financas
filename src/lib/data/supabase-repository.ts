@@ -45,6 +45,45 @@ import type {
 } from "./repository";
 import { randomUUID } from "node:crypto";
 
+/** O tecto de linhas por pedido da API do Supabase. Não é configurável daqui. */
+const PAGINA = 1000;
+
+/**
+ * Lê uma consulta inteira, em páginas.
+ *
+ * **A API do Supabase devolve no máximo mil linhas por pedido, e não avisa.** Não
+ * há erro, não há campo a dizer "há mais": vêm mil linhas como se fossem todas.
+ * Uma consulta que passe a barreira dos mil passa a mentir em silêncio, e o dia
+ * em que isso acontece é o dia em que a tabela cresceu, não o dia em que alguém
+ * mexeu no código — por isso não há teste que o apanhe a tempo.
+ *
+ * Custou uma vez: as cotações do MSFT vinham cortadas e a página mostrava o fecho
+ * de julho de 2020 como se fosse o de hoje, com a data ao lado a dar-lhe
+ * credibilidade. Aqui só se perdiam cotações; nas despesas perder-se-ia o saldo,
+ * que **tem de ser sempre explicável até às despesas que o compõem**.
+ *
+ * Daí este ajudante em vez de um `.range()` em cada sítio: quem escrever a
+ * próxima consulta não tem de se lembrar do limite, só tem de a passar por aqui.
+ */
+export async function todasAsLinhas<T>(
+  pagina: (
+    de: number,
+    ate: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const todas: T[] = [];
+  // Um tecto de sanidade: mesmo que algo corra mal, isto não fica a rodar.
+  for (let de = 0; de < 200_000; de += PAGINA) {
+    const { data, error } = await pagina(de, de + PAGINA - 1);
+    if (error) throw new Error(error.message);
+    const linhas = data ?? [];
+    todas.push(...linhas);
+    // Uma página incompleta é a última: não há forma mais barata de saber.
+    if (linhas.length < PAGINA) break;
+  }
+  return todas;
+}
+
 function rowToTemplate(r: any): ImportTemplate {
   return {
     id: r.id,
@@ -286,17 +325,20 @@ export class SupabaseRepository implements Repository {
 
   async listExpenses(filters: ExpenseFilters): Promise<Expense[]> {
     const db = getSupabaseAdmin();
-    let q = db.from("expenses").select("*").eq("space_id", filters.spaceId);
+    // Paginado porque o saldo se calcula sobre isto: um corte aos mil dava um
+    // saldo errado que ninguém conseguia explicar até às despesas que o compõem.
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("expenses").select("*").eq("space_id", filters.spaceId);
 
-    if (!filters.includeDeleted) q = q.is("deleted_at", null);
-    if (filters.from) q = q.gte("transaction_date", filters.from);
-    if (filters.to) q = q.lte("transaction_date", filters.to);
-    if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
-    if (filters.payerId) q = q.eq("payer_id", filters.payerId);
-    if (filters.kind) q = q.eq("kind", filters.kind);
+      if (!filters.includeDeleted) q = q.is("deleted_at", null);
+      if (filters.from) q = q.gte("transaction_date", filters.from);
+      if (filters.to) q = q.lte("transaction_date", filters.to);
+      if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
+      if (filters.payerId) q = q.eq("payer_id", filters.payerId);
+      if (filters.kind) q = q.eq("kind", filters.kind);
 
-    const { data, error } = await q.order("transaction_date", { ascending: false });
-    if (error) throw new Error(error.message);
+      return q.order("transaction_date", { ascending: false }).range(de, ate);
+    });
 
     let rows = (data ?? []).map(rowToExpense);
     // Privacidade das pessoais (camada de aplicação).
@@ -1120,11 +1162,14 @@ export class SupabaseRepository implements Repository {
 
   async listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]> {
     const db = getSupabaseAdmin();
-    let q = db.from("asset_trades").select("*").eq("space_id", spaceId);
-    if (assetId) q = q.eq("asset_id", assetId);
-    const { data, error } = await q.order("trade_date", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToAssetTrade);
+    // Um extrato de corretora traz centenas de linhas de uma vez, e a posição
+    // atual sai da soma de todas: cortar aos mil dava uma carteira imaginária.
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("asset_trades").select("*").eq("space_id", spaceId);
+      if (assetId) q = q.eq("asset_id", assetId);
+      return q.order("trade_date", { ascending: true }).range(de, ate);
+    });
+    return data.map(rowToAssetTrade);
   }
 
   async createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade> {
@@ -1171,23 +1216,15 @@ export class SupabaseRepository implements Repository {
    */
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const db = getSupabaseAdmin();
-    const PAGE = 1000;
-    const out: StoredQuote[] = [];
-    // Um limite de sanidade: mesmo que algo corra mal, isto não fica a rodar.
-    for (let offset = 0; offset < 50_000; offset += PAGE) {
+    const data = await todasAsLinhas<any>((de, ate) => {
       let q = db.from("quotes").select("quote_date, close_cents").eq("symbol", symbol);
       if (fromDate) q = q.gte("quote_date", fromDate);
-      const { data, error } = await q
-        .order("quote_date", { ascending: true })
-        .range(offset, offset + PAGE - 1);
-      if (error) throw new Error(error.message);
-      const rows = data ?? [];
-      for (const r of rows as any[]) {
-        out.push({ date: String(r.quote_date).slice(0, 10), closeCents: Number(r.close_cents) });
-      }
-      if (rows.length < PAGE) break;
-    }
-    return out;
+      return q.order("quote_date", { ascending: true }).range(de, ate);
+    });
+    return data.map((r: any) => ({
+      date: String(r.quote_date).slice(0, 10),
+      closeCents: Number(r.close_cents),
+    }));
   }
 
   /**
@@ -1341,13 +1378,15 @@ export class SupabaseRepository implements Repository {
 
   async listIncome(spaceId: string): Promise<Income[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("income")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("date", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("income")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("date", { ascending: false })
+        .range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       spaceId: r.space_id,
       kind: r.kind,
