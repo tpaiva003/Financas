@@ -20,6 +20,7 @@ import type {
   Membership,
   AssetKind,
   IncomeKind,
+  SpacePlan,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -238,6 +239,13 @@ export interface SpendingGoal {
 export interface Space {
   id: string;
   name: string;
+  /**
+   * `free` tem tectos, `full` não tem. Ver `domain/limits.ts`.
+   *
+   * Fica no ambiente e não na pessoa: é o que se pode medir, e não muda quando
+   * alguém entra ou sai.
+   */
+  plan?: SpacePlan;
   /** Ordem escolhida pelo utilizador (menor primeiro). */
   position?: number;
   createdBy?: string | null;
@@ -322,6 +330,8 @@ export interface PlatformStats {
 export interface CreateSpaceInput {
   name: string;
   createdBy: string;
+  /** Omitido = `free`. Quem cria decide, e a base de dados não adivinha. */
+  plan?: SpacePlan;
   /** Participantes iniciais (o criador é incluído automaticamente). */
   members: { name: string; email?: string | null; linkedUserId?: string | null }[];
 }
@@ -431,6 +441,11 @@ export interface Repository {
   // Ambientes (spaces) e participantes (members).
   listSpacesForUser(userId: string): Promise<Space[]>;
   getSpace(spaceId: string): Promise<Space | null>;
+  /**
+   * Quantos existem neste ambiente. **Só para aplicar tectos** — conta linhas,
+   * nunca devolve conteúdo, por isso não precisa de saber quem está a ver.
+   */
+  countInSpace(spaceId: string, what: "expenses" | "assets" | "members"): Promise<number>;
   createSpace(input: CreateSpaceInput): Promise<Space>;
   /** Muda o nome de um ambiente. */
   renameSpace(spaceId: string, name: string): Promise<void>;

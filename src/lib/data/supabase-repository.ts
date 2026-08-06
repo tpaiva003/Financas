@@ -7,6 +7,7 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { normalizeText, stableUid } from "@/lib/domain";
+import type { SpacePlan } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -208,6 +209,7 @@ export class SupabaseRepository implements Repository {
       id: r.id,
       name: r.name,
       position: r.position ?? 0,
+      plan: (r.plan as SpacePlan) ?? "free",
       createdBy: r.created_by,
       createdAt: r.created_at,
     }));
@@ -218,7 +220,29 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await db.from("spaces").select("*").eq("id", spaceId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
-    return { id: data.id, name: data.name, createdBy: data.created_by, createdAt: data.created_at };
+    return {
+      id: data.id,
+      name: data.name,
+      plan: (data.plan as SpacePlan) ?? "free",
+      createdBy: data.created_by,
+      createdAt: data.created_at,
+    };
+  }
+
+  async countInSpace(
+    spaceId: string,
+    what: "expenses" | "assets" | "members",
+  ): Promise<number> {
+    const db = getSupabaseAdmin();
+    // `head: true` traz o número sem trazer uma única linha: um tecto não
+    // precisa de ler dados de ninguém para saber que está cheio.
+    let q = db.from(what).select("id", { count: "exact", head: true }).eq("space_id", spaceId);
+    // Uma despesa apagada não ocupa lugar: seria estranho ficar sem espaço por
+    // causa do que já se apagou.
+    if (what === "expenses") q = q.is("deleted_at", null);
+    const { count, error } = await q;
+    if (error) throw new Error(error.message);
+    return count ?? 0;
   }
 
   async createSpace(input: CreateSpaceInput): Promise<Space> {
@@ -226,7 +250,7 @@ export class SupabaseRepository implements Repository {
     const id = crypto.randomUUID();
     const { data, error } = await db
       .from("spaces")
-      .insert({ id, name: input.name, created_by: input.createdBy })
+      .insert({ id, name: input.name, created_by: input.createdBy, plan: input.plan ?? "free" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
@@ -241,7 +265,13 @@ export class SupabaseRepository implements Repository {
       const { error: e2 } = await db.from("members").insert(rows);
       if (e2) throw new Error(e2.message);
     }
-    return { id: data.id, name: data.name, createdBy: data.created_by, createdAt: data.created_at };
+    return {
+      id: data.id,
+      name: data.name,
+      plan: (data.plan as SpacePlan) ?? "free",
+      createdBy: data.created_by,
+      createdAt: data.created_at,
+    };
   }
 
   async listMembers(spaceId: string): Promise<Member[]> {

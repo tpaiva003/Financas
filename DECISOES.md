@@ -1137,3 +1137,38 @@ lê. "270,10 USD" e "270,10 CAD" são coisas diferentes e têm de parecer difere
 não se gravou preço em euros — e mostrar o valor em dólares ao lado de um preço
 em euros que não é o dele juntava dois números que não se correspondem. É a mesma
 regra da data: só se mostra o que pertence àquele preço.
+
+## Modo demo: self-serve com tectos
+
+Decisão do Tiago, depois de eu assinalar que esta é a hipótese que abre criação de
+conta anónima e traz obrigações de RGPD e superfície de abuso. Fica registada a
+nota; fica também feita a parte que a torna sustentável.
+
+O registo aberto já existia (`decideAccess`, `AUTH_OPEN_REGISTRATION`). O que
+faltava eram os **tectos** — sem eles, abrir o registo transformava a app em
+alojamento gratuito de dados financeiros de desconhecidos.
+
+Os números (100 despesas, 10 bens, 2 pessoas, 1 ambiente) não são para irritar
+quem experimenta: são para deixar **experimentar tudo** e não deixar viver lá
+dentro. Cem despesas chegam para ver um saldo a formar-se e um relatório a fazer
+sentido. Duas pessoas não são restrição nenhuma — são o produto.
+
+Três regras que valem mais do que os números:
+
+1. **Nunca se apaga nada por causa de um limite.** Um tecto impede de criar mais,
+   não faz desaparecer o que já lá está. Um ambiente que passe o tecto (porque o
+   plano mudou, ou porque estes números desceram) fica intacto e só deixa de
+   crescer. Há teste para isso.
+2. **Diz-se quanto falta antes de acabar.** Nos últimos 20%, com um mínimo de 3.
+   Quem bate na parede sem aviso sente-se enganado; quem a vê chegar, decide.
+3. **O tecto é do ambiente, não da pessoa.** É o que se mede, e não muda quando
+   alguém entra ou sai. A excepção é o número de ambientes, que se conta na
+   pessoa porque é ela que os cria — e basta pertencer a um `full` para deixar de
+   ter tecto, senão quem foi convidado para um ambiente sem limites ficava preso
+   ao seu.
+
+Os seis ambientes que já existiam ficaram `full` na migração: um limite novo nunca
+pode aparecer por baixo de dados que já lá estavam.
+
+Editar nunca é travado, só criar. Um bem que já existe tem de se poder corrigir
+mesmo com o ambiente cheio — caso contrário o limite passava de tecto a armadilha.
