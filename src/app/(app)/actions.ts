@@ -12,7 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
-import { refreshAssetPrice } from "@/lib/services/quotes-service";
+import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
   ImportPreview,
@@ -1523,6 +1523,63 @@ export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
   if (!id || !symbol) return;
   await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
   revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
+ * Vai buscar a cotação de **todos** os investimentos com símbolo.
+ *
+ * Com uma posição, o botão de cada linha chega. Com dezenas, não: ninguém carrega
+ * cinquenta vezes. E como as cotações são uma cache partilhada, buscar tudo de
+ * uma vez é mais barato do que uma a uma — os símbolos repetidos pagam-se uma só.
+ *
+ * Diz sempre o que aconteceu a cada uma, incluindo as que não deram. Um botão que
+ * responde "feito" quando metade falhou é pior do que não ter botão nenhum.
+ */
+export async function refreshAllQuotesAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") {
+    return { error: "Não tens permissão para isto." };
+  }
+
+  const freshness = await refreshStalePrices(ctx.space.id, { force: true }).catch(() => null);
+  if (!freshness) return { error: "Não consegui atualizar os preços." };
+  if (freshness.length === 0) {
+    return { ok: true, message: "Não há investimentos com símbolo para atualizar." };
+  }
+
+  revalidatePath("/patrimonio");
+
+  const novos = freshness.filter((f) => f.refreshed);
+  const falhados = freshness.filter((f) => f.problem);
+  const partes: string[] = [];
+
+  if (novos.length > 0) {
+    partes.push(`${novos.length} preço(s) atualizado(s)`);
+  }
+  // "Já estava em dia" não é falha: é o caso normal fora de horas de bolsa.
+  const iguais = freshness.length - novos.length - falhados.length;
+  if (iguais > 0) partes.push(`${iguais} já estava(m) em dia`);
+
+  if (falhados.length > 0) {
+    // Nomear os que falharam, e porquê: é a diferença entre poder corrigir o
+    // símbolo e ficar a olhar para um número que não muda.
+    const detalhe = falhados
+      .slice(0, 3)
+      .map((f) => `${f.symbol}: ${f.problem}`)
+      .join("; ");
+    const resto = falhados.length > 3 ? ` (e mais ${falhados.length - 3})` : "";
+    return {
+      ok: novos.length > 0,
+      message: partes.length > 0 ? `${partes.join(", ")}.` : undefined,
+      error: `${detalhe}${resto}`,
+    };
+  }
+
+  return { ok: true, message: `${partes.join(", ")}.` };
 }
 
 // ---- Movimentos dos investimentos -----------------------------------------

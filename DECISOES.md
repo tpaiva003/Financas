@@ -998,3 +998,117 @@ um browser. Não é uma porta aberta: exige o `CRON_SECRET`, não lê nem devolv
 dados de ninguém, e só mexe em cotações, que são factos públicos. E **não altera
 preços de ativos**: quem os escreve continua a ser a visita à página, que é onde
 se sabe a que ambiente pertencem e onde se pode dizer o que aconteceu.
+
+## Ler cotações não é ler as mil mais antigas
+
+O MSFT aparecia na página de Ativos a **172,42 €, com "fecho de 28/07/2020"** ao
+lado, quando valia 495 dólares. A data estava certa e o preço também: a série
+realmente acabava ali.
+
+A API do Supabase corta em **mil linhas por pedido, sem dizer nada**. Dez anos de
+fechos diários são mais de dois mil e quinhentos, e a leitura, por ordem
+cronológica, trazia os **mil mais antigos**. O "último" era a milésima linha, de
+julho de 2020. Um corte silencioso é pior do que um erro, porque o número errado
+apresenta-se como certo — com a data ao lado a dar-lhe credibilidade.
+
+A leitura passa a ser paginada. E quem só quer o preço de agora deixa de arrastar
+dez anos de histórico pela rede: pede a última linha e mais nada.
+
+Ao corrigir isto apareceu o irmão do problema: o botão "Atualizar" gravava a
+cotação **em bruto**, sem converter. A atualização automática convertia; esta
+não. Um MSFT a 495 dólares ficava a 495 €. **Dois caminhos que escrevem o mesmo
+campo têm de aplicar as mesmas regras**, senão o valor certo depende de que botão
+se carregou.
+
+## Uma camada de IA para ler ficheiros de corretora
+
+A deteção de colunas por cabeçalhos conhecidos funciona bem no ficheiro para que
+foi afinada e falha no seguinte. Cada corretora escreve o que lhe apetece:
+"Produto" numa, "Instrument" noutra, "Valor local" numa terceira, e a moeda numa
+coluna sem cabeçalho nenhum. Ir acrescentando sinónimos à lista de cada vez que
+aparece um formato novo é uma corrida que se perde sempre — os utilizadores
+trazem formatos que ninguém previu.
+
+Quando a deteção falha, pergunta-se a um modelo. Com dois limites que definem a
+coisa toda:
+
+**O modelo escolhe colunas. Não lê dados.** A resposta é uma lista de índices.
+Quem lê os montantes, deduplica e converte moedas continua a ser o código
+determinístico e testado. Um modelo a somar dinheiro é um erro à espera de
+acontecer; um modelo a dizer "aquela coluna chama-se Preços mas é o preço
+unitário" é exactamente o que ele faz bem. Assim os invariantes do domínio nunca
+passam por aqui.
+
+**Nada do que ele diga entra sem ser verificado.** Um índice fora da grelha, uma
+linha de cabeçalho que não existe, um decimal onde devia estar um inteiro — a
+resposta é descartada inteira e volta-se ao mapeamento à mão. Entre apontar a
+coluna errada e não apontar nenhuma, a segunda dá para corrigir.
+
+Sobe o cabeçalho e até catorze linhas de exemplo, truncadas. O ficheiro não sobe.
+Sem `ANTHROPIC_API_KEY` a funcionalidade não existe e a importação fica como
+estava. E o que a IA mapeou aparece marcado como tal na pré-visualização, com o
+que ela percebeu escrito ao lado: um mapeamento que ninguém confirmou tem de se
+identificar.
+
+## O corte dos mil não era das cotações, era da API toda
+
+Depois de corrigir as cotações ficou a pergunta certa: se a API do Supabase corta
+aos mil, onde é que isso ainda está a acontecer? Foram vinte e sete consultas sem
+tecto. Hoje só as cotações passam a barreira (17369 linhas contra 191 despesas),
+mas duas das outras são bombas com temporizador:
+
+- **`listExpenses`** — o saldo calcula-se sobre isto, e o saldo **tem de ser
+  sempre explicável até às despesas que o compõem**. Um casal com alguns anos de
+  registos chega às mil sem dar por isso, e a partir daí o saldo fica errado sem
+  nada a assinalá-lo.
+- **`listAssetTrades`** — um extrato de corretora traz centenas de linhas de uma
+  vez e a posição atual sai da soma de todas. Cortar dava uma carteira imaginária.
+
+O que falha aqui não falha quando alguém mexe no código, falha quando a tabela
+cresce. Nenhum teste de desenvolvimento o apanha, porque em desenvolvimento não
+há mil linhas de nada.
+
+Por isso a correção não é um `.range()` em cada sítio: é **um leitor paginado
+partilhado**, para quem escrever a próxima consulta não ter de se lembrar do
+limite. As cotações passaram a usá-lo também, em vez de repetirem a paginação.
+
+Sobre ordenar do mais recente para o mais antigo, que foi a ideia que trouxe aqui:
+está certa como **defesa**, e é o que as despesas, os rendimentos e as mensagens
+de contacto já fazem. Não resolve — uma leitura cortada continua a mentir — mas
+muda a direção da falha, e isso conta. Cortada por cima perde-se o presente, que
+é o que quase toda a gente está a olhar; cortada por baixo perde-se o passado,
+que ninguém nota que desapareceu. As `contact_messages` ficam assim de propósito:
+são uma caixa de entrada, e mostrar as mil mais recentes é o comportamento certo,
+não um remendo.
+
+## Um botão para ir buscar as cotações, e outro nome para o que já lá estava
+
+O `fetchAssetQuoteAction` existia no servidor desde que as cotações foram feitas
+e **nunca foi ligado a botão nenhum**. O que se via na linha do ativo chamava-se
+"Atualizar" e só gravava o número da caixa ao lado — não ia buscar nada. Duas
+coisas diferentes com o mesmo nome, e a que a pessoa queria não existia.
+
+Agora: o que grava chama-se **Gravar**, e há um **ícone de recarregar** que vai
+mesmo buscar a cotação. Só aparece quando o ativo tem símbolo, porque sem símbolo
+não há onde a ir buscar e um botão que nunca funciona é pior do que nenhum.
+
+E um **"Atualizar preços"** no topo dos investimentos, que trata de todos de uma
+vez. Com uma posição o botão da linha chega; com dezenas, ninguém carrega dezenas
+de vezes. Vai à fonte mesmo que a cotação guardada pareça fresca — quem carrega
+quer o valor de agora — e responde com o que aconteceu a cada uma: quantas
+mudaram, quantas já estavam em dia, e **quais falharam e porquê**, pelo nome. Um
+botão que responde "feito" quando metade falhou deixa a pessoa a olhar para
+números velhos convencida de que são novos.
+
+## Uma data só se mostra quando é a data daquele preço
+
+Ao ligar o botão apareceu isto: quando a cotação vem mas o câmbio falha, não se
+grava preço nenhum (e ainda bem). Mas a data da cotação continuava a aparecer ao
+lado do preço **antigo** — "172,42 € (fecho de 06/08/2026)". O número velho ficava
+carimbado com a data de hoje.
+
+É a mentira mais convincente de todas, porque a data é precisamente o que
+usávamos para dar confiança ao valor. A data passa a aparecer só quando
+corresponde mesmo ao preço mostrado, e o motivo da falha passa a ser visível
+mesmo quando existe cotação — antes só se mostrava quando não havia cotação
+nenhuma.

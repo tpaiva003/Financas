@@ -335,6 +335,9 @@ function FileCard({
                 {file.kind === "movimentos" ? "movimentos" : "posições"}
               </span>
             ) : null}
+            {file.readByAi ? (
+              <span className="chip border-hair text-fg-faint">lido com IA</span>
+            ) : null}
           </p>
 
           {file.problem ? (
@@ -344,6 +347,14 @@ function FileCard({
               {file.mappingLabel}
             </p>
           )}
+
+          {/* Um mapeamento que ninguém confirmou tem de se identificar como
+              tal, e dizer o que percebeu, para se poder conferir antes de gravar. */}
+          {file.aiNote ? (
+            <p className="mt-1 text-xs text-fg-muted">
+              {file.aiNote} Confere as colunas antes de importar.
+            </p>
+          ) : null}
 
           {file.missingFx > 0 ? (
             <p className="mt-1 text-xs text-debt">

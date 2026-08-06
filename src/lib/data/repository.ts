@@ -554,6 +554,8 @@ export interface Repository {
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
+  /** Só o fecho mais recente, para quem quer o preço e não a série. */
+  latestQuote(symbol: string): Promise<StoredQuote | null>;
   /** Guarda cotações, sem duplicar as que já lá estão. */
   saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void>;
   /** Em que moeda estão as cotações guardadas deste símbolo. */

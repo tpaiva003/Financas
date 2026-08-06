@@ -134,7 +134,7 @@ async function fetchFromSource(
  */
 export async function getQuoteSeries(
   rawSymbol: string,
-  options: { since?: string | null; force?: boolean } = {},
+  options: { since?: string | null; force?: boolean; latestOnly?: boolean } = {},
 ): Promise<QuoteSeries> {
   const symbol = normalizeSymbol(rawSymbol);
   if (!symbol) {
@@ -181,9 +181,16 @@ export async function getQuoteSeries(
     }
   }
 
+  // Quem só quer o preço de agora não precisa de dez anos de fechos a atravessar
+  // a rede: uma linha chega, e é muito mais barato.
   let quotes: StoredQuote[] = [];
   try {
-    quotes = await repo.listQuotes(symbol, options.since ?? undefined);
+    if (options.latestOnly) {
+      const ultima = await repo.latestQuote(symbol);
+      quotes = ultima ? [ultima] : [];
+    } else {
+      quotes = await repo.listQuotes(symbol, options.since ?? undefined);
+    }
   } catch {
     problem = problem ?? "Não consegui ler as cotações guardadas.";
   }
@@ -376,7 +383,10 @@ async function toEurAtDate(
  * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
  * preço que havia, e quem chama mostra a data para não haver enganos.
  */
-export async function refreshStalePrices(spaceId: string): Promise<PriceFreshness[]> {
+export async function refreshStalePrices(
+  spaceId: string,
+  options: { force?: boolean } = {},
+): Promise<PriceFreshness[]> {
   const repo = getRepository();
   const assets = await repo.listAssets(spaceId).catch(() => []);
   const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
@@ -391,7 +401,12 @@ export async function refreshStalePrices(spaceId: string): Promise<PriceFreshnes
       const candidatos = symbolCandidates(a.symbol!);
       let series = null;
       for (const c of candidatos) {
-        const tentativa = await getQuoteSeries(c).catch(() => null);
+        // Com `force`, vai-se à fonte mesmo que a cotação guardada pareça
+        // fresca: quem carregou no botão quer o valor de agora, não o de ontem.
+        const tentativa = await getQuoteSeries(c, {
+          latestOnly: true,
+          force: options.force,
+        }).catch(() => null);
         if (tentativa && tentativa.quotes.length > 0) {
           series = tentativa;
           if (c !== a.symbol) {
@@ -437,26 +452,38 @@ export async function refreshStalePrices(spaceId: string): Promise<PriceFreshnes
  *
  * Só mexe no preço se a cotação existir: um investimento sem símbolo, ou com um
  * símbolo que a fonte não conhece, fica exatamente como estava.
+ *
+ * **Converte para euros**, tal como a atualização automática. Este caminho ficou
+ * a gravar a cotação em bruto quando o outro passou a converter, e a diferença
+ * não se via: um MSFT a 495 dólares aparecia como 495 €, quase dez por cento
+ * acima do que vale. Dois caminhos que escrevem o mesmo campo têm de aplicar as
+ * mesmas regras, senão o valor certo depende de que botão se carregou.
  */
 export async function refreshAssetPrice(
   assetId: string,
   spaceId: string,
   symbol: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const series = await getQuoteSeries(symbol, { force: true });
+  const series = await getQuoteSeries(symbol, { force: true, latestOnly: true });
   if (series.lastCloseCents === null) {
     return { ok: false, message: series.problem ?? "Sem cotações para este símbolo." };
   }
+  const emEuros = await toEurAtDate(series.lastCloseCents, series.currency, series.lastDate);
+  if (emEuros === null) {
+    return {
+      ok: false,
+      message: `Cotação em ${series.currency} e sem taxa de câmbio para a converter.`,
+    };
+  }
   try {
-    await getRepository().updateAsset(assetId, spaceId, {
-      unitPriceCents: series.lastCloseCents,
-    });
+    await getRepository().updateAsset(assetId, spaceId, { unitPriceCents: emEuros });
   } catch {
     return { ok: false, message: "Não consegui gravar o preço." };
   }
   const dia = new Date(`${series.lastDate}T00:00:00Z`).toLocaleDateString("pt-PT");
+  const nota = series.currency === "EUR" ? "" : ` (convertido de ${series.currency})`;
   return {
     ok: true,
-    message: `Preço atualizado com o fecho de ${dia}.`,
+    message: `Preço atualizado com o fecho de ${dia}${nota}.`,
   };
 }
