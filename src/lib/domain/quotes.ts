@@ -1,6 +1,12 @@
 /**
  * Cotações: leitura e escolha do índice de referência.
  *
+ * **A fonte é o Yahoo Finance, não a Stooq.** A Stooq foi a primeira escolha e
+ * não serve: responde a pedidos de servidores com uma página anti-robô, HTTP
+ * 200 e HTML em vez do CSV. Da Vercel, todos os símbolos falhavam por igual, e
+ * um bloqueio que devolve 200 é fácil de confundir com "símbolo desconhecido",
+ * que foi exatamente o que aconteceu. Fica aqui escrito para não se voltar lá.
+ *
  * **Os índices de referência são ETFs UCITS cotados em euros, não o índice em
  * dólares.** Parece um pormenor e não é. Um português não compra o S&P 500:
  * compra um ETF que o segue, em euros, e leva com o câmbio pelo caminho.
@@ -14,6 +20,16 @@
  *
  * Lógica pura, sem acesso a dados.
  */
+
+/**
+ * De onde vêm as cotações.
+ *
+ * Mais do que uma, por ordem de preferência: uma fonte gratuita pode começar a
+ * bloquear de um dia para o outro, como aconteceu, e sem alternativa a
+ * funcionalidade morre com ela.
+ */
+export const QUOTE_SOURCES = ["yahoo", "stooq"] as const;
+export type QuoteSourceId = (typeof QUOTE_SOURCES)[number];
 
 export interface Benchmark {
   id: string;
@@ -92,6 +108,59 @@ export function parseStooqCsv(text: string): Quote[] {
   return quotes.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/**
+ * Uma resposta que é uma página web, não dados.
+ *
+ * É assim que uma fonte gratuita costuma dizer "não" a um servidor: HTTP 200 e
+ * uma página de bloqueio com um desafio de JavaScript. Distinguir isto de
+ * "símbolo desconhecido" é essencial, porque são problemas opostos: um resolve-se
+ * corrigindo o símbolo, o outro só se resolve mudando de fonte. Confundi-los faz
+ * perder horas a mexer no que estava certo.
+ */
+export function looksBlocked(text: string): boolean {
+  const head = text.slice(0, 400).toLowerCase();
+  return (
+    head.includes("<!doctype html") ||
+    head.includes("<html") ||
+    head.includes("<noscript")
+  );
+}
+
+/**
+ * Lê a resposta do Yahoo Finance (endpoint `chart`).
+ *
+ * Traz os dias em segundos e os fechos num array paralelo. Dias sem fecho
+ * (feriados, suspensões) vêm a `null` e saltam-se: um buraco no meio da série
+ * não é um preço de zero.
+ */
+export function parseYahooChart(text: string): Quote[] {
+  let body: any;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return [];
+  }
+
+  const result = body?.chart?.result?.[0];
+  const stamps: unknown = result?.timestamp;
+  const closes: unknown = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(stamps) || !Array.isArray(closes)) return [];
+
+  const quotes: Quote[] = [];
+  for (let i = 0; i < stamps.length; i++) {
+    const t = stamps[i];
+    const c = closes[i];
+    if (typeof t !== "number" || typeof c !== "number" || !Number.isFinite(c) || c <= 0) continue;
+    quotes.push({
+      date: new Date(t * 1000).toISOString().slice(0, 10),
+      closeCents: Math.round(c * 100),
+    });
+  }
+  // Um dia pode vir repetido em respostas intradiárias: fica o último.
+  const byDate = new Map(quotes.map((q) => [q.date, q]));
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 /** Cotações numa forma indexada por data, que é o que a simulação do índice pede. */
 export function quotesToPrices(quotes: Quote[]): Record<string, number> {
   const prices: Record<string, number> = {};
@@ -116,6 +185,24 @@ export function normalizeSymbol(raw: string): string | null {
   const s = raw.trim().toLowerCase().replace(/\s+/g, "");
   if (!/^[a-z0-9^._-]{1,20}$/.test(s)) return null;
   return s;
+}
+
+/**
+ * O mesmo instrumento tem nomes diferentes em fontes diferentes.
+ *
+ * Londres é `.uk` na Stooq e `.L` no Yahoo. O S&P 500 é `^spx` numa e `^GSPC`
+ * na outra. E um ticker americano precisa de `.us` na Stooq mas dispensa
+ * sufixo no Yahoo. Traduzir aqui evita espalhar essa tabela pelo código.
+ */
+export function forSource(symbol: string, source: QuoteSourceId): string {
+  const s = symbol.trim().toLowerCase();
+  if (source === "stooq") return s;
+
+  // Yahoo.
+  if (s === "^spx") return "^GSPC";
+  if (s.endsWith(".uk")) return `${s.slice(0, -3).toUpperCase()}.L`;
+  if (s.endsWith(".us")) return s.slice(0, -3).toUpperCase();
+  return s.toUpperCase();
 }
 
 /**

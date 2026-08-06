@@ -37,7 +37,7 @@ export async function probeQuotesAction(
       ...BENCHMARKS.flatMap((b) => b.symbols),
       ...registados.flatMap((r) => symbolCandidates(r)),
     ]),
-  ].slice(0, 16);
+  ].slice(0, 8);
 
   return { probes: await probeQuoteSource(symbols) };
 }

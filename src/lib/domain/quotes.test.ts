@@ -4,8 +4,11 @@ import {
   benchmarkById,
   isStale,
   latestQuote,
+  forSource,
+  looksBlocked,
   normalizeSymbol,
   parseStooqCsv,
+  parseYahooChart,
   quotesToPrices,
   symbolCandidates,
 } from "./quotes";
@@ -142,5 +145,78 @@ describe("symbolCandidates", () => {
   it("lixo não gera candidatos", () => {
     expect(symbolCandidates("")).toEqual([]);
     expect(symbolCandidates("isto não é um símbolo")).toEqual([]);
+  });
+});
+
+describe("looksBlocked", () => {
+  it("reconhece a página de bloqueio que a Stooq devolve com HTTP 200", () => {
+    // Foi isto que se passou em produção: 200, tempo normal, e HTML em vez de
+    // dados, igual para todos os símbolos. Chamar-lhe "símbolo desconhecido"
+    // mandava-nos corrigir o que estava certo.
+    const bloqueio =
+      '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<meta name="robots" content="noindex,nofollow"></head><body><noscript>T</noscript>';
+    expect(looksBlocked(bloqueio)).toBe(true);
+  });
+
+  it("CSV a sério não é bloqueio", () => {
+    expect(looksBlocked(CSV)).toBe(false);
+  });
+
+  it("JSON a sério não é bloqueio", () => {
+    expect(looksBlocked('{"chart":{"result":[]}}')).toBe(false);
+  });
+
+  it("texto curto de erro não é bloqueio", () => {
+    expect(looksBlocked("No data")).toBe(false);
+  });
+});
+
+describe("parseYahooChart", () => {
+  const YAHOO = JSON.stringify({
+    chart: {
+      result: [
+        {
+          timestamp: [1785715200, 1785801600, 1785888000],
+          indicators: { quote: [{ close: [52.3, null, 53.05] }] },
+        },
+      ],
+      error: null,
+    },
+  });
+
+  it("lê os fechos, em cêntimos, com a data do dia", () => {
+    const q = parseYahooChart(YAHOO);
+    expect(q).toHaveLength(2);
+    expect(q[0]).toEqual({ date: "2026-08-03", closeCents: 5_230 });
+    expect(q[1]).toEqual({ date: "2026-08-05", closeCents: 5_305 });
+  });
+
+  it("salta os dias sem fecho em vez de os contar como zero", () => {
+    expect(parseYahooChart(YAHOO).some((q) => q.closeCents === 0)).toBe(false);
+  });
+
+  it("uma resposta que não é JSON não rebenta", () => {
+    expect(parseYahooChart("<!DOCTYPE html>")).toEqual([]);
+    expect(parseYahooChart("")).toEqual([]);
+  });
+
+  it("um símbolo desconhecido devolve vazio", () => {
+    expect(parseYahooChart('{"chart":{"result":null,"error":{"code":"Not Found"}}}')).toEqual([]);
+  });
+});
+
+describe("forSource", () => {
+  it("traduz as convenções de praça entre fontes", () => {
+    // Londres é .uk numa e .L na outra; o S&P 500 tem nomes diferentes.
+    expect(forSource("iwda.uk", "yahoo")).toBe("IWDA.L");
+    expect(forSource("^spx", "yahoo")).toBe("^GSPC");
+    expect(forSource("msft.us", "yahoo")).toBe("MSFT");
+    expect(forSource("sxr8.de", "yahoo")).toBe("SXR8.DE");
+  });
+
+  it("para a Stooq fica como está, que é a forma nativa", () => {
+    expect(forSource("iwda.uk", "stooq")).toBe("iwda.uk");
+    expect(forSource("^spx", "stooq")).toBe("^spx");
   });
 });

@@ -901,3 +901,48 @@ depender de não haver enganos.
 uma remoção que falha em silêncio é pior do que uma que recusa, porque quem
 carrega fica a achar que correu bem. Foi por causa disto que o erro esteve lá
 sem ninguém o ver.
+
+## A Stooq não serve, e o meu diagnóstico enganou-se
+
+O teste em produção deu resposta clara: **HTTP 200, ~445 ms, e a mesma página
+HTML para todos os símbolos**, incluindo o `^spx`. Não é símbolo desconhecido: é
+a Stooq a recusar pedidos de servidores com uma página anti-robô.
+
+O pior é que o meu diagnóstico chamou-lhe "o símbolo está errado", que é o
+oposto do problema, e mandava mexer no que estava certo. Um bloqueio que devolve
+200 é fácil de confundir com dados vazios, e por isso `bloqueada` passa a ser um
+veredicto próprio, com um teste que fixa o caso.
+
+**A fonte passa a ser o Yahoo Finance, com a Stooq como alternativa.** Duas de
+propósito: uma fonte gratuita pode passar a bloquear de um dia para o outro, e
+sem alternativa a funcionalidade morre com ela. As convenções de nome diferem
+(Londres é `.uk` numa e `.L` na outra, o S&P 500 é `^spx` e `^GSPC`), e a
+tradução vive num sítio só.
+
+## Importar da corretora, num sítio só
+
+Havia dois separadores, "Movimentos" e "Posições", e a pessoa tinha de saber
+qual dos dois ficheiros tinha na mão. Não tem de saber: **a diferença lê-se no
+ficheiro**. Um extrato de transações tem uma coluna de datas com datas a sério;
+uma lista de posições não tem. Pede-se "o ficheiro da corretora" e diz-se depois
+o que se percebeu que ele é.
+
+**Vários ficheiros de uma vez**, porque é assim que eles vêm: um por ano, ou um
+por conta. Cada um é lido por si e um que falhe não estraga os outros. A escolha
+de importar é por ficheiro e não por linha: com dez ficheiros e centenas de
+linhas, escolher linha a linha era pedir para ninguém escolher nada.
+
+O painel de colunas continua a existir mas só com um ficheiro de cada vez: serve
+para ensinar um formato, e ensinar dois ao mesmo tempo não se percebe. Nele, **é
+a coluna da data que decide o tipo**, a mesma regra da deteção automática.
+
+## A consola só sabia de despesas
+
+Via-se quantas despesas cada ambiente tinha e mais nada. Se alguém andasse a
+usar o património ou os rendimentos, não havia forma de saber. Passa a haver
+duas coisas: quantos ambientes usam cada parte da app, e uma etiqueta por
+ambiente com o que ele usa.
+
+Continua a valer a regra: **contagens e nomes de funcionalidades, nunca
+conteúdo**. Saber que um ambiente usa o património não é o mesmo que ver o que
+lá está, e a consola continua sem poder ver.

@@ -1,9 +1,12 @@
 /**
  * Ir buscar cotações e guardá-las.
  *
- * Fonte: Stooq, que serve o histórico diário em CSV sem chave nem registo. Não
- * é a Bloomberg, mas para fecho diário de ETFs e índices chega perfeitamente, e
- * a alternativa realista (uma API paga) não se justifica para isto.
+ * Fontes: Yahoo Finance primeiro, Stooq a seguir. Nenhuma pede chave.
+ *
+ * São duas de propósito. A Stooq era a única e passou a responder a pedidos de
+ * servidores com uma página anti-robô: HTTP 200, HTML em vez de dados, igual
+ * para todos os símbolos. Uma fonte gratuita pode fazer isso de um dia para o
+ * outro, e sem alternativa a funcionalidade morre com ela.
  *
  * O que se busca fica guardado. Isso serve três coisas: a página desenha-se
  * sem depender de uma chamada externa, a fonte não leva com um pedido por
@@ -18,7 +21,18 @@
 
 import { getRepository } from "@/lib/data";
 import type { StoredQuote } from "@/lib/data";
-import { isStale, normalizeSymbol, parseStooqCsv, symbolCandidates } from "@/lib/domain";
+import {
+  QUOTE_SOURCES,
+  forSource,
+  isStale,
+  looksBlocked,
+  normalizeSymbol,
+  parseStooqCsv,
+  parseYahooChart,
+  symbolCandidates,
+  type Quote,
+  type QuoteSourceId,
+} from "@/lib/domain";
 
 const TIMEOUT_MS = 10_000;
 
@@ -34,29 +48,71 @@ export interface QuoteSeries {
   problem: string | null;
 }
 
-function csvUrl(symbol: string, from?: string | null): string {
-  const params = new URLSearchParams({ s: symbol, i: "d" });
+function sourceUrl(source: QuoteSourceId, symbol: string, from?: string | null): string {
+  const s = encodeURIComponent(forSource(symbol, source));
+  if (source === "yahoo") {
+    // Um intervalo generoso: o histórico serve a comparação com o índice, que
+    // precisa das cotações das datas dos reforços, não só do preço de hoje.
+    const range = from ? "1y" : "10y";
+    return `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&range=${range}`;
+  }
+  const params = new URLSearchParams({ s: forSource(symbol, source), i: "d" });
   if (from) params.set("d1", from.replaceAll("-", ""));
   return `https://stooq.com/q/d/l/?${params}`;
 }
 
-/** Vai à fonte. Devolve lista vazia se o símbolo não existir lá. */
-async function fetchFromSource(symbol: string, from?: string | null): Promise<StoredQuote[]> {
+function parseFor(source: QuoteSourceId, text: string): Quote[] {
+  return source === "yahoo" ? parseYahooChart(text) : parseStooqCsv(text);
+}
+
+/** Uma tentativa numa fonte, com o motivo quando não dá. */
+interface Attempt {
+  quotes: Quote[];
+  blocked: boolean;
+}
+
+async function fetchFrom(
+  source: QuoteSourceId,
+  symbol: string,
+  from?: string | null,
+): Promise<Attempt> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(csvUrl(symbol, from), {
+    const res = await fetch(sourceUrl(source, symbol, from), {
       signal: controller.signal,
-      headers: { accept: "text/csv,text/plain" },
+      headers: {
+        accept: source === "yahoo" ? "application/json" : "text/csv,text/plain",
+        // Sem isto, algumas fontes respondem com uma página de bloqueio a
+        // pedidos que não parecem vir de um browser.
+        "user-agent": "Mozilla/5.0 (compatible; Rachar/1.0; +https://rachar.pt)",
+      },
       next: { revalidate: 3_600 },
     });
-    if (!res.ok) return [];
-    return parseStooqCsv(await res.text());
+    if (!res.ok) return { quotes: [], blocked: false };
+    const text = await res.text();
+    if (looksBlocked(text)) return { quotes: [], blocked: true };
+    return { quotes: parseFor(source, text), blocked: false };
   } catch {
-    return [];
+    return { quotes: [], blocked: false };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Vai buscar cotações, pela ordem das fontes.
+ *
+ * A primeira que devolver dados ganha. Ter mais do que uma não é excesso de
+ * zelo: a Stooq, que era a única, passou a responder com uma página anti-robô a
+ * pedidos de servidores, e a funcionalidade morreu com ela.
+ */
+async function fetchFromSource(symbol: string, from?: string | null): Promise<StoredQuote[]> {
+  for (const source of QUOTE_SOURCES) {
+    const attempt = await fetchFrom(source, symbol, from);
+    if (attempt.quotes.length > 0) return attempt.quotes;
+  }
+  return [];
 }
 
 /**
@@ -129,15 +185,23 @@ export async function getQuoteSeries(
   };
 }
 
-export type QuoteVerdict = "ok" | "sem-rede" | "simbolo-desconhecido" | "resposta-estranha";
+export type QuoteVerdict =
+  | "ok"
+  | "sem-rede"
+  | "bloqueada"
+  | "simbolo-desconhecido"
+  | "resposta-estranha";
 
 export interface QuoteProbe {
   symbol: string;
+  source: QuoteSourceId;
+  /** O nome do símbolo nessa fonte, que nem sempre é o mesmo. */
+  querySymbol: string;
   verdict: QuoteVerdict;
   /** O que dizer a quem está a olhar, em português. */
   message: string;
   httpStatus: number | null;
-  /** Primeira linha da resposta, que costuma dizer tudo. */
+  /** Início da resposta, que costuma dizer tudo. */
   firstLine: string | null;
   quotes: number;
   lastDate: string | null;
@@ -145,35 +209,63 @@ export interface QuoteProbe {
 }
 
 /**
- * Testa a fonte de cotações e diz **porquê** quando não funciona.
+ * Testa as fontes de cotações e diz **porquê** quando não funcionam.
  *
  * Existe porque "não encontrei cotações para este símbolo" é uma mensagem
- * honesta e inútil: pode ser o símbolo estar errado, a fonte estar em baixo, ou
- * o servidor não conseguir sair para a internet. São três problemas com três
- * soluções diferentes, e sem os distinguir não há forma de resolver nenhum.
+ * honesta e inútil. E há um caso que engana: uma fonte pode recusar um servidor
+ * devolvendo **HTTP 200 com uma página de bloqueio**, o que se lê como "símbolo
+ * desconhecido" e manda corrigir o que estava certo. Aconteceu, e é por isso
+ * que `bloqueada` é um veredicto próprio.
  *
- * Não é um teste automático: é um botão para carregar quando há dúvidas.
+ * Testa cada fonte separadamente: saber que uma falha e a outra serve é a
+ * diferença entre resolver e adivinhar.
  */
 export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]> {
+  const jobs = symbols.flatMap((raw) =>
+    QUOTE_SOURCES.map((source) => ({ raw, source })),
+  );
+
   return Promise.all(
-    symbols.map(async (raw): Promise<QuoteProbe> => {
+    jobs.map(async ({ raw, source }): Promise<QuoteProbe> => {
       const symbol = normalizeSymbol(raw) ?? raw;
+      const querySymbol = forSource(symbol, source);
       const started = Date.now();
-      const base = { symbol, httpStatus: null, firstLine: null, quotes: 0, lastDate: null };
+      const base = {
+        symbol,
+        source,
+        querySymbol,
+        httpStatus: null,
+        firstLine: null,
+        quotes: 0,
+        lastDate: null,
+      };
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
-        const res = await fetch(csvUrl(symbol), {
+        const res = await fetch(sourceUrl(source, symbol), {
           signal: controller.signal,
-          headers: { accept: "text/csv,text/plain" },
+          headers: {
+            accept: source === "yahoo" ? "application/json" : "text/csv,text/plain",
+            "user-agent": "Mozilla/5.0 (compatible; Rachar/1.0; +https://rachar.pt)",
+          },
           cache: "no-store",
         });
         const text = await res.text();
-        const firstLine = text.split(/\r?\n/)[0]?.slice(0, 120) ?? "";
-        const parsed = parseStooqCsv(text);
+        const firstLine = text.replace(/\s+/g, " ").slice(0, 120);
         const ms = Date.now() - started;
 
+        if (looksBlocked(text)) {
+          return {
+            ...base,
+            verdict: "bloqueada",
+            message:
+              "A fonte respondeu com uma página de bloqueio em vez de dados. Recusa pedidos de servidores: não é o símbolo, é a fonte.",
+            httpStatus: res.status,
+            firstLine,
+            ms,
+          };
+        }
         if (!res.ok) {
           return {
             ...base,
@@ -184,12 +276,13 @@ export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]>
             ms,
           };
         }
+
+        const parsed = parseFor(source, text);
         if (parsed.length === 0) {
           return {
             ...base,
             verdict: "simbolo-desconhecido",
-            message:
-              "Saímos para a internet e a fonte respondeu, mas não conhece este símbolo. É o símbolo que está errado.",
+            message: `A fonte respondeu com dados, mas não conhece "${querySymbol}". É o símbolo.`,
             httpStatus: res.status,
             firstLine,
             ms,
@@ -197,7 +290,7 @@ export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]>
         }
         const last = parsed[parsed.length - 1]!;
         return {
-          symbol,
+          ...base,
           verdict: "ok",
           message: `Funciona: ${parsed.length} cotações, a última de ${last.date}.`,
           httpStatus: res.status,

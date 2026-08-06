@@ -899,6 +899,37 @@ export class SupabaseRepository implements Repository {
       read<{ id: string }>("contas", () => db.from("app_users").select("id")),
     ]);
 
+    /**
+     * Uso por funcionalidade. Só `space_id`, nunca conteúdo: continua a valer a
+     * regra da consola. Cada leitura é independente e tolerante a tabelas que
+     * ainda não existam, porque uma migração por correr não pode deitar a
+     * página abaixo.
+     */
+    const FEATURES: { id: string; label: string; table: string }[] = [
+      { id: "patrimonio", label: "Património", table: "assets" },
+      { id: "investimentos", label: "Movimentos de investimentos", table: "asset_trades" },
+      { id: "rendimentos", label: "Rendimentos", table: "income" },
+      { id: "recorrentes", label: "Recorrentes", table: "recurring_templates" },
+      { id: "importacoes", label: "Importações", table: "import_batches" },
+      { id: "metas", label: "Metas de despesa", table: "spending_goals" },
+    ];
+
+    const featureRows = await Promise.all(
+      FEATURES.map(async (f) => {
+        const { data } = await db.from(f.table).select("space_id");
+        return { ...f, rows: (data ?? []) as { space_id: string }[] };
+      }),
+    );
+
+    const featuresBySpace = new Map<string, string[]>();
+    for (const f of featureRows) {
+      for (const r of f.rows) {
+        if (!r?.space_id) continue;
+        const atuais = featuresBySpace.get(r.space_id) ?? [];
+        if (!atuais.includes(f.id)) featuresBySpace.set(r.space_id, [...atuais, f.id]);
+      }
+    }
+
     const membersRes = { data: memberRows };
     const expensesRes = { data: expenseRows };
     const spacesRes = { data: spaceRows };
@@ -925,6 +956,7 @@ export class SupabaseRepository implements Repository {
       expenseCount: expenseCounts.get(s.id) ?? 0,
       lastActivity: lastBySpace.get(s.id) ?? null,
       createdAt: s.created_at as string,
+      features: featuresBySpace.get(s.id) ?? [],
     }));
 
     // Os templates podem não existir (migração 0011 por aplicar).
@@ -948,6 +980,12 @@ export class SupabaseRepository implements Repository {
           : null,
       spaces: spaces.sort((a, b) => ((a.lastActivity ?? "") < (b.lastActivity ?? "") ? 1 : -1)),
       templates: templates.map((t) => ({ label: t.label, uses: t.uses })),
+      features: featureRows.map((f) => ({
+        id: f.id,
+        label: f.label,
+        spaces: new Set(f.rows.map((r) => r.space_id).filter(Boolean)).size,
+        records: f.rows.length,
+      })),
       warnings:
         accountRows === null && linkedAccounts.size > 0
           ? [...warnings, `Contas com ambiente (estimativa): ${linkedAccounts.size}.`]
