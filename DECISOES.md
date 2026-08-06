@@ -1080,3 +1080,35 @@ muda a direção da falha, e isso conta. Cortada por cima perde-se o presente, q
 que ninguém nota que desapareceu. As `contact_messages` ficam assim de propósito:
 são uma caixa de entrada, e mostrar as mil mais recentes é o comportamento certo,
 não um remendo.
+
+## Um botão para ir buscar as cotações, e outro nome para o que já lá estava
+
+O `fetchAssetQuoteAction` existia no servidor desde que as cotações foram feitas
+e **nunca foi ligado a botão nenhum**. O que se via na linha do ativo chamava-se
+"Atualizar" e só gravava o número da caixa ao lado — não ia buscar nada. Duas
+coisas diferentes com o mesmo nome, e a que a pessoa queria não existia.
+
+Agora: o que grava chama-se **Gravar**, e há um **ícone de recarregar** que vai
+mesmo buscar a cotação. Só aparece quando o ativo tem símbolo, porque sem símbolo
+não há onde a ir buscar e um botão que nunca funciona é pior do que nenhum.
+
+E um **"Atualizar preços"** no topo dos investimentos, que trata de todos de uma
+vez. Com uma posição o botão da linha chega; com dezenas, ninguém carrega dezenas
+de vezes. Vai à fonte mesmo que a cotação guardada pareça fresca — quem carrega
+quer o valor de agora — e responde com o que aconteceu a cada uma: quantas
+mudaram, quantas já estavam em dia, e **quais falharam e porquê**, pelo nome. Um
+botão que responde "feito" quando metade falhou deixa a pessoa a olhar para
+números velhos convencida de que são novos.
+
+## Uma data só se mostra quando é a data daquele preço
+
+Ao ligar o botão apareceu isto: quando a cotação vem mas o câmbio falha, não se
+grava preço nenhum (e ainda bem). Mas a data da cotação continuava a aparecer ao
+lado do preço **antigo** — "172,42 € (fecho de 06/08/2026)". O número velho ficava
+carimbado com a data de hoje.
+
+É a mentira mais convincente de todas, porque a data é precisamente o que
+usávamos para dar confiança ao valor. A data passa a aparecer só quando
+corresponde mesmo ao preço mostrado, e o motivo da falha passa a ser visível
+mesmo quando existe cotação — antes só se mostrava quando não havia cotação
+nenhuma.

@@ -21,7 +21,12 @@ import {
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
 import { AssetForm } from "@/components/AssetForm";
-import { deleteAssetAction, updateAssetPriceAction } from "@/app/(app)/actions";
+import {
+  deleteAssetAction,
+  fetchAssetQuoteAction,
+  updateAssetPriceAction,
+} from "@/app/(app)/actions";
+import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -268,7 +273,15 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
             .filter((k) => (byKind.get(k) ?? []).length > 0)
             .map((kind) => (
               <div key={kind} className="card p-0">
-                <p className="label mb-0 px-5 pt-4">{ASSET_KIND_LABELS[kind]}</p>
+                <div className="flex flex-wrap items-start justify-between gap-2 px-5 pt-4">
+                  <p className="label mb-0">{ASSET_KIND_LABELS[kind]}</p>
+                  {/* Um botão só, para os investimentos, e só se algum tiver
+                      símbolo. Com dezenas de posições ninguém carrega uma a uma. */}
+                  {kind === "investimento" &&
+                  stored.some((s) => s.kind === "investimento" && s.symbol) ? (
+                    <RefreshQuotesButton />
+                  ) : null}
+                </div>
                 <ul className="divide-y divide-hair2">
                   {(byKind.get(kind) ?? []).map((a) => (
                     <AssetRow
@@ -487,8 +500,12 @@ function AssetRow({
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
                 ? `, a ${formatCents(a.unitPriceCents)}`
                 : ", sem preço atual"}
-              {/* De quando é o preço. Sem isto, um valor velho passa por atual. */}
-              {quoteDate
+              {/* De quando é o preço. Sem isto, um valor velho passa por atual.
+                  E **só se mostra a data quando ela é mesmo a deste preço**: se a
+                  cotação veio mas não se conseguiu converter, não se gravou preço
+                  nenhum, e carimbar o preço antigo com a data de hoje seria a
+                  mentira mais convincente de todas. */}
+              {quoteDate && !quoteProblem
                 ? ` (fecho de ${new Date(`${quoteDate}T00:00:00Z`).toLocaleDateString("pt-PT")})`
                 : ""}
               {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
@@ -501,26 +518,61 @@ function AssetRow({
 
       <div className="flex items-center gap-3">
         {isInvestment ? (
-          <form action={updateAssetPriceAction} className="flex items-center gap-1.5">
-            <input type="hidden" name="id" value={a.id} />
-            <label className="sr-only" htmlFor={`price-${a.id}`}>
-              Preço atual de {a.name}
-            </label>
-            <input
-              key={`price:${a.id}:${a.unitPriceCents ?? ""}`}
-              id={`price-${a.id}`}
-              name="unitPrice"
-              inputMode="decimal"
-              defaultValue={
-                a.unitPriceCents === null || a.unitPriceCents === undefined
-                  ? ""
-                  : (a.unitPriceCents / 100).toFixed(2).replace(".", ",")
-              }
-              placeholder="preço"
-              className="input h-9 w-24 py-1 text-xs"
-            />
-            <button type="submit" className="btn-ghost px-2 text-xs">Atualizar</button>
-          </form>
+          <div className="flex items-center gap-1.5">
+            <form action={updateAssetPriceAction} className="flex items-center gap-1.5">
+              <input type="hidden" name="id" value={a.id} />
+              <label className="sr-only" htmlFor={`price-${a.id}`}>
+                Preço atual de {a.name}
+              </label>
+              <input
+                key={`price:${a.id}:${a.unitPriceCents ?? ""}`}
+                id={`price-${a.id}`}
+                name="unitPrice"
+                inputMode="decimal"
+                defaultValue={
+                  a.unitPriceCents === null || a.unitPriceCents === undefined
+                    ? ""
+                    : (a.unitPriceCents / 100).toFixed(2).replace(".", ",")
+                }
+                placeholder="preço"
+                className="input h-9 w-24 py-1 text-xs"
+              />
+              <button type="submit" className="btn-ghost px-2 text-xs">
+                Gravar
+              </button>
+            </form>
+
+            {/* Ir buscar a cotação agora. Só aparece com símbolo: sem ele não há
+                onde a ir buscar, e um botão que nunca funciona é pior do que
+                nenhum. O outro botão grava o que está na caixa — são coisas
+                diferentes e passam a dizer-se por nomes diferentes. */}
+            {stored?.symbol ? (
+              <form action={fetchAssetQuoteAction}>
+                <input type="hidden" name="id" value={a.id} />
+                <input type="hidden" name="symbol" value={stored.symbol} />
+                <button
+                  type="submit"
+                  className="btn-ghost px-2 text-xs"
+                  title={`Ir buscar a cotação de ${stored.symbol.toUpperCase()}`}
+                  aria-label={`Ir buscar a cotação atual de ${a.name}`}
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 16 16"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M14 8a6 6 0 1 1-1.76-4.24" />
+                    <path d="M14 2v4h-4" />
+                  </svg>
+                </button>
+              </form>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="text-right">
@@ -598,7 +650,7 @@ function AssetRow({
       {/* Porque é que não há preço. "Sem preço atual" sozinho não diz se falta
           o símbolo, se o símbolo está errado, ou se a fonte falhou, e são
           coisas diferentes com soluções diferentes. */}
-      {isInvestment && !quoteDate ? (
+      {isInvestment && (!quoteDate || quoteProblem) ? (
         <p className="mt-2 text-xs text-fg-faint">
           {stored?.symbol ? (
             <>

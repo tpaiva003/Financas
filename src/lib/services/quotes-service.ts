@@ -383,7 +383,10 @@ async function toEurAtDate(
  * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
  * preço que havia, e quem chama mostra a data para não haver enganos.
  */
-export async function refreshStalePrices(spaceId: string): Promise<PriceFreshness[]> {
+export async function refreshStalePrices(
+  spaceId: string,
+  options: { force?: boolean } = {},
+): Promise<PriceFreshness[]> {
   const repo = getRepository();
   const assets = await repo.listAssets(spaceId).catch(() => []);
   const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
@@ -398,7 +401,12 @@ export async function refreshStalePrices(spaceId: string): Promise<PriceFreshnes
       const candidatos = symbolCandidates(a.symbol!);
       let series = null;
       for (const c of candidatos) {
-        const tentativa = await getQuoteSeries(c, { latestOnly: true }).catch(() => null);
+        // Com `force`, vai-se à fonte mesmo que a cotação guardada pareça
+        // fresca: quem carregou no botão quer o valor de agora, não o de ontem.
+        const tentativa = await getQuoteSeries(c, {
+          latestOnly: true,
+          force: options.force,
+        }).catch(() => null);
         if (tentativa && tentativa.quotes.length > 0) {
           series = tentativa;
           if (c !== a.symbol) {
