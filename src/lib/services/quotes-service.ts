@@ -129,6 +129,57 @@ export async function getQuoteSeries(
   };
 }
 
+export interface PriceFreshness {
+  assetId: string;
+  symbol: string;
+  /** De que dia é o fecho que está a ser mostrado. */
+  quoteDate: string | null;
+  /** Foi buscar cotação nova nesta visita. */
+  refreshed: boolean;
+}
+
+/**
+ * Põe os preços em dia ao abrir a página.
+ *
+ * Sem isto, o preço de um investimento era o do dia em que alguém carregou no
+ * botão, e ficava lá parado sem dizer de quando era. Um valor desatualizado que
+ * se apresenta como atual é pior do que não ter valor nenhum: as contas todas
+ * que dependem dele (património, ganho, comparação com o índice) ficam erradas
+ * sem dar sinal.
+ *
+ * Só vai à fonte quando a cotação guardada está velha, e as cotações são um
+ * cache partilhado por toda a gente, por isso cada símbolo é buscado uma vez por
+ * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
+ * preço que havia, e quem chama mostra a data para não haver enganos.
+ */
+export async function refreshStalePrices(spaceId: string): Promise<PriceFreshness[]> {
+  const repo = getRepository();
+  const assets = await repo.listAssets(spaceId).catch(() => []);
+  const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
+  if (withSymbol.length === 0) return [];
+
+  return Promise.all(
+    withSymbol.map(async (a): Promise<PriceFreshness> => {
+      const symbol = a.symbol!;
+      const series = await getQuoteSeries(symbol).catch(() => null);
+      const quoteDate = series?.lastDate ?? null;
+
+      // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
+      if (
+        series?.lastCloseCents !== null &&
+        series?.lastCloseCents !== undefined &&
+        series.lastCloseCents !== a.unitPriceCents
+      ) {
+        await repo
+          .updateAsset(a.id, spaceId, { unitPriceCents: series.lastCloseCents })
+          .catch(() => {});
+        return { assetId: a.id, symbol, quoteDate, refreshed: true };
+      }
+      return { assetId: a.id, symbol, quoteDate, refreshed: false };
+    }),
+  );
+}
+
 /**
  * Atualiza o preço atual de um investimento a partir da sua cotação.
  *

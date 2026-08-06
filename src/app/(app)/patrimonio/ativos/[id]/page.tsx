@@ -19,6 +19,7 @@ import {
   fetchAssetQuoteAction,
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
+import { refreshStalePrices } from "@/lib/services/quotes-service";
 
 export const metadata = { title: "Investimento · Rachar" };
 export const dynamic = "force-dynamic";
@@ -35,9 +36,13 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
+  // Preço em dia antes de mostrar o que quer que seja, senão as contas desta
+  // página assentam num valor do dia em que alguém carregou no botão.
+  const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
   const assets = await repo.listAssets(ctx.space.id).catch(() => []);
   const asset = assets.find((a) => a.id === params.id);
   if (!asset) notFound();
+  const quoteDate = freshness.find((f) => f.assetId === asset.id)?.quoteDate ?? null;
 
   const trades = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
@@ -81,10 +86,26 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             ? `, a um custo médio de ${formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}`
             : ""}
           {asset.unitPriceCents
-            ? `, hoje a ${formatCents(asset.unitPriceCents)}`
+            ? `, a ${formatCents(asset.unitPriceCents)}`
             : ". Sem cotação, conta pelo que custou"}
           .
         </p>
+
+        {/* De quando é o preço. Um valor velho que se apresenta como atual é
+            pior do que não ter valor: as contas que dependem dele ficam erradas
+            sem dar sinal. */}
+        {asset.unitPriceCents ? (
+          <p className="mt-1 text-xs text-fg-faint">
+            {quoteDate ? (
+              <>
+                Fecho de {new Date(`${quoteDate}T00:00:00Z`).toLocaleDateString("pt-PT")}
+                {quoteDate < today ? ", atualizado sozinho quando há bolsa" : ""}.
+              </>
+            ) : (
+              "Preço escrito à mão. Indica o símbolo da bolsa para passar a atualizar-se sozinho."
+            )}
+          </p>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
           {/* À mão continua a valer: nem tudo tem símbolo, e nem toda a gente

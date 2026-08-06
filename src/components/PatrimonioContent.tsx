@@ -23,6 +23,7 @@ import { FireCalculator } from "@/components/FireCalculator";
 import { AssetForm } from "@/components/AssetForm";
 import { deleteAssetAction, updateAssetPriceAction } from "@/app/(app)/actions";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
+import { refreshStalePrices } from "@/lib/services/quotes-service";
 
 export type PatrimonioView = "resumo" | "ativos" | "dividas" | "fire";
 
@@ -37,6 +38,12 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
+  // Preços em dia antes de ler os bens. Só vai à fonte o que estiver velho, e as
+  // cotações são partilhadas, por isso cada símbolo é buscado uma vez por dia no
+  // serviço inteiro. Nunca falha para o lado de deitar a página abaixo.
+  const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
+  const quoteDateOf = new Map(freshness.map((f) => [f.assetId, f.quoteDate]));
+
   // A tabela pode não existir se a migração 0013 ainda não correu.
   const stored: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
   // Movimentos datados: quando existem, são eles que dizem quantas unidades se
@@ -270,6 +277,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                       // derivada: senão gravar sem tocar em nada reescrevia a
                       // entrada manual com os números dos movimentos.
                       stored={stored.find((s) => s.id === a.id) ?? null}
+                      quoteDate={quoteDateOf.get(a.id) ?? null}
                       today={today}
                       tradeCount={(tradesByAsset.get(a.id) ?? []).length}
                     />
@@ -412,11 +420,13 @@ function formatMonthYear(ym: string | null): string {
 function AssetRow({
   asset: a,
   stored,
+  quoteDate,
   today,
   tradeCount,
 }: {
   asset: AssetView;
   stored: Asset | null;
+  quoteDate: string | null;
   today: string;
   tradeCount: number;
 }) {
@@ -461,8 +471,12 @@ function AssetRow({
             <>
               {a.quantity} un. a {formatCents(a.unitCostCents ?? 0)}
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
-                ? `, hoje a ${formatCents(a.unitPriceCents)}`
+                ? `, a ${formatCents(a.unitPriceCents)}`
                 : ", sem preço atual"}
+              {/* De quando é o preço. Sem isto, um valor velho passa por atual. */}
+              {quoteDate
+                ? ` (fecho de ${new Date(`${quoteDate}T00:00:00Z`).toLocaleDateString("pt-PT")})`
+                : ""}
               {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
             </>
           ) : (

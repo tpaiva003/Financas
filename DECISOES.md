@@ -819,3 +819,23 @@ convida a dar passo nenhum. No telemóvel o botão passa para baixo.
 o campo da descrição. Um botão de "criar" por cima do ecrã de criar não leva a
 lado nenhum. A regra de onde ele aparece cresceu duas vezes por causa de
 defeitos reais, por isso saiu do componente para um módulo com testes.
+
+## Os preços passam a atualizar-se sozinhos
+
+Ficava meio feito: a série do índice ia buscar dados novos quando estava velha,
+mas o preço de cada investimento só mudava quando alguém carregava no botão. Um
+valor de há três semanas ficava lá a passar por atual, e todas as contas que
+dependem dele (património líquido, ganho, comparação com o índice) ficavam
+erradas sem dar sinal.
+
+Agora, ao abrir a página, os preços dos investimentos com símbolo são postos em
+dia. Só se vai à fonte quando a cotação guardada está velha, e as cotações são
+um cache partilhado, por isso **cada símbolo é buscado uma vez por dia no
+serviço inteiro**, não uma vez por visita. E só se escreve na base de dados
+quando o preço mudou mesmo.
+
+**A data do fecho passa a estar à vista.** É a parte que faltava: antes não
+havia forma de saber se o número era de hoje ou do mês passado. Um valor
+desatualizado identificado como tal é informação; o mesmo valor apresentado como
+atual é uma mentira silenciosa. Sem símbolo, diz-se que o preço foi escrito à
+mão e como fazer para deixar de o ser.
