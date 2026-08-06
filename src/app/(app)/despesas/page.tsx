@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
+import { PlanoAviso } from "@/components/PlanoAviso";
 import { getRepository } from "@/lib/data";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { ExpensesFilter } from "@/components/ExpensesFilter";
@@ -97,6 +98,8 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
 
   return (
     <div className="space-y-7">
+      {/* Quanto falta até ao tecto, quando já vale a pena saber. */}
+      <PlanoAviso spaceId={ctx.space.id} plan={ctx.space.plan} kind="expenses" />
       <div className="flex items-end justify-between">
         <div>
           <p className="eyebrow">{ctx.space.name}</p>

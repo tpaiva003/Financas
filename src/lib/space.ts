@@ -10,6 +10,8 @@ import { cookies } from "next/headers";
 import { requireUser } from "./session";
 import { getRepository } from "./data";
 import type { Space, Member, MemberRole } from "./data";
+import { planForNewSpace } from "@/lib/domain";
+import { isEmailAllowed } from "./env";
 import type { HouseholdUser } from "./users";
 
 export const SPACE_COOKIE = "fin_space";
@@ -83,6 +85,11 @@ export async function getSpaceContext(): Promise<SpaceContext> {
     const own = await repo.createSpace({
       name: "Pessoal",
       createdBy: user.id,
+      // Quem está na lista das variáveis de ambiente são os donos da casa e não
+      // leva tectos. Quem se registou sozinho começa no gratuito — é o que
+      // impede o registo aberto de virar alojamento gratuito de dados de
+      // desconhecidos, com o custo e as obrigações que isso traz.
+      plan: planForNewSpace(isEmailAllowed(user.email)),
       members: [{ name: user.name, linkedUserId: user.id, email: user.email }],
     });
     spaces = [own];

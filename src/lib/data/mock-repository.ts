@@ -130,11 +130,24 @@ export class MockRepository implements Repository {
     return getStore().spaces.find((s) => s.id === spaceId) ?? null;
   }
 
+  async countInSpace(
+    spaceId: string,
+    what: "expenses" | "assets" | "members",
+  ): Promise<number> {
+    const store = getStore();
+    if (what === "expenses") {
+      return store.expenses.filter((e) => e.spaceId === spaceId && !e.deletedAt).length;
+    }
+    if (what === "assets") return store.assets.filter((a) => a.spaceId === spaceId).length;
+    return store.members.filter((m) => m.spaceId === spaceId).length;
+  }
+
   async createSpace(input: CreateSpaceInput): Promise<Space> {
     const store = getStore();
     const space: Space = {
       id: randomUUID(),
       name: input.name,
+      plan: input.plan ?? "free",
       createdBy: input.createdBy,
       createdAt: new Date().toISOString(),
     };

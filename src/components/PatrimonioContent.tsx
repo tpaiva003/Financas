@@ -21,6 +21,7 @@ import {
   type Trade,
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
+import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
 import {
   deleteAssetAction,
@@ -103,6 +104,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
 
   return (
     <div className="space-y-8">
+      <PlanoAviso spaceId={ctx.space.id} plan={ctx.space.plan} kind="assets" />
       <div>
         <p className="eyebrow">{ctx.space.name}</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">

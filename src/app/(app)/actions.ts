@@ -30,6 +30,8 @@ import {
   normalizeSymbol,
   toEurCents,
   type Split,
+  checkLimit,
+  type SpacePlan,
 } from "@/lib/domain";
 
 export interface ActionState {
@@ -112,11 +114,38 @@ function buildSplit(
   return { split: { type: "EQUAL" } };
 }
 
+/**
+ * O ambiente ainda tem espaço para mais um?
+ *
+ * Existe porque o registo é aberto: sem tectos, a app passava a ser alojamento
+ * gratuito de dados financeiros de desconhecidos, com o custo e as obrigações de
+ * RGPD que isso traz. Os ambientes de quem foi convidado à mão são `full` e nunca
+ * passam por aqui.
+ *
+ * Devolve a mensagem a mostrar quando não cabe, e `null` quando cabe. **Nunca
+ * apaga nada**: um tecto impede de criar mais, não faz desaparecer o que já lá
+ * está.
+ */
+async function semEspaco(
+  spaceId: string,
+  plan: SpacePlan | undefined,
+  kind: "expenses" | "assets" | "members",
+): Promise<string | null> {
+  if ((plan ?? "free") === "full") return null;
+  const atuais = await getRepository()
+    .countInSpace(spaceId, kind)
+    .catch(() => 0);
+  const check = checkLimit(kind, atuais, "free");
+  return check.allowed ? null : check.message;
+}
+
 export async function createExpenseAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "expenses");
+  if (cheio) return { error: cheio };
   // O saldo/divisão é sempre entre os participantes plenos.
   const memberIds = ctx.fullMembers.map((m) => m.id);
   const isSubmitter = ctx.viewerRole === "submitter";
@@ -544,6 +573,12 @@ export async function createSpaceAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  // O tecto dos ambientes conta-se na pessoa, não dentro de um deles: é ela que
+  // os cria. Basta um ser `full` para não haver tecto — quem foi convidado para
+  // um ambiente sem limites não fica preso ao seu.
+  const semTecto = ctx.spaces.some((s) => (s.plan ?? "free") === "full");
+  const limiteAmbientes = checkLimit("spaces", ctx.spaces.length, semTecto ? "full" : "free");
+  if (!limiteAmbientes.allowed) return { error: limiteAmbientes.message ?? "Limite atingido." };
   const user = ctx.user;
   const parsed = spaceSchema.safeParse({
     name: formData.get("name"),
@@ -1129,6 +1164,8 @@ export async function addMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "members");
+  if (cheio) return { error: cheio };
 
   const grantSubmit = formData.get("grantSubmit") === "on";
   const accessEmail = String(formData.get("accessEmail") ?? "").trim().toLowerCase();
@@ -1473,6 +1510,12 @@ export async function saveAssetAction(
   };
 
   const id = String(formData.get("id") ?? "").trim();
+  // Só a criação conta para o tecto: editar um bem que já existe nunca pode ser
+  // travado por um limite, senão ficava lá preso sem se poder corrigir.
+  if (!id) {
+    const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "assets");
+    if (cheio) return { error: cheio };
+  }
   try {
     if (id) await getRepository().updateAsset(id, ctx.space.id, patch);
     else await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
