@@ -859,3 +859,45 @@ referência e com os símbolos que estão mesmo registados, e diz qual dos três
 Corre no servidor de propósito: é ele que vai buscar as cotações em produção, e
 testar a partir do browser respondia a outra pergunta. Fica atrás do dono da
 plataforma, porque é diagnóstico e não conteúdo de ninguém.
+
+## Um ticker escrito à mão não é o símbolo da fonte
+
+Quem regista uma ação escreve "MSFT", não "msft.us". E sem sufixo de praça a
+fonte não o encontra, ou pior, pode encontrar um instrumento com o mesmo nome
+noutra bolsa. Um preço errado que não se identifica como errado é o pior
+resultado possível numa app de finanças.
+
+Passa a tentar-se as formas prováveis por ordem, com as **explícitas à frente** e
+a ambígua no fim: `msft.us`, `msft.de`, `msft`. A que funcionar fica gravada, para
+não se andar a tentar três de cada vez para sempre. Um símbolo que já traga
+sufixo, ou um índice como `^spx`, é usado tal e qual: quem o escreveu sabia o que
+queria.
+
+E a linha do investimento passa a dizer **porque é que não há preço**. "Sem preço
+atual" sozinho não distingue faltar o símbolo, o símbolo estar errado, ou a fonte
+ter falhado, e são três coisas com três soluções.
+
+## Apagar uma conta falhava em silêncio
+
+Carregar em "Apagar dados" não fazia nada, sem uma mensagem. A causa: todas as
+chaves estrangeiras para `app_users` eram `NO ACTION` e o código só desligava
+uma delas. Bastava a pessoa ter criado um ambiente, uma despesa ou um acerto
+para a base de dados recusar o `DELETE`. O erro era apanhado por um
+`.catch(() => {})` e deitado fora, e a página recarregava igual.
+
+**`created_by` é proveniência, não propriedade.** Diz quem registou aquilo, e
+não deve poder impedir que uma pessoa seja apagada. Numa app partilhada, apagar
+as despesas de quem sai desequilibrava contas alheias que já podem ter sido
+acertadas, por isso os registos ficam e o que desaparece é a ligação à pessoa. É
+também o que um pedido de RGPD pede: apagar a identificação, não reescrever a
+contabilidade de terceiros. As chaves passam a `on delete set null`, e uma
+despesa sem autor lê-se como "registada por alguém que já cá não está".
+
+A garantia passa a estar **na base de dados** e não no código. O código já
+desligava `members.linked_user_id` à mão antes de apagar, mas depender disso é
+depender de não haver enganos.
+
+**E as duas ações passam a dizer o que aconteceu.** Era este o defeito de fundo:
+uma remoção que falha em silêncio é pior do que uma que recusa, porque quem
+carrega fica a achar que correu bem. Foi por causa disto que o erro esteve lá
+sem ninguém o ver.

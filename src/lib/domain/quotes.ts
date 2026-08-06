@@ -119,6 +119,28 @@ export function normalizeSymbol(raw: string): string | null {
 }
 
 /**
+ * As formas a tentar para um símbolo escrito por uma pessoa.
+ *
+ * Um ticker escrito à mão vem quase sempre sem sufixo de praça: escreve-se
+ * "MSFT", não "msft.us". E um símbolo sem sufixo é **ambíguo** para a fonte, que
+ * indexa várias bolsas: pode não dar nada, ou pior, pode dar o instrumento
+ * errado com o mesmo nome noutra praça. Um preço errado que não se identifica
+ * como errado é o pior resultado possível numa app de finanças.
+ *
+ * Por isso as formas explícitas vão à frente, e a ambígua fica para o fim. Um
+ * símbolo que já traga sufixo, ou um índice (`^spx`), é usado tal e qual: quem
+ * o escreveu sabia o que queria.
+ */
+export function symbolCandidates(raw: string): string[] {
+  const s = normalizeSymbol(raw);
+  if (!s) return [];
+  if (s.includes(".") || s.startsWith("^")) return [s];
+  // Ticker simples: o mercado americano é de longe o caso mais comum, a seguir
+  // a Xetra para quem compra ETFs europeus.
+  return [`${s}.us`, `${s}.de`, s];
+}
+
+/**
  * Está desatualizada ao ponto de valer a pena ir buscar outra vez?
  *
  * As bolsas fecham a fins de semana e feriados, por isso "hoje não há cotação"

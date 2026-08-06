@@ -18,7 +18,7 @@
 
 import { getRepository } from "@/lib/data";
 import type { StoredQuote } from "@/lib/data";
-import { isStale, normalizeSymbol, parseStooqCsv } from "@/lib/domain";
+import { isStale, normalizeSymbol, parseStooqCsv, symbolCandidates } from "@/lib/domain";
 
 const TIMEOUT_MS = 10_000;
 
@@ -253,8 +253,23 @@ export async function refreshStalePrices(spaceId: string): Promise<PriceFreshnes
 
   return Promise.all(
     withSymbol.map(async (a): Promise<PriceFreshness> => {
-      const symbol = a.symbol!;
-      const series = await getQuoteSeries(symbol).catch(() => null);
+      // Um ticker escrito à mão vem quase sempre sem sufixo de praça ("MSFT",
+      // não "msft.us"), e sem sufixo a fonte não o encontra. Tentam-se as
+      // formas prováveis, e guarda-se a que funcionou para não se andar a
+      // tentar três de cada vez para sempre.
+      const candidatos = symbolCandidates(a.symbol!);
+      let series = null;
+      for (const c of candidatos) {
+        const tentativa = await getQuoteSeries(c).catch(() => null);
+        if (tentativa && tentativa.quotes.length > 0) {
+          series = tentativa;
+          if (c !== a.symbol) {
+            await repo.updateAsset(a.id, spaceId, { symbol: c }).catch(() => {});
+          }
+          break;
+        }
+      }
+      const symbol = series?.symbol ?? a.symbol!;
       const quoteDate = series?.lastDate ?? null;
 
       // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.

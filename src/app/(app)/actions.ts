@@ -1691,21 +1691,32 @@ export async function deleteIncomeAction(formData: FormData): Promise<void> {
  *
  * Para apagar mesmo os dados (pedido de RGPD), há `deleteAccountDataAction`.
  */
-export async function removeAccountAccessAction(formData: FormData): Promise<void> {
+export async function removeAccountAccessAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const user = await requireUser();
-  if (!isAdmin(user.id)) return;
+  if (!isAdmin(user.id)) return { error: "Sem permissão." };
 
   const userId = String(formData.get("userId") ?? "").trim();
-  if (!userId) return;
+  if (!userId) return { error: "Falta a conta." };
   // O dono da plataforma não se pode remover a si próprio por engano.
-  if (userId === user.id) return;
+  if (userId === user.id) return { error: "Não te podes remover a ti próprio." };
 
   const repo = getRepository();
-  await repo.unlinkUserFromMembers(userId).catch(() => {});
-  await repo.deleteAppUser(userId).catch(() => {});
+  try {
+    await repo.unlinkUserFromMembers(userId);
+    await repo.deleteAppUser(userId);
+  } catch (e) {
+    // Antes isto era engolido, e a página recarregava igual sem dizer nada.
+    // Uma remoção que falha em silêncio é pior do que uma que recusa: quem
+    // carrega fica a achar que correu bem.
+    return { error: e instanceof Error ? e.message : "Não consegui remover a conta." };
+  }
 
   revalidatePath("/plataforma");
   revalidatePath("/", "layout");
+  return { ok: true, message: "Acesso retirado. O histórico ficou." };
 }
 
 /**
@@ -1714,19 +1725,29 @@ export async function removeAccountAccessAction(formData: FormData): Promise<voi
  * Ambientes partilhados ficam de pé: as contas das outras pessoas não podem
  * desaparecer porque uma delas saiu.
  */
-export async function deleteAccountDataAction(formData: FormData): Promise<void> {
+export async function deleteAccountDataAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const user = await requireUser();
-  if (!isAdmin(user.id)) return;
-  if (String(formData.get("confirmar") ?? "") !== "apagar") return;
+  if (!isAdmin(user.id)) return { error: "Sem permissão." };
+  if (String(formData.get("confirmar") ?? "").trim().toLowerCase() !== "apagar") {
+    return { error: 'Escreve "apagar" para confirmar.' };
+  }
 
   const userId = String(formData.get("userId") ?? "").trim();
-  if (!userId || userId === user.id) return;
+  if (!userId) return { error: "Falta a conta." };
+  if (userId === user.id) return { error: "Não te podes apagar a ti próprio." };
 
-  const repo = getRepository();
-  await repo.deleteAccountAndSoleSpaces(userId).catch(() => {});
+  try {
+    await getRepository().deleteAccountAndSoleSpaces(userId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Não consegui apagar a conta." };
+  }
 
   revalidatePath("/plataforma");
   revalidatePath("/", "layout");
+  return { ok: true, message: "Conta apagada." };
 }
 
 /** Dispensa os primeiros passos. Fica num cookie: é preferência de ecrã. */
