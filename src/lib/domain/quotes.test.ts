@@ -193,6 +193,7 @@ describe("parseYahooChart", () => {
     chart: {
       result: [
         {
+          meta: { currency: "USD" },
           timestamp: [1785715200, 1785801600, 1785888000],
           indicators: { quote: [{ close: [52.3, null, 53.05] }] },
         },
@@ -202,23 +203,38 @@ describe("parseYahooChart", () => {
   });
 
   it("lê os fechos, em cêntimos, com a data do dia", () => {
-    const q = parseYahooChart(YAHOO);
-    expect(q).toHaveLength(2);
-    expect(q[0]).toEqual({ date: "2026-08-03", closeCents: 5_230 });
-    expect(q[1]).toEqual({ date: "2026-08-05", closeCents: 5_305 });
+    const { quotes } = parseYahooChart(YAHOO);
+    expect(quotes).toHaveLength(2);
+    expect(quotes[0]).toEqual({ date: "2026-08-03", closeCents: 5_230 });
+    expect(quotes[1]).toEqual({ date: "2026-08-05", closeCents: 5_305 });
+  });
+
+  it("lê a moeda, que é o que evita gravar dólares como euros", () => {
+    // Um MSFT a 536,92 USD gravado como 536,92 EUR inflaciona o património
+    // quase 10%, e o número errado apresenta-se como certo.
+    expect(parseYahooChart(YAHOO).currency).toBe("USD");
+  });
+
+  it("sem moeda declarada assume euro, que é a moeda da app", () => {
+    const semMoeda = JSON.stringify({
+      chart: { result: [{ timestamp: [1785888000], indicators: { quote: [{ close: [10] }] } }] },
+    });
+    expect(parseYahooChart(semMoeda).currency).toBe("EUR");
   });
 
   it("salta os dias sem fecho em vez de os contar como zero", () => {
-    expect(parseYahooChart(YAHOO).some((q) => q.closeCents === 0)).toBe(false);
+    expect(parseYahooChart(YAHOO).quotes.some((q) => q.closeCents === 0)).toBe(false);
   });
 
   it("uma resposta que não é JSON não rebenta", () => {
-    expect(parseYahooChart("<!DOCTYPE html>")).toEqual([]);
-    expect(parseYahooChart("")).toEqual([]);
+    expect(parseYahooChart("<!DOCTYPE html>").quotes).toEqual([]);
+    expect(parseYahooChart("").quotes).toEqual([]);
   });
 
   it("um símbolo desconhecido devolve vazio", () => {
-    expect(parseYahooChart('{"chart":{"result":null,"error":{"code":"Not Found"}}}')).toEqual([]);
+    expect(
+      parseYahooChart('{"chart":{"result":null,"error":{"code":"Not Found"}}}').quotes,
+    ).toEqual([]);
   });
 });
 

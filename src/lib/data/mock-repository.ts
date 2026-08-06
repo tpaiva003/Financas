@@ -72,6 +72,7 @@ interface Store {
   assets: Asset[];
   assetTrades: AssetTrade[];
   quotes: Record<string, StoredQuote[]>;
+  quoteCurrencies: Record<string, string>;
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
 }
@@ -99,6 +100,7 @@ function getStore(): Store {
       assets: [],
       assetTrades: [],
       quotes: {},
+      quoteCurrencies: {},
       income: [],
       resetTokens: [],
     };
@@ -733,8 +735,13 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
-  async saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void> {
+  async quoteCurrency(symbol: string): Promise<string | null> {
+    return getStore().quoteCurrencies[symbol] ?? null;
+  }
+
+  async saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void> {
     const store = getStore();
+    store.quoteCurrencies[symbol] = currency;
     const byDate = new Map((store.quotes[symbol] ?? []).map((q) => [q.date, q]));
     for (const q of quotes) byDate.set(q.date, q);
     store.quotes[symbol] = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));

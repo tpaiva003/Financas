@@ -100,8 +100,20 @@ export function benchmarkById(id: string): Benchmark | null {
 export interface Quote {
   /** "AAAA-MM-DD". */
   date: string;
-  /** Fecho, em cêntimos. */
+  /**
+   * Fecho, em cêntimos **da moeda da cotação**, que nem sempre é o euro.
+   *
+   * Guardar sem a moeda foi um erro que custou caro: o MSFT vem em dólares, e o
+   * preço ia para o ativo como se fossem euros, inflacionando o património.
+   */
   closeCents: number;
+}
+
+/** Uma série de cotações, com a moeda em que está. */
+export interface QuoteSeriesData {
+  quotes: Quote[];
+  /** "EUR", "USD"… O que a fonte disser. */
+  currency: string;
 }
 
 /**
@@ -158,18 +170,20 @@ export function looksBlocked(text: string): boolean {
  * (feriados, suspensões) vêm a `null` e saltam-se: um buraco no meio da série
  * não é um preço de zero.
  */
-export function parseYahooChart(text: string): Quote[] {
+export function parseYahooChart(text: string): QuoteSeriesData {
   let body: any;
   try {
     body = JSON.parse(text);
   } catch {
-    return [];
+    return { quotes: [], currency: "EUR" };
   }
 
   const result = body?.chart?.result?.[0];
+  const currency =
+    typeof result?.meta?.currency === "string" ? result.meta.currency.toUpperCase() : "EUR";
   const stamps: unknown = result?.timestamp;
   const closes: unknown = result?.indicators?.quote?.[0]?.close;
-  if (!Array.isArray(stamps) || !Array.isArray(closes)) return [];
+  if (!Array.isArray(stamps) || !Array.isArray(closes)) return { quotes: [], currency };
 
   const quotes: Quote[] = [];
   for (let i = 0; i < stamps.length; i++) {
@@ -183,7 +197,10 @@ export function parseYahooChart(text: string): Quote[] {
   }
   // Um dia pode vir repetido em respostas intradiárias: fica o último.
   const byDate = new Map(quotes.map((q) => [q.date, q]));
-  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return {
+    quotes: [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
+    currency,
+  };
 }
 
 /** Cotações numa forma indexada por data, que é o que a simulação do índice pede. */

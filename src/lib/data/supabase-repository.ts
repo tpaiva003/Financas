@@ -1171,7 +1171,19 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
-  async saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void> {
+  async quoteCurrency(symbol: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("quotes")
+      .select("currency")
+      .eq("symbol", symbol)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data?.currency as string | undefined) ?? null;
+  }
+
+  async saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void> {
     if (quotes.length === 0) return;
     const db = getSupabaseAdmin();
     // A chave é (símbolo, dia): reescrever o mesmo dia é idempotente, e é o que
@@ -1180,6 +1192,7 @@ export class SupabaseRepository implements Repository {
       symbol,
       quote_date: q.date,
       close_cents: q.closeCents,
+      currency,
       fetched_at: new Date().toISOString(),
     }));
     for (let i = 0; i < rows.length; i += 500) {

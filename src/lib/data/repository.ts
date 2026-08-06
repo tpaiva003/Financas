@@ -555,7 +555,9 @@ export interface Repository {
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
   /** Guarda cotações, sem duplicar as que já lá estão. */
-  saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void>;
+  saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void>;
+  /** Em que moeda estão as cotações guardadas deste símbolo. */
+  quoteCurrency(symbol: string): Promise<string | null>;
   /** A data da cotação mais recente que temos, para saber se vale a pena ir buscar. */
   latestQuoteDate(symbol: string): Promise<string | null>;
   /** Todos os símbolos registados, de todos os ambientes. Só para diagnóstico. */

@@ -43,6 +43,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   // serviço inteiro. Nunca falha para o lado de deitar a página abaixo.
   const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
   const quoteDateOf = new Map(freshness.map((f) => [f.assetId, f.quoteDate]));
+  const quoteProblemOf = new Map(freshness.map((f) => [f.assetId, f.problem]));
 
   // A tabela pode não existir se a migração 0013 ainda não correu.
   const stored: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
@@ -278,6 +279,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                       // entrada manual com os números dos movimentos.
                       stored={stored.find((s) => s.id === a.id) ?? null}
                       quoteDate={quoteDateOf.get(a.id) ?? null}
+                      quoteProblem={quoteProblemOf.get(a.id) ?? null}
                       today={today}
                       tradeCount={(tradesByAsset.get(a.id) ?? []).length}
                     />
@@ -431,12 +433,14 @@ function AssetRow({
   asset: a,
   stored,
   quoteDate,
+  quoteProblem,
   today,
   tradeCount,
 }: {
   asset: AssetView;
   stored: Asset | null;
   quoteDate: string | null;
+  quoteProblem: string | null;
   today: string;
   tradeCount: number;
 }) {
@@ -598,8 +602,8 @@ function AssetRow({
         <p className="mt-2 text-xs text-fg-faint">
           {stored?.symbol ? (
             <>
-              Símbolo <span className="font-mono text-fg-muted">{stored.symbol}</span>, mas
-              ainda sem cotação. Confere em Plataforma, no teste da fonte.
+              Símbolo <span className="font-mono text-fg-muted">{stored.symbol}</span>:{" "}
+              {quoteProblem ?? "ainda sem cotação. Confere em Plataforma, no teste da fonte."}
             </>
           ) : (
             <>
