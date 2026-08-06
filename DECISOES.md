@@ -1112,3 +1112,28 @@ usávamos para dar confiança ao valor. A data passa a aparecer só quando
 corresponde mesmo ao preço mostrado, e o motivo da falha passa a ser visível
 mesmo quando existe cotação — antes só se mostrava quando não havia cotação
 nenhuma.
+
+## O euro manda na conta, a moeda de origem é a que se confere
+
+Tudo é calculado e guardado em euros, e isso não muda: é a única base sã para
+somar património, medir rentabilidade e comparar com um índice.
+
+Mas **ninguém confere uma ação americana em euros**. Quem tem a AAPL abre o
+telemóvel, vê 270 dólares, e quer reconhecer esse número aqui. O que via era uma
+conversão que já leva o câmbio pelo meio e que não bate com nada do que vê em
+mais lado nenhum — e sem forma de saber se estava certa.
+
+Passa a aparecer o fecho na moeda da bolsa ao lado do preço em euros, mais
+pequeno e mais apagado. A hierarquia diz o que interessa: o euro é a verdade da
+carteira, a moeda de origem é a que se reconhece.
+
+Duas decisões dentro desta:
+
+**Código de três letras, não símbolo.** O `$` é ambíguo entre meia dúzia de
+moedas, e num sítio onde se somam valores isso não pode ficar ao critério de quem
+lê. "270,10 USD" e "270,10 CAD" são coisas diferentes e têm de parecer diferentes.
+
+**Não aparece quando a conversão falhou.** Se a cotação veio mas não houve câmbio,
+não se gravou preço em euros — e mostrar o valor em dólares ao lado de um preço
+em euros que não é o dele juntava dois números que não se correspondem. É a mesma
+regra da data: só se mostra o que pertence àquele preço.
