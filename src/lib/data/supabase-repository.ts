@@ -1152,6 +1152,13 @@ export class SupabaseRepository implements Repository {
     }
   }
 
+  async listAllAssetSymbols(): Promise<string[]> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.from("assets").select("symbol").not("symbol", "is", null);
+    if (error) throw new Error(error.message);
+    return [...new Set((data ?? []).map((r: any) => r.symbol).filter(Boolean))];
+  }
+
   async latestQuoteDate(symbol: string): Promise<string | null> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

@@ -129,6 +129,99 @@ export async function getQuoteSeries(
   };
 }
 
+export type QuoteVerdict = "ok" | "sem-rede" | "simbolo-desconhecido" | "resposta-estranha";
+
+export interface QuoteProbe {
+  symbol: string;
+  verdict: QuoteVerdict;
+  /** O que dizer a quem está a olhar, em português. */
+  message: string;
+  httpStatus: number | null;
+  /** Primeira linha da resposta, que costuma dizer tudo. */
+  firstLine: string | null;
+  quotes: number;
+  lastDate: string | null;
+  ms: number;
+}
+
+/**
+ * Testa a fonte de cotações e diz **porquê** quando não funciona.
+ *
+ * Existe porque "não encontrei cotações para este símbolo" é uma mensagem
+ * honesta e inútil: pode ser o símbolo estar errado, a fonte estar em baixo, ou
+ * o servidor não conseguir sair para a internet. São três problemas com três
+ * soluções diferentes, e sem os distinguir não há forma de resolver nenhum.
+ *
+ * Não é um teste automático: é um botão para carregar quando há dúvidas.
+ */
+export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]> {
+  return Promise.all(
+    symbols.map(async (raw): Promise<QuoteProbe> => {
+      const symbol = normalizeSymbol(raw) ?? raw;
+      const started = Date.now();
+      const base = { symbol, httpStatus: null, firstLine: null, quotes: 0, lastDate: null };
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        const res = await fetch(csvUrl(symbol), {
+          signal: controller.signal,
+          headers: { accept: "text/csv,text/plain" },
+          cache: "no-store",
+        });
+        const text = await res.text();
+        const firstLine = text.split(/\r?\n/)[0]?.slice(0, 120) ?? "";
+        const parsed = parseStooqCsv(text);
+        const ms = Date.now() - started;
+
+        if (!res.ok) {
+          return {
+            ...base,
+            verdict: "resposta-estranha",
+            message: `A fonte respondeu ${res.status}. Não é o símbolo, é a fonte.`,
+            httpStatus: res.status,
+            firstLine,
+            ms,
+          };
+        }
+        if (parsed.length === 0) {
+          return {
+            ...base,
+            verdict: "simbolo-desconhecido",
+            message:
+              "Saímos para a internet e a fonte respondeu, mas não conhece este símbolo. É o símbolo que está errado.",
+            httpStatus: res.status,
+            firstLine,
+            ms,
+          };
+        }
+        const last = parsed[parsed.length - 1]!;
+        return {
+          symbol,
+          verdict: "ok",
+          message: `Funciona: ${parsed.length} cotações, a última de ${last.date}.`,
+          httpStatus: res.status,
+          firstLine,
+          quotes: parsed.length,
+          lastDate: last.date,
+          ms,
+        };
+      } catch (e) {
+        return {
+          ...base,
+          verdict: "sem-rede",
+          message:
+            "Não consegui sequer falar com a fonte. É rede ou bloqueio de saída, não é o símbolo.",
+          firstLine: e instanceof Error ? e.message.slice(0, 120) : null,
+          ms: Date.now() - started,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+}
+
 export interface PriceFreshness {
   assetId: string;
   symbol: string;

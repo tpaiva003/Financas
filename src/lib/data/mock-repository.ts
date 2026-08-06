@@ -709,6 +709,10 @@ export class MockRepository implements Repository {
     store.quotes[symbol] = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
+  async listAllAssetSymbols(): Promise<string[]> {
+    return [...new Set(getStore().assets.map((a) => a.symbol).filter((s): s is string => Boolean(s)))];
+  }
+
   async latestQuoteDate(symbol: string): Promise<string | null> {
     const all = getStore().quotes[symbol] ?? [];
     return all.length === 0 ? null : all.reduce((a, b) => (a.date >= b.date ? a : b)).date;
