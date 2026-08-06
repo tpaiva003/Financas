@@ -685,3 +685,45 @@ serviço de importação usa de facto (que pergunta à base de dados só pelos U
 do ficheiro, em vez de carregar as despesas todas). Duas implementações do mesmo
 invariante é como se começa a ter duas respostas diferentes para a mesma
 pergunta. Ficou a que corre em produção.
+
+## Movimentos datados dos investimentos
+
+Uma posição escrita à mão ("tenho 100 unidades a 92 EUR") diz o que se tem hoje
+e não diz como lá se chegou. Sem as datas das compras não há forma de responder
+à pergunta que interessa: **quanto rendeu o meu dinheiro**, sabendo que ele foi
+entrando aos poucos. Passa a haver uma tabela de movimentos com data: compras,
+vendas, dividendos e custos.
+
+**Os movimentos substituem a posição manual, nunca se somam a ela.** Quem
+registou "100 unidades" e depois lança as três compras que fizeram essas 100
+unidades não pode acabar com 200. Enquanto houver movimentos, mandam eles; se
+forem apagados, volta a valer o que estava escrito, que fica intocado por baixo.
+É o invariante das entradas manuais aplicado a isto: nada é reescrito por trás.
+
+**Custo médio ponderado, não FIFO.** É o que as corretoras mostram e o que torna
+o custo unitário comparável com a cotação. Para o IRS a regra é FIFO, e este
+número não serve para isso.
+
+Com as datas, aparece a **TIR** (taxa interna de rentabilidade): a taxa anual
+que o dinheiro rendeu tendo em conta quando entrou. É a diferença entre "ganhei
+20%" e "ganhei 20% em dois meses". Faltam ainda a TWR e a comparação com o
+índice, que precisam de histórico de cotações.
+
+## Câmbio: o valor guardado é sempre em euros
+
+Uma compra de ETFs sai muitas vezes em dólares. O que fica gravado é o euro que
+saiu mesmo da conta, porque é a única base sã para somar património e calcular
+rentabilidade. A moeda original e a taxa ficam ao lado, para o registo se poder
+conferir sem refazer contas.
+
+**A taxa pode ser a de referência ou a que a corretora aplicou, e quem escolhe é
+quem regista.** Não são o mesmo número: a corretora cobra spread, e a fixação
+diária do BCE é uma referência que ninguém consegue na prática. Quem tem a nota
+de execução à frente sabe a taxa verdadeira, e essa ganha sempre à nossa.
+
+A taxa de referência vem das taxas do BCE (API do Frankfurter, sem chave), por
+um endpoint próprio e não escondida dentro da ação de gravar. É de propósito: a
+taxa aparece no formulário **antes** de se gravar, junto com o valor em euros
+que vai ficar, para se poder conferir. Uma conversão feita por trás é impossível
+de verificar depois. Se a chamada falhar, não se inventa taxa nenhuma: pede-se à
+mão.
