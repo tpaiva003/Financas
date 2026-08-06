@@ -21,11 +21,13 @@
 
 import { getRepository } from "@/lib/data";
 import type { StoredQuote } from "@/lib/data";
+import { fetchReferenceRate } from "./fx-rate";
 import {
   QUOTE_SOURCES,
   forSource,
   isStale,
   looksBlocked,
+  toEurCents,
   normalizeSymbol,
   parseStooqCsv,
   parseYahooChart,
@@ -39,6 +41,8 @@ const TIMEOUT_MS = 10_000;
 export interface QuoteSeries {
   symbol: string;
   quotes: StoredQuote[];
+  /** Em que moeda está a série. Nem sempre é o euro. */
+  currency: string;
   /** A cotação mais recente que temos. */
   lastDate: string | null;
   lastCloseCents: number | null;
@@ -61,13 +65,17 @@ function sourceUrl(source: QuoteSourceId, symbol: string, from?: string | null):
   return `https://stooq.com/q/d/l/?${params}`;
 }
 
-function parseFor(source: QuoteSourceId, text: string): Quote[] {
-  return source === "yahoo" ? parseYahooChart(text) : parseStooqCsv(text);
+function parseFor(source: QuoteSourceId, text: string): { quotes: Quote[]; currency: string } {
+  if (source === "yahoo") return parseYahooChart(text);
+  // A Stooq não diz a moeda. Como está bloqueada e serve só de reserva, assume-se
+  // pelo sufixo de praça, que é o que ela própria usa.
+  return { quotes: parseStooqCsv(text), currency: "EUR" };
 }
 
 /** Uma tentativa numa fonte, com o motivo quando não dá. */
 interface Attempt {
   quotes: Quote[];
+  currency: string;
   blocked: boolean;
 }
 
@@ -89,12 +97,12 @@ async function fetchFrom(
       },
       next: { revalidate: 3_600 },
     });
-    if (!res.ok) return { quotes: [], blocked: false };
+    if (!res.ok) return { quotes: [], currency: "EUR", blocked: false };
     const text = await res.text();
-    if (looksBlocked(text)) return { quotes: [], blocked: true };
-    return { quotes: parseFor(source, text), blocked: false };
+    if (looksBlocked(text)) return { quotes: [], currency: "EUR", blocked: true };
+    return { ...parseFor(source, text), blocked: false };
   } catch {
-    return { quotes: [], blocked: false };
+    return { quotes: [], currency: "EUR", blocked: false };
   } finally {
     clearTimeout(timer);
   }
@@ -107,12 +115,15 @@ async function fetchFrom(
  * zelo: a Stooq, que era a única, passou a responder com uma página anti-robô a
  * pedidos de servidores, e a funcionalidade morreu com ela.
  */
-async function fetchFromSource(symbol: string, from?: string | null): Promise<StoredQuote[]> {
+async function fetchFromSource(
+  symbol: string,
+  from?: string | null,
+): Promise<{ quotes: StoredQuote[]; currency: string }> {
   for (const source of QUOTE_SOURCES) {
     const attempt = await fetchFrom(source, symbol, from);
-    if (attempt.quotes.length > 0) return attempt.quotes;
+    if (attempt.quotes.length > 0) return { quotes: attempt.quotes, currency: attempt.currency };
   }
-  return [];
+  return { quotes: [], currency: "EUR" };
 }
 
 /**
@@ -130,6 +141,7 @@ export async function getQuoteSeries(
     return {
       symbol: rawSymbol,
       quotes: [],
+      currency: "EUR",
       lastDate: null,
       lastCloseCents: null,
       refreshed: false,
@@ -149,17 +161,19 @@ export async function getQuoteSeries(
 
   let refreshed = false;
   let problem: string | null = null;
+  let fetchedCurrency: string | null = null;
 
   if (options.force || isStale(lastDate, today)) {
     // Pede-se só o que falta. Da primeira vez não há nada, e vem tudo.
-    const fetched = await fetchFromSource(symbol, lastDate);
+    const { quotes: fetched, currency } = await fetchFromSource(symbol, lastDate);
+    fetchedCurrency = currency;
     if (fetched.length === 0) {
       problem = lastDate
         ? "Não consegui atualizar as cotações agora."
         : "Não encontrei cotações para este símbolo.";
     } else {
       try {
-        await repo.saveQuotes(symbol, fetched);
+        await repo.saveQuotes(symbol, fetched, currency);
         refreshed = true;
       } catch {
         problem = "Fui buscar as cotações mas não as consegui guardar.";
@@ -174,10 +188,14 @@ export async function getQuoteSeries(
     problem = problem ?? "Não consegui ler as cotações guardadas.";
   }
 
+  const currency =
+    (await repo.quoteCurrency(symbol).catch(() => null)) ?? fetchedCurrency ?? "EUR";
+
   const last = quotes.length > 0 ? quotes[quotes.length - 1]! : null;
   return {
     symbol,
     quotes,
+    currency,
     lastDate: last?.date ?? null,
     lastCloseCents: last?.closeCents ?? null,
     refreshed,
@@ -277,7 +295,7 @@ export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]>
           };
         }
 
-        const parsed = parseFor(source, text);
+        const { quotes: parsed, currency: moeda } = parseFor(source, text);
         if (parsed.length === 0) {
           return {
             ...base,
@@ -292,7 +310,7 @@ export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]>
         return {
           ...base,
           verdict: "ok",
-          message: `Funciona: ${parsed.length} cotações, a última de ${last.date}.`,
+          message: `Funciona: ${parsed.length} cotações em ${moeda}, a última de ${last.date}.`,
           httpStatus: res.status,
           firstLine,
           quotes: parsed.length,
@@ -322,6 +340,26 @@ export interface PriceFreshness {
   quoteDate: string | null;
   /** Foi buscar cotação nova nesta visita. */
   refreshed: boolean;
+  /** Porque é que o preço não foi atualizado, quando não foi. */
+  problem: string | null;
+}
+
+/**
+ * Converte um fecho para euros, à taxa **do dia da cotação**.
+ *
+ * A data importa: uma cotação de há dois anos vale o que valia nessa altura, não
+ * o que valeria à taxa de hoje. Usar a taxa de hoje para toda a série faria a
+ * rentabilidade histórica mexer-se sozinha sempre que o câmbio mexesse.
+ */
+async function toEurAtDate(
+  cents: number,
+  currency: string,
+  date: string | null,
+): Promise<number | null> {
+  if (!currency || currency === "EUR") return cents;
+  const rate = await fetchReferenceRate(currency, date).catch(() => null);
+  if (!rate) return null;
+  return toEurCents(cents, rate.rate);
 }
 
 /**
@@ -365,18 +403,31 @@ export async function refreshStalePrices(spaceId: string): Promise<PriceFreshnes
       const symbol = series?.symbol ?? a.symbol!;
       const quoteDate = series?.lastDate ?? null;
 
-      // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
-      if (
-        series?.lastCloseCents !== null &&
-        series?.lastCloseCents !== undefined &&
-        series.lastCloseCents !== a.unitPriceCents
-      ) {
-        await repo
-          .updateAsset(a.id, spaceId, { unitPriceCents: series.lastCloseCents })
-          .catch(() => {});
-        return { assetId: a.id, symbol, quoteDate, refreshed: true };
+      if (series?.lastCloseCents === null || series?.lastCloseCents === undefined) {
+        return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: series?.problem ?? null };
       }
-      return { assetId: a.id, symbol, quoteDate, refreshed: false };
+
+      // A cotação pode vir noutra moeda: o MSFT vem em dólares. Converter é
+      // obrigatório, e **à taxa do dia da cotação**, não à de hoje.
+      const emEuros = await toEurAtDate(series.lastCloseCents, series.currency, quoteDate);
+      if (emEuros === null) {
+        // Sem câmbio não se grava. Gravar dólares como euros inflacionava o
+        // património e o número errado apresentava-se como certo.
+        return {
+          assetId: a.id,
+          symbol,
+          quoteDate,
+          refreshed: false,
+          problem: `Cotação em ${series.currency} e sem taxa de câmbio para a converter.`,
+        };
+      }
+
+      // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
+      if (emEuros !== a.unitPriceCents) {
+        await repo.updateAsset(a.id, spaceId, { unitPriceCents: emEuros }).catch(() => {});
+        return { assetId: a.id, symbol, quoteDate, refreshed: true, problem: null };
+      }
+      return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: null };
     }),
   );
 }

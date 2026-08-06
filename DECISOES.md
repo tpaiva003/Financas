@@ -946,3 +946,55 @@ ambiente com o que ele usa.
 Continua a valer a regra: **contagens e nomes de funcionalidades, nunca
 conteúdo**. Saber que um ambiente usa o património não é o mesmo que ver o que
 lá está, e a consola continua sem poder ver.
+
+## O Yahoo funciona, e os símbolos de reserva cotam em dólares
+
+O teste em produção confirmou: o Yahoo responde a todos os símbolos em 130 a 350
+ms, com milhares de cotações e a última do próprio dia. A Stooq bloqueia os sete.
+
+Mas o mesmo teste mostrou uma armadilha que estava lá em silêncio: os símbolos
+de reserva (`^GSPC`, `IWDA.L`, `URTH`) **cotam todos em dólares**, incluindo o
+IWDA apesar de estar em Londres. Se o principal falhasse, a comparação com o
+índice passava a medir o mercado e o câmbio à mistura, que é exatamente o erro
+que este desenho existe para evitar, e sem ninguém dar por isso.
+
+A moeda passa a estar **declarada em cada símbolo**, e não lida da resposta: é
+conhecimento estável, e declará-la permite pôr os que cotam em euros à frente
+sem depender de qual responde primeiro. Um teste garante essa ordem. Quando só
+houver um em dólares, a página usa-o (mais vale uma comparação imperfeita do que
+nenhuma) mas **diz que a diferença inclui câmbio**.
+
+## Uma cotação sem moeda é um número errado
+
+A pergunta era sobre atualização, e ao investigá-la apareceu coisa pior: o
+Yahoo devolve o MSFT **em dólares**, e o preço ia direto para o ativo como se
+fossem euros. Uma ação a 536,92 USD aparecia como 536,92 EUR e inflacionava o
+património quase 10%, sem dar sinal. Numa app de finanças, um número errado que
+se apresenta como certo é o pior resultado possível: estraga o património, o
+ganho, a TIR e a comparação com o índice, todos ao mesmo tempo.
+
+As cotações passam a guardar a **moeda de origem**, e a conversão é feita **à
+taxa do dia da cotação**, não à de hoje. A data importa: uma cotação de há dois
+anos vale o que valia nessa altura, e usar a taxa de hoje faria a rentabilidade
+histórica mexer-se sozinha sempre que o câmbio mexesse.
+
+**Sem câmbio, não se grava preço nenhum.** Fica sem preço, com o motivo à vista.
+Um investimento sem preço conta pelo que custou e diz que é isso que está a
+fazer; um com o preço errado mente em silêncio.
+
+## Atualizar sem esperar por ninguém
+
+O preço só se renovava quando alguém abria a página de Ativos, e a primeira
+visita do dia pagava a espera. Quem entrasse de manhã via o fecho de anteontem
+até a página ir buscar o de ontem.
+
+Passa a haver uma **passagem diária**, depois do fecho americano, que enche a
+cache de todos os símbolos conhecidos. Como as cotações são partilhadas por
+todos os ambientes, uma passagem serve toda a gente e as páginas passam a
+desenhar-se sem esperar por nada.
+
+A rota fica fora do middleware de sessão, porque quem lhe bate é a Vercel e não
+um browser. Não é uma porta aberta: exige o `CRON_SECRET`, não lê nem devolve
+dados de ninguém, e só mexe em cotações, que são factos públicos. E **não altera
+preços de ativos**: quem os escreve continua a ser a visita à página, que é onde
+se sabe a que ambiente pertencem e onde se pode dizer o que aconteceu.

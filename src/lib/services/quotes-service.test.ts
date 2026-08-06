@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { probeQuoteSource } from "@/lib/services/quotes-service";
+import { probeQuoteSource, refreshStalePrices } from "@/lib/services/quotes-service";
+import { MockRepository } from "@/lib/data/mock-repository";
 
 const CSV = `Date,Open,High,Low,Close,Volume
 2026-08-05,52.75,53.10,52.60,53.05,110222`;
@@ -75,5 +76,53 @@ describe("probeQuoteSource", () => {
     const probes = await probeQuoteSource(["iwda.uk"]);
     expect(probes.find((p) => p.source === "yahoo")!.querySymbol).toBe("IWDA.L");
     expect(probes.find((p) => p.source === "stooq")!.querySymbol).toBe("iwda.uk");
+  });
+});
+
+
+describe("refreshStalePrices", () => {
+  it("não grava uma cotação em dólares como se fossem euros", async () => {
+    // Era este o erro: o MSFT vem a 536,92 USD e ficava gravado como 536,92 EUR,
+    // inflacionando o património quase 10% sem dar sinal.
+    const emDolares = JSON.stringify({
+      chart: {
+        result: [
+          {
+            meta: { currency: "USD" },
+            timestamp: [1785888000],
+            indicators: { quote: [{ close: [536.92] }] },
+          },
+        ],
+      },
+    });
+
+    const repo = new MockRepository();
+    const space = await repo.createSpace({ name: "Teste", createdBy: "u1", members: [] });
+    const asset = await repo.createAsset({
+      spaceId: space.id,
+      name: "MSFT",
+      kind: "investimento",
+      quantity: 1,
+      unitCostCents: null,
+      unitPriceCents: null,
+      valueCents: null,
+      purchasedAt: null,
+      notes: null,
+      symbol: "msft.us",
+    });
+
+    // Sem taxa de câmbio disponível, não se grava preço nenhum.
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("frankfurter")) return new Response("erro", { status: 503 });
+      return new Response(emDolares, { status: 200 });
+    });
+
+    const [freshness] = await refreshStalePrices(space.id);
+    expect(freshness!.refreshed).toBe(false);
+    expect(freshness!.problem).toContain("USD");
+
+    const depois = (await repo.listAssets(space.id)).find((a) => a.id === asset.id);
+    // O que interessa: NÃO ficou 53692.
+    expect(depois!.unitPriceCents ?? null).toBeNull();
   });
 });

@@ -31,6 +31,19 @@
 export const QUOTE_SOURCES = ["yahoo", "stooq"] as const;
 export type QuoteSourceId = (typeof QUOTE_SOURCES)[number];
 
+/**
+ * Um símbolo a tentar, com a moeda em que ele cota.
+ *
+ * A moeda vem declarada e não lida da resposta de propósito: é conhecimento
+ * estável (o `SXR8.DE` cota em euros na Xetra, o `^GSPC` cota em dólares) e
+ * declará-la aqui permite **preferir os que cotam em euros** sem depender de a
+ * fonte responder primeiro.
+ */
+export interface BenchmarkSymbol {
+  symbol: string;
+  currency: "EUR" | "USD";
+}
+
 export interface Benchmark {
   id: string;
   label: string;
@@ -40,11 +53,14 @@ export interface Benchmark {
    * São vários porque a fonte de cotações não garante nenhum em particular: os
    * códigos das praças mudam, um ETF deixa de ser seguido, um ticker é
    * renomeado. Com uma lista, a comparação continua a funcionar em vez de
-   * desaparecer da página por causa de um símbolo. Os primeiros são ETFs UCITS
-   * em euros; o último é o índice em dólares, que serve de rede de segurança e
-   * mede o mercado com o câmbio à mistura, mas é melhor do que nada.
+   * desaparecer por causa de um símbolo.
+   *
+   * **Os que cotam em euros vão à frente, e não é indiferente.** Os de reserva
+   * cotam em dólares, e usar um deles mede o mercado e o câmbio à mistura. Não
+   * são inúteis (mais vale uma comparação imperfeita do que nenhuma), mas quando
+   * um deles serve, a página tem de o dizer em vez de deixar passar por igual.
    */
-  symbols: string[];
+  symbols: BenchmarkSymbol[];
   /** O que é, em português corrente. */
   description: string;
 }
@@ -57,13 +73,22 @@ export const BENCHMARKS: Benchmark[] = [
   {
     id: "sp500",
     label: "S&P 500",
-    symbols: ["sxr8.de", "vusa.de", "^spx"],
+    symbols: [
+      { symbol: "sxr8.de", currency: "EUR" },
+      { symbol: "vusa.de", currency: "EUR" },
+      { symbol: "^spx", currency: "USD" },
+    ],
     description: "As 500 maiores empresas americanas, pelo ETF da iShares em euros.",
   },
   {
     id: "world",
     label: "MSCI World",
-    symbols: ["eunl.de", "iwda.uk", "urth.us"],
+    symbols: [
+      { symbol: "eunl.de", currency: "EUR" },
+      // O IWDA cota em dólares mesmo estando em Londres.
+      { symbol: "iwda.uk", currency: "USD" },
+      { symbol: "urth.us", currency: "USD" },
+    ],
     description: "Mais de mil empresas dos mercados desenvolvidos, em euros.",
   },
 ];
@@ -75,8 +100,20 @@ export function benchmarkById(id: string): Benchmark | null {
 export interface Quote {
   /** "AAAA-MM-DD". */
   date: string;
-  /** Fecho, em cêntimos. */
+  /**
+   * Fecho, em cêntimos **da moeda da cotação**, que nem sempre é o euro.
+   *
+   * Guardar sem a moeda foi um erro que custou caro: o MSFT vem em dólares, e o
+   * preço ia para o ativo como se fossem euros, inflacionando o património.
+   */
   closeCents: number;
+}
+
+/** Uma série de cotações, com a moeda em que está. */
+export interface QuoteSeriesData {
+  quotes: Quote[];
+  /** "EUR", "USD"… O que a fonte disser. */
+  currency: string;
 }
 
 /**
@@ -133,18 +170,20 @@ export function looksBlocked(text: string): boolean {
  * (feriados, suspensões) vêm a `null` e saltam-se: um buraco no meio da série
  * não é um preço de zero.
  */
-export function parseYahooChart(text: string): Quote[] {
+export function parseYahooChart(text: string): QuoteSeriesData {
   let body: any;
   try {
     body = JSON.parse(text);
   } catch {
-    return [];
+    return { quotes: [], currency: "EUR" };
   }
 
   const result = body?.chart?.result?.[0];
+  const currency =
+    typeof result?.meta?.currency === "string" ? result.meta.currency.toUpperCase() : "EUR";
   const stamps: unknown = result?.timestamp;
   const closes: unknown = result?.indicators?.quote?.[0]?.close;
-  if (!Array.isArray(stamps) || !Array.isArray(closes)) return [];
+  if (!Array.isArray(stamps) || !Array.isArray(closes)) return { quotes: [], currency };
 
   const quotes: Quote[] = [];
   for (let i = 0; i < stamps.length; i++) {
@@ -158,7 +197,10 @@ export function parseYahooChart(text: string): Quote[] {
   }
   // Um dia pode vir repetido em respostas intradiárias: fica o último.
   const byDate = new Map(quotes.map((q) => [q.date, q]));
-  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return {
+    quotes: [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
+    currency,
+  };
 }
 
 /** Cotações numa forma indexada por data, que é o que a simulação do índice pede. */

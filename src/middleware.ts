@@ -3,6 +3,10 @@
  *
  * Público: a landing (/), o login, a submissão de contacto, ativos estáticos e
  * as rotas de auth. Todo o resto é privado. Usa a config edge-safe.
+ *
+ * `api/cron` fica de fora porque quem lhe bate é a Vercel, não um browser com
+ * sessão. Não é uma porta aberta: essa rota exige o `CRON_SECRET` e não lê nem
+ * devolve dados de ninguém, só enche a cache de cotações, que são públicas.
  */
 
 import NextAuth from "next-auth";
@@ -35,5 +39,7 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: [
+    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)",
+  ],
 };
