@@ -819,3 +819,43 @@ convida a dar passo nenhum. No telemóvel o botão passa para baixo.
 o campo da descrição. Um botão de "criar" por cima do ecrã de criar não leva a
 lado nenhum. A regra de onde ele aparece cresceu duas vezes por causa de
 defeitos reais, por isso saiu do componente para um módulo com testes.
+
+## Os preços passam a atualizar-se sozinhos
+
+Ficava meio feito: a série do índice ia buscar dados novos quando estava velha,
+mas o preço de cada investimento só mudava quando alguém carregava no botão. Um
+valor de há três semanas ficava lá a passar por atual, e todas as contas que
+dependem dele (património líquido, ganho, comparação com o índice) ficavam
+erradas sem dar sinal.
+
+Agora, ao abrir a página, os preços dos investimentos com símbolo são postos em
+dia. Só se vai à fonte quando a cotação guardada está velha, e as cotações são
+um cache partilhado, por isso **cada símbolo é buscado uma vez por dia no
+serviço inteiro**, não uma vez por visita. E só se escreve na base de dados
+quando o preço mudou mesmo.
+
+**A data do fecho passa a estar à vista.** É a parte que faltava: antes não
+havia forma de saber se o número era de hoje ou do mês passado. Um valor
+desatualizado identificado como tal é informação; o mesmo valor apresentado como
+atual é uma mentira silenciosa. Sem símbolo, diz-se que o preço foi escrito à
+mão e como fazer para deixar de o ser.
+
+## Um botão que responde "porquê"
+
+"Não encontrei cotações para este símbolo" é honesto e inútil. Pode ser o
+símbolo estar errado, a fonte estar em baixo, ou o servidor não conseguir sair
+para a internet. São três problemas com três soluções diferentes, e sem os
+distinguir não se resolve nenhum.
+
+Na consola da plataforma há agora um botão que testa a fonte com os índices de
+referência e com os símbolos que estão mesmo registados, e diz qual dos três é:
+
+- **Não falei com a fonte** (a chamada rebentou): é rede ou bloqueio de saída.
+- **A fonte respondeu mas não conhece o símbolo** (200 sem cotações): é o
+  símbolo.
+- **A fonte respondeu com erro** (503 e afins): é a fonte, e passa sozinho.
+- **Funciona**, com quantas cotações e de que dia é a última.
+
+Corre no servidor de propósito: é ele que vai buscar as cotações em produção, e
+testar a partir do browser respondia a outra pergunta. Fica atrás do dono da
+plataforma, porque é diagnóstico e não conteúdo de ninguém.

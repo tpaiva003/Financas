@@ -535,6 +535,8 @@ export interface Repository {
   saveQuotes(symbol: string, quotes: StoredQuote[]): Promise<void>;
   /** A data da cotação mais recente que temos, para saber se vale a pena ir buscar. */
   latestQuoteDate(symbol: string): Promise<string | null>;
+  /** Todos os símbolos registados, de todos os ambientes. Só para diagnóstico. */
+  listAllAssetSymbols(): Promise<string[]>;
   createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
   deleteAssetTrade(id: string, spaceId: string): Promise<void>;
 

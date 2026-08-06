@@ -6,6 +6,7 @@ import { getRepository } from "@/lib/data";
 import type { SpaceSummary } from "@/lib/data";
 import { InviteUserForm } from "@/components/InviteUserForm";
 import { AccountRow } from "@/components/AccountRow";
+import { QuoteDiagnostic } from "@/components/QuoteDiagnostic";
 
 export const metadata = { title: "Plataforma · Rachar" };
 export const dynamic = "force-dynamic";
@@ -150,6 +151,8 @@ export default async function PlataformaPage() {
           </ul>
         </section>
       ) : null}
+
+      <QuoteDiagnostic />
 
       <Link href="/dashboard" className="inline-block text-sm text-fg-muted hover:text-fg">
         ← Voltar

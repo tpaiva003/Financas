@@ -129,6 +129,150 @@ export async function getQuoteSeries(
   };
 }
 
+export type QuoteVerdict = "ok" | "sem-rede" | "simbolo-desconhecido" | "resposta-estranha";
+
+export interface QuoteProbe {
+  symbol: string;
+  verdict: QuoteVerdict;
+  /** O que dizer a quem está a olhar, em português. */
+  message: string;
+  httpStatus: number | null;
+  /** Primeira linha da resposta, que costuma dizer tudo. */
+  firstLine: string | null;
+  quotes: number;
+  lastDate: string | null;
+  ms: number;
+}
+
+/**
+ * Testa a fonte de cotações e diz **porquê** quando não funciona.
+ *
+ * Existe porque "não encontrei cotações para este símbolo" é uma mensagem
+ * honesta e inútil: pode ser o símbolo estar errado, a fonte estar em baixo, ou
+ * o servidor não conseguir sair para a internet. São três problemas com três
+ * soluções diferentes, e sem os distinguir não há forma de resolver nenhum.
+ *
+ * Não é um teste automático: é um botão para carregar quando há dúvidas.
+ */
+export async function probeQuoteSource(symbols: string[]): Promise<QuoteProbe[]> {
+  return Promise.all(
+    symbols.map(async (raw): Promise<QuoteProbe> => {
+      const symbol = normalizeSymbol(raw) ?? raw;
+      const started = Date.now();
+      const base = { symbol, httpStatus: null, firstLine: null, quotes: 0, lastDate: null };
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        const res = await fetch(csvUrl(symbol), {
+          signal: controller.signal,
+          headers: { accept: "text/csv,text/plain" },
+          cache: "no-store",
+        });
+        const text = await res.text();
+        const firstLine = text.split(/\r?\n/)[0]?.slice(0, 120) ?? "";
+        const parsed = parseStooqCsv(text);
+        const ms = Date.now() - started;
+
+        if (!res.ok) {
+          return {
+            ...base,
+            verdict: "resposta-estranha",
+            message: `A fonte respondeu ${res.status}. Não é o símbolo, é a fonte.`,
+            httpStatus: res.status,
+            firstLine,
+            ms,
+          };
+        }
+        if (parsed.length === 0) {
+          return {
+            ...base,
+            verdict: "simbolo-desconhecido",
+            message:
+              "Saímos para a internet e a fonte respondeu, mas não conhece este símbolo. É o símbolo que está errado.",
+            httpStatus: res.status,
+            firstLine,
+            ms,
+          };
+        }
+        const last = parsed[parsed.length - 1]!;
+        return {
+          symbol,
+          verdict: "ok",
+          message: `Funciona: ${parsed.length} cotações, a última de ${last.date}.`,
+          httpStatus: res.status,
+          firstLine,
+          quotes: parsed.length,
+          lastDate: last.date,
+          ms,
+        };
+      } catch (e) {
+        return {
+          ...base,
+          verdict: "sem-rede",
+          message:
+            "Não consegui sequer falar com a fonte. É rede ou bloqueio de saída, não é o símbolo.",
+          firstLine: e instanceof Error ? e.message.slice(0, 120) : null,
+          ms: Date.now() - started,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+}
+
+export interface PriceFreshness {
+  assetId: string;
+  symbol: string;
+  /** De que dia é o fecho que está a ser mostrado. */
+  quoteDate: string | null;
+  /** Foi buscar cotação nova nesta visita. */
+  refreshed: boolean;
+}
+
+/**
+ * Põe os preços em dia ao abrir a página.
+ *
+ * Sem isto, o preço de um investimento era o do dia em que alguém carregou no
+ * botão, e ficava lá parado sem dizer de quando era. Um valor desatualizado que
+ * se apresenta como atual é pior do que não ter valor nenhum: as contas todas
+ * que dependem dele (património, ganho, comparação com o índice) ficam erradas
+ * sem dar sinal.
+ *
+ * Só vai à fonte quando a cotação guardada está velha, e as cotações são um
+ * cache partilhado por toda a gente, por isso cada símbolo é buscado uma vez por
+ * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
+ * preço que havia, e quem chama mostra a data para não haver enganos.
+ */
+export async function refreshStalePrices(spaceId: string): Promise<PriceFreshness[]> {
+  const repo = getRepository();
+  const assets = await repo.listAssets(spaceId).catch(() => []);
+  const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
+  if (withSymbol.length === 0) return [];
+
+  return Promise.all(
+    withSymbol.map(async (a): Promise<PriceFreshness> => {
+      const symbol = a.symbol!;
+      const series = await getQuoteSeries(symbol).catch(() => null);
+      const quoteDate = series?.lastDate ?? null;
+
+      // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
+      if (
+        series?.lastCloseCents !== null &&
+        series?.lastCloseCents !== undefined &&
+        series.lastCloseCents !== a.unitPriceCents
+      ) {
+        await repo
+          .updateAsset(a.id, spaceId, { unitPriceCents: series.lastCloseCents })
+          .catch(() => {});
+        return { assetId: a.id, symbol, quoteDate, refreshed: true };
+      }
+      return { assetId: a.id, symbol, quoteDate, refreshed: false };
+    }),
+  );
+}
+
 /**
  * Atualiza o preço atual de um investimento a partir da sua cotação.
  *
