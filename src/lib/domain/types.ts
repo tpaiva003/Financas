@@ -75,7 +75,8 @@ export interface Expense {
   ownerId: UserId;
   /** Visível ao outro utilizador? (despesas pessoais, REQ-PRIV-2). */
   visibleToPartner?: boolean;
-  createdBy: UserId;
+  /** Quem registou. Fica a null se a conta for apagada: o registo sobrevive à pessoa. */
+  createdBy: UserId | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -102,7 +103,8 @@ export interface Settlement {
   currency: Currency;
   date: string;
   note?: string | null;
-  createdBy: UserId;
+  /** Quem registou. Fica a null se a conta for apagada: o registo sobrevive à pessoa. */
+  createdBy: UserId | null;
   createdAt: string;
 }
 
