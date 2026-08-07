@@ -6,31 +6,37 @@
  * sempre não é neutro — é acumular risco sobre informação que ninguém pediu para
  * manter, e é exactamente o que o RGPD diz para não fazer.
  *
- * Noventa dias sem atividade nenhuma, e o ambiente gratuito é apagado.
+ * Noventa dias sem atividade nenhuma, e o ambiente gratuito **congela**: fica só
+ * de leitura, deixa de contar para custos, e os dados ficam lá.
  *
- * **Isto apaga dados de pessoas a sério, por isso as regras são apertadas:**
+ * **Não se apaga nada.** Foi uma decisão explícita, contra a leitura habitual de
+ * "retenção a 90 dias" — que é guardar e depois eliminar. Congelar não cumpre a
+ * minimização do RGPD tão bem como apagar, e isso fica dito; em troca, ninguém
+ * perde dados financeiros por ter estado uns meses sem entrar, e um erro nesta
+ * lógica é sempre reversível. Entre um sistema que apaga certo e um que congela
+ * errado, o segundo devolve-se; o primeiro não.
+ *
+ * As regras:
  *
  * 1. **Nunca toca em ambientes `full`.** Quem foi convidado, quem paga, os donos
  *    da casa: ficam fora disto, sem excepção e sem depender de mais nenhuma
  *    condição.
- * 2. **Avisa-se antes, com margem.** Duas semanas de antecedência, por email. Um
- *    apagamento silencioso é indistinguível de perder os dados de alguém por
- *    acidente, e ninguém consegue provar a diferença depois.
- * 3. **Qualquer atividade reinicia a contagem.** Entrar já conta: se a pessoa
- *    voltou, não está abandonado.
- * 4. **O aviso caduca.** Se alguém foi avisado e depois voltou, o aviso não fica
- *    pendurado à espera — a contagem recomeça do zero, e um novo aviso terá de
- *    ser enviado antes de se apagar seja o que for.
+ * 2. **Avisa-se antes, com margem.** Duas semanas por email. Chegar e encontrar
+ *    tudo bloqueado sem aviso é mau, mesmo sendo reversível.
+ * 3. **Qualquer atividade reinicia a contagem e descongela.** Entrar já conta: se
+ *    a pessoa voltou, não está abandonado.
+ * 4. **O aviso caduca.** Quem foi avisado e voltou não fica com um aviso pendurado
+ *    à espera — a contagem recomeça do zero.
  *
- * Lógica pura, sem acesso a dados. É deliberado: o que decide apagar dados de
- * alguém tem de ser legível e testável sem base de dados nenhuma à frente.
+ * Lógica pura, sem acesso a dados. É deliberado: o que decide bloquear o acesso
+ * de alguém aos seus dados tem de ser legível sem base de dados à frente.
  */
 
 import type { SpacePlan } from "./limits";
 
-/** Dias sem atividade até um ambiente gratuito ser apagado. */
+/** Dias sem atividade até um ambiente gratuito congelar. */
 export const RETENTION_DAYS = 90;
-/** Quantos dias antes se avisa. Duas semanas dá tempo a exportar ou a voltar. */
+/** Quantos dias antes se avisa. Duas semanas dá tempo a voltar. */
 export const WARN_BEFORE_DAYS = 14;
 
 export type RetentionState =
@@ -38,10 +44,8 @@ export type RetentionState =
   | "ativo"
   /** Está perto do fim e ainda não foi avisado: enviar aviso. */
   | "avisar"
-  /** Passou o prazo e foi avisado com antecedência: pode apagar-se. */
-  | "apagar"
-  /** Passou o prazo mas nunca foi avisado: avisa-se primeiro. */
-  | "avisar-primeiro";
+  /** Passou o prazo: passa a só de leitura. Os dados ficam. */
+  | "congelar";
 
 export interface RetentionInput {
   plan: SpacePlan | undefined;
@@ -58,7 +62,7 @@ export interface RetentionInput {
 export interface RetentionVerdict {
   state: RetentionState;
   daysInactive: number;
-  /** Dias até ao apagamento. Negativo quando já passou. */
+  /** Dias até congelar. Negativo quando já passou. */
   daysLeft: number;
 }
 
@@ -95,13 +99,11 @@ export function retentionVerdict(input: RetentionInput): RetentionVerdict {
   const avisoValido = Boolean(warnedAt && warnedAt.slice(0, 10) >= desde.slice(0, 10));
 
   if (daysInactive >= RETENTION_DAYS) {
-    // Passou o prazo, mas se ninguém avisou não se apaga: avisa-se agora e
-    // espera-se a margem. Ninguém perde dados por não ter sido avisado.
-    return {
-      state: avisoValido ? "apagar" : "avisar-primeiro",
-      daysInactive,
-      daysLeft,
-    };
+    // Congela mesmo sem aviso válido. É a diferença que faz congelar em vez de
+    // apagar: como é reversível — basta a pessoa voltar — não vale a pena
+    // manter um ambiente abandonado a consumir recursos à espera de um email
+    // que talvez nunca seja lido. O aviso continua a ser enviado antes.
+    return { state: "congelar", daysInactive, daysLeft };
   }
 
   if (daysLeft <= WARN_BEFORE_DAYS && !avisoValido) {

@@ -41,32 +41,27 @@ describe("retentionVerdict", () => {
     );
   });
 
-  it("apaga quando passou o prazo e houve aviso", () => {
+  it("congela quando passa o prazo", () => {
     const v = retentionVerdict(
       comInatividade(RETENTION_DAYS + 1, { warnedAt: "2026-07-20" }),
     );
-    expect(v.state).toBe("apagar");
+    expect(v.state).toBe("congelar");
   });
 
-  it("passou o prazo mas ninguém avisou: avisa-se, não se apaga", () => {
-    // Ninguém pode perder dados por não ter sido avisado, nem que o aviso tenha
-    // falhado por nossa causa.
-    const v = retentionVerdict(comInatividade(RETENTION_DAYS + 30));
-    expect(v.state).toBe("avisar-primeiro");
-  });
-
-  it("um aviso anterior à última atividade não conta", () => {
-    // A pessoa foi avisada, voltou, e voltou a parar. A contagem recomeçou; o
-    // aviso velho não pode servir para apagar sem novo aviso.
-    const v = retentionVerdict(
-      comInatividade(RETENTION_DAYS + 1, { warnedAt: "2020-06-01" }),
-    );
-    expect(v.state).toBe("avisar-primeiro");
+  it("congelar não é apagar: nunca há um estado que destrua", () => {
+    // A garantia que sustenta a decisão de congelar em vez de apagar. Se alguém
+    // acrescentar um estado destrutivo, este teste tem de falhar primeiro.
+    const estados = [
+      retentionVerdict(comInatividade(3)).state,
+      retentionVerdict(comInatividade(RETENTION_DAYS - WARN_BEFORE_DAYS)).state,
+      retentionVerdict(comInatividade(RETENTION_DAYS + 500)).state,
+    ];
+    expect(estados).toEqual(["ativo", "avisar", "congelar"]);
   });
 
   it("um ambiente completo nunca é tocado, por muito parado que esteja", () => {
     // A verificação do plano vem antes de qualquer conta de datas, para ser
-    // impossível apagar um ambiente pago por um erro de aritmética.
+    // impossível congelar um ambiente pago por um erro de aritmética.
     const v = retentionVerdict(
       comInatividade(RETENTION_DAYS * 10, { plan: "full", warnedAt: "2020-01-02" }),
     );
@@ -86,17 +81,17 @@ describe("retentionVerdict", () => {
       warnedAt: null,
       today: HOJE,
     });
-    expect(v.state).toBe("avisar-primeiro");
+    expect(v.state).toBe("congelar");
     expect(v.daysInactive).toBeGreaterThan(RETENTION_DAYS);
   });
 
-  it("no dia exato do prazo já se pode apagar, se houve aviso", () => {
+  it("no dia exato do prazo já congela", () => {
     const v = retentionVerdict(comInatividade(RETENTION_DAYS, { warnedAt: HOJE }));
-    expect(v.state).toBe("apagar");
+    expect(v.state).toBe("congelar");
     expect(v.daysLeft).toBe(0);
   });
 
-  it("datas estragadas não fazem apagar nada por engano", () => {
+  it("datas estragadas não congelam nada por engano", () => {
     const v = retentionVerdict({
       plan: "free",
       lastActivity: "não é uma data",
@@ -104,7 +99,7 @@ describe("retentionVerdict", () => {
       warnedAt: null,
       today: HOJE,
     });
-    // Sem conseguir medir, fica ativo: entre não apagar e apagar por engano, a
+    // Sem conseguir medir, fica ativo: entre não mexer e bloquear por engano, a
     // escolha é óbvia.
     expect(v.state).toBe("ativo");
   });

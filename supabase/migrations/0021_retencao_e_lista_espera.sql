@@ -1,16 +1,20 @@
--- Retenção de ambientes gratuitos, e lista de espera para o registo aberto.
+-- Congelamento de ambientes gratuitos inativos, e lista de espera.
 --
 -- Abrir o registo cria uma obrigação que não existia: passamos a guardar dados
--- financeiros de pessoas que os deixaram lá e nunca mais voltaram. Guardar para
--- sempre é acumular risco sobre informação que ninguém pediu para manter.
+-- financeiros de pessoas que os deixaram lá e nunca mais voltaram.
 
--- Quando se avisou que o ambiente ia ser apagado. Sem isto não há forma de
--- garantir a regra que importa: ninguém perde dados sem ter sido avisado antes.
+-- Ao fim de 90 dias sem atividade, um ambiente gratuito CONGELA: fica só de
+-- leitura. Não se apaga nada. Congelar não cumpre a minimização do RGPD tão bem
+-- como apagar, e isso fica dito; em troca ninguém perde dados por ter estado uns
+-- meses sem entrar, e um erro nesta lógica é sempre reversível.
 alter table spaces
-  add column if not exists retention_warned_at timestamptz;
+  add column if not exists retention_warned_at timestamptz,
+  add column if not exists frozen_at timestamptz;
 
 comment on column spaces.retention_warned_at is
-  'Quando se avisou do apagamento por inatividade. Um aviso anterior à última atividade não conta: a pessoa voltou e a contagem recomeçou.';
+  'Quando se avisou do congelamento por inatividade. Um aviso anterior à última atividade não conta: a pessoa voltou e a contagem recomeçou.';
+comment on column spaces.frozen_at is
+  'Congelado por inatividade: só de leitura. Qualquer atividade descongela. Nunca implica apagar dados.';
 
 -- Quem chegou depois das vagas do dia. Não é uma conta: é um email e uma data.
 create table if not exists waitlist (
