@@ -349,7 +349,9 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
 
       {view === "ativos" ? <PortfolioReturnSection spaceId={ctx.space.id} /> : null}
 
-      {view === "ativos" || view === "dividas" ? <AssetForm /> : null}
+      {view === "ativos" || view === "dividas" ? (
+        <AssetForm contexto={view === "dividas" ? "dividas" : "ativos"} />
+      ) : null}
 
       <Link href="/relatorios" className="inline-block text-sm text-fg-muted hover:text-fg">
         Ver relatórios de despesa
