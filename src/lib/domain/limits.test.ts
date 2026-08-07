@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  SIGNUPS_PER_DAY,
+  decideSignup,
   FREE_LIMITS,
   checkLimit,
   limitsFor,
@@ -96,5 +98,27 @@ describe("planForNewSpace", () => {
 
   it("quem se registou sozinho começa no gratuito", () => {
     expect(planForNewSpace(false)).toBe("free");
+  });
+});
+
+describe("decideSignup", () => {
+  it("deixa entrar enquanto houver vaga", () => {
+    expect(decideSignup(0).allowed).toBe(true);
+    expect(decideSignup(0).message).toBeNull();
+  });
+
+  it("fecha a porta quando as vagas do dia acabaram", () => {
+    expect(decideSignup(SIGNUPS_PER_DAY).allowed).toBe(false);
+  });
+
+  it("quem fica de fora recebe um convite, não um erro", () => {
+    // Uma porta fechada por desenho não é uma avaria, e não se anuncia como tal.
+    const d = decideSignup(SIGNUPS_PER_DAY);
+    expect(d.message).toContain("email");
+    expect(d.message).not.toMatch(/erro|falhou|inválido/i);
+  });
+
+  it("continua fechada mesmo que a contagem passe do tecto", () => {
+    expect(decideSignup(SIGNUPS_PER_DAY + 50).allowed).toBe(false);
   });
 });
