@@ -135,3 +135,38 @@ export function checkLimit(kind: LimitKind, current: number, plan: SpacePlan): L
 export function planForNewSpace(isEnvAllowed: boolean): SpacePlan {
   return isEnvAllowed ? "full" : "free";
 }
+
+/**
+ * Quantas contas novas se aceitam por dia.
+ *
+ * Um por dia é deliberadamente pouco. Não é para gerir carga — é para que abrir
+ * o registo não signifique abrir a porta de par em par: quem quer entrar hoje
+ * entra, quem chega a seguir deixa o email e é avisado. Uma fila é honesta;
+ * uma porta que aceita tudo e depois se fecha à pressa não é.
+ *
+ * Também limita o estrago de um registo automatizado: com este tecto, um robô
+ * consegue uma conta por dia em vez de mil numa tarde.
+ */
+export const SIGNUPS_PER_DAY = 1;
+
+export interface SignupDecision {
+  allowed: boolean;
+  /** O que dizer a quem ficou de fora. `null` quando entrou. */
+  message: string | null;
+}
+
+/**
+ * Ainda há vaga hoje?
+ *
+ * `hojeCount` é quantas contas já foram criadas no dia. Quem não entra **não
+ * leva um erro**: leva um convite para deixar o email, que é a única resposta
+ * útil quando a porta está fechada por desenho e não por avaria.
+ */
+export function decideSignup(hojeCount: number): SignupDecision {
+  if (hojeCount < SIGNUPS_PER_DAY) return { allowed: true, message: null };
+  return {
+    allowed: false,
+    message:
+      "Por hoje já não há vagas — abrimos poucas contas por dia, de propósito. Deixa o teu email e avisamos-te quando for a tua vez.",
+  };
+}
