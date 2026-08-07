@@ -20,8 +20,8 @@
  * Lógica pura, sem acesso a dados.
  */
 
-import type { CashFlow } from "./returns";
-import { xirr } from "./returns";
+import type { CashFlow, ValuePoint } from "./returns";
+import { priceOn, xirr } from "./returns";
 
 export type TradeKind = "compra" | "venda" | "dividendo" | "custo";
 
@@ -91,10 +91,17 @@ export function tradeAmountCents(t: Trade): number {
   return Math.abs(Math.round(qty * price));
 }
 
-export function buildPosition(trades: Trade[]): Position {
-  if (trades.length === 0) return EMPTY;
-
-  const sorted = [...trades].sort((a, b) => {
+/**
+ * A ordem por que os movimentos são processados.
+ *
+ * Está aqui, e não em linha, porque **dois sítios contam a mesma posição**: o
+ * `buildPosition` e o `positionValuePoints`. Se cada um ordenasse à sua maneira,
+ * a quantidade que o segundo vê num dado dia deixava de ser a que o primeiro
+ * calculou, e a rentabilidade ponderada no tempo passava a discordar do custo
+ * médio sem que nada se queixasse.
+ */
+export function sortTrades(trades: Trade[]): Trade[] {
+  return [...trades].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;
     // No mesmo dia, primeiro o que entra e só depois o que sai.
     //
@@ -115,6 +122,12 @@ export function buildPosition(trades: Trade[]): Position {
     if (pa !== pb) return pa - pb;
     return a.id.localeCompare(b.id);
   });
+}
+
+export function buildPosition(trades: Trade[]): Position {
+  if (trades.length === 0) return EMPTY;
+
+  const sorted = sortTrades(trades);
 
   let quantity = 0;
   let costCents = 0;
@@ -271,4 +284,108 @@ export function buildPositionReturn(
     annualPct:
       position.flows.length === 0 ? null : xirr(position.flows, currentValueCents, today),
   };
+}
+
+/**
+ * As fotografias de valor da posição, para a rentabilidade ponderada no tempo.
+ *
+ * **Porquê.** A TIR responde a "quanto rendeu o MEU dinheiro" e depende de
+ * quando ele entrou. A TWR responde a outra coisa — "o investimento foi bom?" —
+ * e para isso tem de anular o efeito dos reforços. Não se consegue anular esse
+ * efeito só com os fluxos: é preciso saber **quanto valia a posição em cada
+ * momento em que entrou ou saiu dinheiro**, e isso exige cotações históricas.
+ *
+ * **Dois pontos por dia de movimento, e a razão é o coração disto.** A
+ * `timeWeightedReturn` fecha cada troço com `valor / (valor anterior + fluxo)`,
+ * ou seja, assume que o dinheiro entrou no **início** do troço. Num dia em que
+ * há crescimento *e* reforço, juntar as duas coisas num só ponto faz o reforço
+ * parecer que esteve investido o período todo, e o crescimento desse período
+ * aparece diluído. Com 10 unidades compradas a 100,00 que valem 200,00 quando se
+ * reforçam mais 90, o troço rendeu 100% e a conta de um ponto só devolvia 5%.
+ *
+ * Por isso cada data de movimento dá:
+ *  1. um ponto que **fecha** o troço anterior — as unidades que já lá estavam ao
+ *     preço de hoje, sem fluxo nenhum;
+ *  2. um ponto que **aplica** o movimento — a posição depois dele, com o fluxo.
+ *
+ * O segundo nunca inventa rentabilidade: o valor sobe exatamente o que entrou.
+ * E é isto que faz um dividendo contar como ganho (sai dinheiro sem sair
+ * unidades) e uma venda a preço de mercado não contar como nada.
+ *
+ * **Devolve `null` se faltar o preço de algum dia.** Não se estima, não se
+ * interpola e não se salta o ponto: qualquer uma dessas saídas dá um número
+ * plausível e errado, que é a pior coisa que esta app pode mostrar.
+ *
+ * `prices` são preços por unidade **em cêntimos de euro**. Uma série na moeda de
+ * origem misturada com movimentos em euros daria uma rentabilidade inventada,
+ * por isso a conversão é de quem chama e tem de estar feita antes de aqui chegar.
+ */
+export function positionValuePoints(
+  trades: Trade[],
+  prices: Record<string, number>,
+  today: string,
+  currentValueCents: number,
+): ValuePoint[] | null {
+  if (trades.length === 0) return null;
+
+  const sorted = sortTrades(trades);
+  const points: ValuePoint[] = [];
+  let quantity = 0;
+
+  // Os movimentos agrupados por dia, pela ordem em que já foram ordenados.
+  const porDia = new Map<string, Trade[]>();
+  for (const t of sorted) porDia.set(t.date, [...(porDia.get(t.date) ?? []), t]);
+
+  for (const [dia, doDia] of porDia) {
+    const preco = priceOn(prices, dia);
+    // Um dia sem cotação não se adivinha. Ver o comentário do cabeçalho.
+    if (preco === null || preco <= 0) return null;
+
+    // (1) Fecha o troço anterior: só o que já cá estava, ao preço de hoje. No
+    // primeiro dia não há troço para fechar — ainda não havia nada investido.
+    if (points.length > 0) {
+      points.push({ date: dia, valueCents: Math.round(quantity * preco), flowCents: 0 });
+    }
+
+    // (2) Aplica o movimento do dia.
+    let fluxo = 0;
+    for (const t of doDia) {
+      const amount = tradeAmountCents(t);
+      const qty = Math.abs(t.quantity ?? 0);
+      switch (t.kind) {
+        case "compra":
+          quantity += qty;
+          fluxo += amount;
+          break;
+        case "venda":
+          // Nunca abaixo de zero: vender a mais é um erro de dados, e uma
+          // quantidade negativa punha a posição a valer valores negativos.
+          quantity = Math.max(0, quantity - qty);
+          fluxo -= amount;
+          break;
+        case "dividendo":
+          // Não mexe na quantidade: é dinheiro que saiu do investimento para o
+          // bolso, e conta como retorno, não como desinvestimento.
+          fluxo -= amount;
+          break;
+        case "custo":
+          // Comissões e impostos são dinheiro posto que não comprou unidades.
+          fluxo += amount;
+          break;
+      }
+    }
+    points.push({ date: dia, valueCents: Math.round(quantity * preco), flowCents: fluxo });
+  }
+
+  // Hoje, com o valor atual. Se o último movimento é de hoje, fica o valor
+  // atual: pode já haver preço mais recente do que o fecho aplicado acima.
+  const ultimo = points[points.length - 1]!;
+  if (ultimo.date === today) {
+    ultimo.valueCents = currentValueCents;
+  } else {
+    points.push({ date: today, valueCents: currentValueCents, flowCents: 0 });
+  }
+
+  // Um ponto só não chega para medir crescimento nenhum.
+  return points.length >= 2 ? points : null;
 }
