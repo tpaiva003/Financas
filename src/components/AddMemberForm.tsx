@@ -6,7 +6,13 @@ import { addMemberAction, type ActionState } from "@/app/(app)/actions";
 
 const initial: ActionState = {};
 
-export function AddMemberForm({ spaceId }: { spaceId: string }) {
+/**
+ * O ambiente não vai no formulário.
+ *
+ * Ia num campo escondido, e um campo escondido é só um campo que o servidor
+ * acreditava. O ambiente é agora decidido no servidor, a partir da sessão.
+ */
+export function AddMemberForm() {
   const [state, action] = useFormState(addMemberAction, initial);
   const ref = useRef<HTMLFormElement>(null);
   const [grant, setGrant] = useState(false);
@@ -26,8 +32,6 @@ export function AddMemberForm({ spaceId }: { spaceId: string }) {
           {state.error}
         </p>
       ) : null}
-      <input type="hidden" name="spaceId" value={spaceId} />
-
       <div>
         <label className="label" htmlFor="m-name">Nome</label>
         <input id="m-name" name="name" type="text" required placeholder="Ex.: Mãe" className="input" />

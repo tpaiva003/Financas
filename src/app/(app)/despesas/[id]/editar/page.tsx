@@ -11,7 +11,7 @@ export default async function EditarDespesaPage({ params }: { params: { id: stri
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
   const repo = getRepository();
-  const expense = await repo.getExpense(params.id, ctx.viewerMemberId);
+  const expense = await repo.getExpense(params.id, ctx.space.id, ctx.viewerMemberId);
   if (!expense) redirect("/despesas");
 
   const categories = await repo.listCategories(ctx.space.id);

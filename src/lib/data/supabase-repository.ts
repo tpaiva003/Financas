@@ -382,9 +382,14 @@ export class SupabaseRepository implements Repository {
     return rows;
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("expenses").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await db
+      .from("expenses")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
     const e = rowToExpense(data);
@@ -441,6 +446,7 @@ export class SupabaseRepository implements Repository {
 
   async updateExpense(
     id: string,
+    spaceId: string,
     input: import("./repository").UpdateExpenseInput,
   ): Promise<void> {
     const db = getSupabaseAdmin();
@@ -458,22 +464,28 @@ export class SupabaseRepository implements Repository {
         visible_to_partner: input.visibleToPartner ?? false,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
     const db = getSupabaseAdmin();
-    const { error } = await db.from("expenses").update({ receipt_path: path }).eq("id", id);
+    const { error } = await db
+      .from("expenses")
+      .update({ receipt_path: path })
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ deleted_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -502,12 +514,13 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ amount_cents: amountCents, status: "confirmed" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -786,12 +799,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ approval_status: status === "approved" ? null : "rejected" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 

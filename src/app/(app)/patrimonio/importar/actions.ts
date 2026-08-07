@@ -147,10 +147,26 @@ export async function commitBrokerAction(
 
   try {
     if (payload.groups?.length) {
+      /**
+       * O `existingAssetId` vem do payload do cliente e não é de confiar.
+       *
+       * Ia direto para a escrita: bastava trocar o id por um de outro ambiente
+       * para pendurar movimentos num ativo que não é nosso. Aqui confronta-se
+       * com os ativos deste ambiente; um id que não esteja na lista passa a
+       * `null`, e o movimento cria um ativo novo em vez de escrever no alheio.
+       */
+      const meus = new Set(
+        (await repo.listAssets(ctx.space.id).catch(() => [])).map((a) => a.id),
+      );
+      const groups = payload.groups.map((g) => ({
+        ...g,
+        existingAssetId: g.existingAssetId && meus.has(g.existingAssetId) ? g.existingAssetId : null,
+      }));
+
       const r = await commitTradesImport({
         spaceId: ctx.space.id,
         userId: ctx.user.id,
-        groups: payload.groups,
+        groups,
       });
       partes.push(`${r.tradesImported} movimento(s)`);
       if (r.assetsCreated > 0) partes.push(`${r.assetsCreated} investimento(s) criado(s)`);

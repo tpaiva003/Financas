@@ -44,7 +44,7 @@ export interface ActionState {
 async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
   try {
     const path = await uploadReceipt(expenseId, spaceId, formData.get("receipt"));
-    if (path) await getRepository().setReceiptPath(expenseId, path);
+    if (path) await getRepository().setReceiptPath(expenseId, spaceId, path);
   } catch {
     // upload de recibo falhou: não bloqueia a gravação da despesa
   }
@@ -310,7 +310,7 @@ export async function approveExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return; // só membros plenos aprovam
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "approved");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "approved");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -322,7 +322,7 @@ export async function rejectExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "rejected");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "rejected");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -488,7 +488,7 @@ export async function updateExpenseAction(
   if ("error" in built) return { error: built.error };
   const split = built.split;
 
-  await getRepository().updateExpense(id, {
+  await getRepository().updateExpense(id, ctx.space.id, {
     description: data.description,
     amountCents,
     transactionDate: data.transactionDate,
@@ -512,7 +512,7 @@ export async function deleteExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().softDeleteExpense(id, ctx.user.id);
+  await getRepository().softDeleteExpense(id, ctx.space.id, ctx.user.id);
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -1144,7 +1144,7 @@ export async function confirmRecurringExpenseAction(
   if (amountCents === null || Number.isNaN(amountCents)) {
     return { error: "Indica o valor real." };
   }
-  await getRepository().confirmExpense(id, amountCents);
+  await getRepository().confirmExpense(id, ctx.space.id, amountCents);
   revalidatePath("/recorrentes");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
@@ -1152,8 +1152,16 @@ export async function confirmRecurringExpenseAction(
   return { ok: true };
 }
 
+/**
+ * O `spaceId` NÃO vem daqui.
+ *
+ * Vinha do formulário, e as verificações de papel e de tecto eram feitas contra
+ * o ambiente atual enquanto a escrita ia para o ambiente que viesse no pedido —
+ * ou seja, dava para enfiar um participante (e um login) no ambiente de outra
+ * pessoa. Passa a ser sempre o `ctx.space.id`, que já foi validado contra os
+ * ambientes de quem está a pedir.
+ */
 const memberSchema = z.object({
-  spaceId: z.string().min(1),
   name: z.string().trim().min(1, "Indica um nome.").max(80),
   email: z.string().trim().email("Email inválido.").max(200).optional().or(z.literal("")),
 });
@@ -1171,7 +1179,6 @@ export async function addMemberAction(
   const accessEmail = String(formData.get("accessEmail") ?? "").trim().toLowerCase();
 
   const parsed = memberSchema.safeParse({
-    spaceId: formData.get("spaceId"),
     name: formData.get("name"),
     email: formData.get("email") || "",
   });
@@ -1193,7 +1200,7 @@ export async function addMemberAction(
   }
 
   const member = await repo.addMember({
-    spaceId: parsed.data.spaceId,
+    spaceId: ctx.space.id,
     name: parsed.data.name,
     email: grantSubmit ? accessEmail : parsed.data.email || null,
   });
@@ -1202,7 +1209,7 @@ export async function addMemberAction(
   if (grantSubmit) {
     const userId = `usr_${randomUUID()}`;
     await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
-    await repo.updateMember(member.id, parsed.data.spaceId, {
+    await repo.updateMember(member.id, ctx.space.id, {
       role: "submitter",
       linkedUserId: userId,
       email: accessEmail,
