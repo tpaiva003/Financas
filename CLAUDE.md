@@ -1,5 +1,11 @@
 # Projeto: App de Despesas Partilhadas (Tiago & Clara)
 
+> **IMPORTANT: lê o `RETOMAR.md` antes de qualquer outra coisa.** É o primeiro
+> ficheiro a abrir numa sessão nova: tem o estado verificado, o trabalho em
+> falta, as decisões já tomadas e as que ainda esperam pelo Tiago. Sem ele
+> arrisca-se refazer o que está feito ou repetir hipóteses já descartadas.
+> Mantém-no atualizado no fim de cada sessão.
+
 App web privada que substitui o Tricount/Splitwise: regista despesas (por upload de documentos e manualmente), divide-as e mantém o saldo entre dois utilizadores. Só dois utilizadores, atrás de autenticação estrita.
 
 ## Documentos
