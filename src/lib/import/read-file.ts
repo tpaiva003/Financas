@@ -67,8 +67,24 @@ function readCsv(buf: Buffer): Grid {
     .map((l) => splitCsvLine(l, sep));
 }
 
+/**
+ * Lê o VALOR da célula, não o texto que o Excel desenha.
+ *
+ * Isto era `raw: false`, que devolve a célula já formatada — ou seja, o que se
+ * vê no ecrã. Parece inofensivo e não é: o formato de número do Excel decide se
+ * o sinal negativo aparece. Com `#,##0;[Red]#,##0` — negativo a vermelho, que é
+ * o que várias localizações oferecem por omissão — o `-23` chega aqui como
+ * `"23"`. Numa coluna de quantidades de corretora, isso transforma **todas as
+ * vendas em compras**, em silêncio, e a posição e a rentabilidade ficam
+ * corrompidas sem nada avisar.
+ *
+ * Com `raw: true` recebemos o número, e o sinal vem com ele. As datas continuam
+ * a chegar como `Date` por causa do `cellDates`, e o texto continua texto. O
+ * `parseAmountCents` já lida com o que sai daqui: "1234.56" é lido igual a
+ * "1 234,56 €".
+ */
 function readXlsx(buf: Buffer): Grid {
-  const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: false });
+  const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return [];
   const sheet = wb.Sheets[sheetName];
@@ -77,7 +93,7 @@ function readXlsx(buf: Buffer): Grid {
   // header: 1 => matriz de arrays (nunca objetos com chaves do ficheiro).
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
-    raw: false,
+    raw: true,
     defval: "",
     blankrows: false,
   });
