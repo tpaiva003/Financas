@@ -1,12 +1,17 @@
 /**
  * Autenticação completa (runtime Node), usada pelo route handler e pelo servidor.
  *
- * REQ-AUTH:
- *  - SSO Google + Microsoft com allow-list de 2 emails (ver auth.config.ts).
- *  - Login por PALAVRA-CHAVE (interim, enquanto o SSO não está ligado): na 1.ª
- *    entrada de cada utilizador, a palavra-chave que ele escrever fica definida;
- *    nas seguintes é validada. Substitui o "Modo de desenvolvimento".
- *  - Dev-login (AUTH_DEV_LOGIN=true) entra sem palavra-chave. Só para dev local.
+ * Como se entra HOJE:
+ *  - **Palavra-chave.** É o único caminho que a interface oferece. Na 1.ª
+ *    entrada de cada conta, a palavra-chave que for escrita fica definida; nas
+ *    seguintes é validada. Isto é uma dívida conhecida — quem chegar primeiro a
+ *    um email conhecido fica com a conta — e está registada no `RETOMAR.md`.
+ *  - **Google e Microsoft** estão configurados no `auth.config.ts` mas **não têm
+ *    botão em lado nenhum**. Não é só falta de credenciais: falta a UI.
+ *  - O "Modo de desenvolvimento" já não existe. A `AUTH_DEV_LOGIN` foi removida
+ *    porque a função que a lia não tinha chamadores — defini-la não fazia nada,
+ *    e uma variável que promete um comportamento que não acontece é pior do que
+ *    variável nenhuma.
  */
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
