@@ -28,6 +28,7 @@ import {
   fetchAssetQuoteAction,
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
+import { InvestmentCard } from "./InvestmentCard";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
@@ -291,23 +292,55 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                     <RefreshQuotesButton />
                   ) : null}
                 </div>
-                <ul className="divide-y divide-hair2">
-                  {(byKind.get(kind) ?? []).map((a) => (
-                    <AssetRow
-                      key={a.id}
-                      asset={a}
-                      // O formulário edita o que está GRAVADO, não a posição
-                      // derivada: senão gravar sem tocar em nada reescrevia a
-                      // entrada manual com os números dos movimentos.
-                      stored={stored.find((s) => s.id === a.id) ?? null}
-                      quoteDate={quoteDateOf.get(a.id) ?? null}
-                      quoteProblem={quoteProblemOf.get(a.id) ?? null}
-                      quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
-                      today={today}
-                      tradeCount={(tradesByAsset.get(a.id) ?? []).length}
-                    />
-                  ))}
-                </ul>
+                {/*
+                  Os investimentos em grelha de cartões; o resto continua em
+                  linha. A diferença não é estética: numa carteira com uma dúzia
+                  de ações o que se faz é PROCURAR uma, e para isso o emblema
+                  com cor própria e o ticker em destaque valem mais do que uma
+                  lista onde todas as linhas se parecem. Uma conta bancária ou
+                  um imóvel não se procuram assim — são poucos e têm nome.
+                */}
+                {kind === "investimento" ? (
+                  <ul className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {(byKind.get(kind) ?? []).map((a) => (
+                      <InvestmentCard
+                        key={a.id}
+                        data={{
+                          id: a.id,
+                          name: a.name,
+                          // O símbolo vive no ativo gravado, não na vista
+                          // calculada — e é dele que sai a cor do emblema.
+                          symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
+                          quantity: a.quantity ?? 0,
+                          unitCostCents: a.unitCostCents ?? null,
+                          unitPriceCents: a.unitPriceCents ?? null,
+                          currentValueCents: a.currentValueCents,
+                          gainCents: a.missingPrice ? null : a.gainCents,
+                          gainPct: a.missingPrice ? null : a.gainPct,
+                          tradeCount: (tradesByAsset.get(a.id) ?? []).length,
+                        }}
+                      />
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="divide-y divide-hair2">
+                    {(byKind.get(kind) ?? []).map((a) => (
+                      <AssetRow
+                        key={a.id}
+                        asset={a}
+                        // O formulário edita o que está GRAVADO, não a posição
+                        // derivada: senão gravar sem tocar em nada reescrevia a
+                        // entrada manual com os números dos movimentos.
+                        stored={stored.find((s) => s.id === a.id) ?? null}
+                        quoteDate={quoteDateOf.get(a.id) ?? null}
+                        quoteProblem={quoteProblemOf.get(a.id) ?? null}
+                        quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
+                        today={today}
+                        tradeCount={(tradesByAsset.get(a.id) ?? []).length}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
             ))
         )}

@@ -1,0 +1,162 @@
+"use client";
+
+/**
+ * Um investimento, em cartão quadrado.
+ *
+ * **Porquê mudar de linha para cartão.** Em lista comprida todas as posições
+ * parecem iguais e é preciso ler para as distinguir. Numa carteira com uma dúzia
+ * de ações, o que a pessoa faz é procurar uma — e para isso o emblema com cor
+ * própria e o ticker em destaque valem mais do que qualquer texto. Os quatro
+ * números que interessam ao relance (quantidade, o que custou, o que vale, e o
+ * ganho) cabem no quadrado; o resto está a um toque de distância.
+ *
+ * **Um cartão por ativo, nunca por compra.** Comprar hoje mais da mesma ação não
+ * cria um cartão novo: acrescenta um movimento ao que já existe, e o cartão
+ * mostra quantos movimentos tem. A importação já se comportava assim (procura o
+ * ativo pelo nome antes de criar), e o botão de registar movimento aqui fecha o
+ * mesmo círculo à mão — que é o que faz falta para manter isto atualizado depois
+ * da primeira importação.
+ */
+
+import { useState } from "react";
+import Link from "next/link";
+import { formatCents, monogramFor } from "@/lib/domain";
+import { QuickTradeForm } from "./QuickTradeForm";
+
+export interface InvestmentCardData {
+  id: string;
+  name: string;
+  symbol: string | null;
+  quantity: number;
+  /** Custo médio por unidade. */
+  unitCostCents: number | null;
+  /** Cotação atual por unidade. */
+  unitPriceCents: number | null;
+  currentValueCents: number;
+  /** Ganho total, quando há preço para o calcular. */
+  gainCents: number | null;
+  gainPct: number | null;
+  tradeCount: number;
+}
+
+/** Quantidades vêm com casas decimais nos ETF fracionados; inteiros ficam limpos. */
+function fmtQty(q: number): string {
+  const s = Number.isInteger(q) ? String(q) : q.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return s.replace(".", ",");
+}
+
+export function InvestmentCard({ data }: { data: InvestmentCardData }) {
+  const [registando, setRegistando] = useState(false);
+  const { letters, hue } = monogramFor(data.symbol, data.name);
+
+  const ganhoPositivo = data.gainCents !== null && data.gainCents >= 0;
+
+  return (
+    <li className="card flex flex-col p-4">
+      <div className="flex items-start gap-3">
+        {/*
+          O emblema. A cor sai do próprio símbolo e é sempre a mesma, o que dá
+          memória visual à carteira. Ver `domain/monogram.ts` para a razão de
+          não irmos buscar logos a um serviço externo.
+        */}
+        <span
+          aria-hidden="true"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl font-mono text-sm font-semibold tracking-tight"
+          style={{
+            backgroundColor: `hsl(${hue} 45% 88%)`,
+            color: `hsl(${hue} 55% 24%)`,
+          }}
+        >
+          {letters}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/patrimonio/ativos/${data.id}`}
+            className="block truncate font-mono text-sm font-semibold text-fg hover:underline"
+          >
+            {data.symbol ? data.symbol.toUpperCase() : data.name}
+          </Link>
+          <p className="mt-0.5 truncate text-xs text-fg-muted" title={data.name}>
+            {data.symbol ? data.name : "Sem símbolo de bolsa"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2.5">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Unidades</p>
+          <p className="font-mono text-sm tnum text-fg">{fmtQty(data.quantity)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Vale hoje</p>
+          <p className="font-mono text-sm tnum text-fg">{formatCents(data.currentValueCents)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Custo médio</p>
+          <p className="font-mono text-sm tnum text-fg-muted">
+            {data.unitCostCents === null ? "—" : formatCents(data.unitCostCents)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Preço atual</p>
+          <p className="font-mono text-sm tnum text-fg-muted">
+            {data.unitPriceCents === null ? "—" : formatCents(data.unitPriceCents)}
+          </p>
+        </div>
+      </div>
+
+      {/* O ganho é o número que se procura primeiro, por isso fica sozinho e
+          com cor. Sem cotação não há ganho nenhum para mostrar — e dizê-lo é
+          melhor do que mostrar zero, que se leria como "não subiu nem desceu". */}
+      <div className="mt-3 border-t border-hair2 pt-3">
+        {data.gainCents === null ? (
+          <p className="text-xs text-fg-faint">
+            Sem cotação, não dá para saber o ganho.
+          </p>
+        ) : (
+          <p className={`font-mono text-base tnum ${ganhoPositivo ? "text-credit" : "text-debt"}`}>
+            {ganhoPositivo ? "+" : ""}
+            {formatCents(data.gainCents)}
+            {data.gainPct !== null ? (
+              <span className="ml-1.5 text-xs">
+                ({ganhoPositivo ? "+" : ""}
+                {data.gainPct.toFixed(1).replace(".", ",")}%)
+              </span>
+            ) : null}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Link
+          href={`/patrimonio/ativos/${data.id}`}
+          className="text-xs text-fg-muted hover:text-fg"
+        >
+          {data.tradeCount > 0
+            ? `${data.tradeCount} movimento${data.tradeCount === 1 ? "" : "s"}`
+            : "Sem movimentos"}
+        </Link>
+        <button
+          type="button"
+          onClick={() => setRegistando((v) => !v)}
+          className="btn-ghost h-8 px-2.5 text-xs"
+          aria-expanded={registando}
+        >
+          {registando ? "Fechar" : "Registar"}
+        </button>
+      </div>
+
+      {registando ? (
+        <div className="mt-3 border-t border-hair2 pt-3">
+          <QuickTradeForm
+            assetId={data.id}
+            unitPriceCents={data.unitPriceCents}
+            maxQuantity={data.quantity}
+            onDone={() => setRegistando(false)}
+          />
+        </div>
+      ) : null}
+    </li>
+  );
+}
