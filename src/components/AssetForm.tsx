@@ -47,9 +47,26 @@ function plain(n?: number | null): string {
  * contrário: num depósito diz o que rende, numa dívida diz o que custa. Só as
  * dívidas pedem prestação e prazo, que é o que dá a data do último pagamento.
  */
-export function AssetForm({ asset }: { asset?: AssetFormValues }) {
+export function AssetForm({
+  asset,
+  /**
+   * Em que vista o formulário está.
+   *
+   * Sem isto, abrir "Adicionar" na página das Dívidas dava um formulário de
+   * BENS: tipo pré-escolhido como conta bancária, a lista de tipos a oferecer
+   * "Imóveis", e uma secção de "Rendimento" a perguntar o que aquele dinheiro
+   * rende por ano. Numa dívida é ao contrário — não rende, custa — e quem
+   * estava a registar um crédito à habitação tinha de perceber sozinho que
+   * devia trocar o tipo primeiro.
+   */
+  contexto = "ativos",
+}: {
+  asset?: AssetFormValues;
+  contexto?: "ativos" | "dividas";
+}) {
   const [state, action] = useFormState(saveAssetAction, empty);
-  const [kind, setKind] = useState<AssetKind>(asset?.kind ?? "conta");
+  const emDividas = contexto === "dividas";
+  const [kind, setKind] = useState<AssetKind>(asset?.kind ?? (emDividas ? "divida" : "conta"));
   const isInvestment = kind === "investimento";
   const isDebt = kind === "divida";
   const editing = Boolean(asset);
@@ -68,7 +85,7 @@ export function AssetForm({ asset }: { asset?: AssetFormValues }) {
             required
             maxLength={120}
             defaultValue={asset?.name ?? ""}
-            placeholder={isInvestment ? "ex.: VWCE" : "ex.: Depósito a prazo"}
+            placeholder={isInvestment ? "ex.: VWCE" : isDebt ? "ex.: Crédito à habitação" : "ex.: Depósito a prazo"}
             className="input"
           />
         </div>
@@ -81,9 +98,18 @@ export function AssetForm({ asset }: { asset?: AssetFormValues }) {
             onChange={(e) => setKind(e.target.value as AssetKind)}
             className="select"
           >
-            {(Object.keys(ASSET_KIND_LABELS) as AssetKind[]).map((k) => (
-              <option key={k} value={k}>{ASSET_KIND_LABELS[k]}</option>
-            ))}
+            {(Object.keys(ASSET_KIND_LABELS) as AssetKind[])
+              // Na vista das dívidas só há uma coisa a registar. Oferecer
+              // "Imóveis" ali é convidar ao engano.
+              //
+              // O tipo ATUAL fica sempre na lista, mesmo que a vista não o
+              // ofereça: a editar uma dívida a partir de outro sítio, tirá-lo
+              // das opções deixava o select sem o valor que está selecionado —
+              // e gravar sem tocar em nada trocava-lhe o tipo em silêncio.
+              .filter((k) => k === kind || (emDividas ? k === "divida" : k !== "divida"))
+              .map((k) => (
+                <option key={k} value={k}>{ASSET_KIND_LABELS[k]}</option>
+              ))}
           </select>
         </div>
       </div>
@@ -285,7 +311,7 @@ export function AssetForm({ asset }: { asset?: AssetFormValues }) {
   return (
     <details className="card p-5">
       <summary className="cursor-pointer text-sm font-medium text-fg">
-        Adicionar ao património
+        {emDividas ? "Adicionar dívida" : "Adicionar ao património"}
       </summary>
       {form}
     </details>

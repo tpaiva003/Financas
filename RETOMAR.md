@@ -3,155 +3,207 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-07.
+> Última atualização: 2026-08-07 (revisão + correções).
 
 ---
 
-## Estado verificado
+## 0. O que foi feito na sessão de 2026-08-07
 
-**Produção** (`main`) está estável e não depende de nada do que está por fazer.
+Uma sessão de revisão, seguida de correções. **Todas as fases abaixo estão
+aplicadas, com testes, e a app compila e passa em tudo** (`test`, `typecheck`,
+`lint`, `build`). Os testes passaram de 443 para 496.
 
-| Em produção | |
-|---|---|
-| Correção do preço parado em 2020 (leitura das cotações vinha cortada aos 1000) | ✅ |
-| Leitor paginado partilhado (`todasAsLinhas`) em despesas, movimentos e cotações | ✅ |
-| Cotação na moeda de origem ao lado do preço em euros | ✅ |
-| Botão de cotação por ativo + "Atualizar preços" para todos | ✅ **testado pelo Tiago, funciona** |
-| Camada de IA a mapear colunas na importação | ✅ |
-| Tectos do plano gratuito (`spaces.plan`) + aviso de quanto falta | ✅ |
-| Congelamento a 90 dias e vagas diárias — **domínio puro, código inerte** | ⚠️ ver abaixo |
+### Segurança (feito)
 
-**Código inerte na `main`:** `retentionVerdict` e `decideSignup` existem e estão
-testados, mas **nada os chama**. A migração `0021` está no repositório e **não
-está aplicada**. Não há colunas `frozen_at` nem `retention_warned_at` na base de
-dados. `AUTH_OPEN_REGISTRATION` continua **desligado**.
+Estavam abertas seis portas entre ambientes. Como tudo corre com a chave de
+serviço do Supabase, que **ignora o RLS**, o `space_id` passado à mão era a
+única fronteira que existia — e não estava a ser passado.
 
-Base de dados: 6 ambientes, todos `plan='full'` (sem tectos). Tabela `waitlist`
-existe desde a `0001_init` com `(id, email, name, consent, created_at)`.
+- O `space_id` passou a ser **obrigatório na assinatura** de `getExpense`,
+  `updateExpense`, `setReceiptPath`, `softDeleteExpense`, `confirmExpense` e
+  `setExpenseApproval`, para o compilador obrigar quem chama a dar um id já
+  validado. O mock aplica a mesma regra: um backend mais permissivo do que a
+  produção esconde o engano que os testes procuram.
+- O `addMemberAction` tirava o ambiente de um campo escondido do formulário e
+  verificava as permissões contra outro. Passa a vir da sessão.
+- O `existingAssetId` da importação vinha do payload do cliente e ia direto para
+  a escrita. É confrontado com os ativos do ambiente.
+- O `/api/cron/quotes` falhava **aberto** quando o `CRON_SECRET` não estava
+  definido, que é como o `.env.example` o entrega. Falha fechada, e a comparação
+  é em tempo constante.
+- Testes novos em `src/lib/data/isolation.test.ts`, corridos contra o código
+  antigo para confirmar que falham lá.
+
+**Por fazer, por decisão do Tiago:** a primeira entrada continua a definir a
+palavra-chave — quem chegar primeiro a um email conhecido fica com a conta. Ver
+"Dívidas conhecidas".
+
+### O bug da venda lida como compra (feito)
+
+O diagnóstico anterior estava errado nos três pontos, e todos foram testados a
+correr: o `\s` do JavaScript já apanha o espaço não separável, o
+`parseAmountCents("-23")` devolve `-2300`, e a deteção de colunas lê a venda da
+Degiro como venda.
+
+A causa é o leitor de ficheiros: pedia as células com `raw: false`, ou seja
+recebia o **texto que o Excel desenha**. Com o formato `#,##0;[Red]#,##0` —
+negativo a vermelho, que várias localizações oferecem por omissão — o `-23`
+chega como `"23"`, e **todas as vendas viram compras**. Passa a ler o valor.
+
+Tratada também a segunda suspeita: os formatos aprendidos ganham à deteção e
+eram usados com um `as unknown as`, que não valida nada. Um template gravado por
+uma versão antiga não traz os campos novos, e `undefined >= 0` é `false` — o que
+se lê como "esta coluna não existe", desligando a moeda e o câmbio em silêncio.
+Agora um template só vale inteiro (`import/stored-mapping.ts`).
+
+**Falta confirmar com o ficheiro do Tiago** qual dos dois era o caso real. Ver
+"Ficheiros do Tiago" no fim.
+
+### Números errados sem aviso (feito)
+
+- **O saldo redividia o histórico** quando os membros mudavam. Agora, ao
+  acrescentar alguém, pergunta-se o que fazer ao passado: dividir tudo, a partir
+  de uma data, ou só dali para a frente (migração `0022`). Quem já existe fica a
+  "desde sempre", que é o comportamento antigo — **nenhum saldo já mostrado
+  muda**. Só afeta divisões em partes iguais; as percentagens já nomeiam quem
+  suporta o quê.
+- **Dois cafés iguais no mesmo dia** colidiam no mesmo UID e um desaparecia. As
+  ocorrências passam a ser numeradas dentro de cada ficheiro e continuam a ser
+  deduplicadas entre ficheiros. A primeira ocorrência mantém o UID de sempre.
+- **O índice único das despesas era global**, não por ambiente (migração `0023`).
+- **Movimentos do mesmo dia eram ordenados por UUID**, à sorte, mudando o custo
+  médio e a mais-valia realizada sem levantar o aviso de `oversold`. Entra
+  primeiro o que entra.
+- **A comparação com o índice** saltava os reforços anteriores ao início da série
+  mas mantinha a carteira inteira — 25% apresentados como 150%. Recusa comparar
+  e diz porquê.
+- **Um empréstimo que amortiza um euro por mês** era apresentado como um
+  empréstimo a 100 anos com juros de seis dígitos.
+
+### Coisas partidas que se viam da rua (feito)
+
+- `/recuperar`, `/privacidade` e `/termos` estavam **atrás da sessão**, apesar de
+  a landing e o login lhes apontarem. A recuperação de palavra-chave estava morta
+  para exatamente quem precisa dela. A lista de rotas públicas passou para
+  `lib/public-routes.ts`, com testes — dentro do middleware não era testável, e é
+  por isso que o erro sobreviveu.
+- Não havia um único `error.tsx` nem `loading.tsx`. Já há, mais `global-error` e
+  `not-found`. O de erro mostra o `digest`, nunca a mensagem, que vem da base de
+  dados.
+
+### Limpeza e documentação (feito)
+
+- Apagadas ~250 linhas mortas: `buildTradesPreview` e o `holdings-import`
+  inteiro, que ninguém chamava e que traziam a sua própria cópia da lógica de
+  templates — incluindo o mesmo `as unknown as`.
+- Removido o `AUTH_DEV_LOGIN`, que já não tinha chamadores.
+- O `.env.example` declarava o `AUTH_URL` duas vezes, ganhando a de produção.
+- O `npm run seed` rebentava numa chave estrangeira desde a `0003`.
+- O `CLAUDE.md` e o `README.md` reescritos: descreviam uma app de dois
+  utilizadores, com SSO como forma de entrar e parsing em Python.
+
+### A migração `0021` (corrigida, por aplicar)
+
+Trazia o bug que o próprio cabeçalho dizia ter evitado: criava o índice único da
+`waitlist` com o nome `waitlist_email_key`, que é exatamente o nome que o
+Postgres já deu à restrição da `0001`. O `if not exists` encontrava-o, saltava, e
+o índice sobre `lower(email)` **nunca era criado** — enquanto o comentário
+prometia falhar em voz alta. Renomeado.
+
+O comentário *"sem políticas: só o service role lhe toca"* também era falso: a
+`0001` tinha criado duas políticas na `waitlist`, uma delas a deixar qualquer
+cliente inserir. Agora são removidas.
 
 ---
 
-## 1. Bug por corrigir — venda lida como compra
+## 1. Modo demo self-serve — canalização em falta
 
-**É o mais importante da lista.** Uma venda importada como compra corrompe a
-posição e a rentabilidade, em silêncio.
+A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
+9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
 
-### O caso real
-
-Ficheiro `Transactions_1.xlsx` da Degiro (o Tiago tem-no; **não está no
-repositório** — ver "Ficheiros do Tiago" no fim). A venda da Knot:
-
-```
-linha 99:  09-12-2021 | KNOT OFFSHORE PARTNERS | Quantidade -23 | Valor local  321.54
-linha 105: 16-08-2021 | KNOT OFFSHORE PARTNERS | Quantidade   7 | Valor local -130.20
-```
-
-Convenção da Degiro, coerente: **quantidade negativa + dinheiro a entrar = venda**.
-A linha 99 é a venda. A regra actual (`quantity < 0 → venda`) leria isto bem.
-
-### O que descartámos (não repetir)
-
-- **Não é o sinal do valor.** A app só olha para a quantidade, mas neste ficheiro
-  a quantidade *tem* sinal. Hipótese minha, errada.
-- **Não é falta de coluna compra/venda.** Este ficheiro não tem essa coluna, e o
-  cabeçalho é: `Data | Hora | Produto | ISIN | Bolsa de referência | Bolsa |
-  Quantidade | Preços | | Valor local | | Valor EUR | Taxa de Câmbio | Taxa
-  Autofx | Custos | Total EUR | ID da Ordem`. O Tiago lembrava-se de haver essa
-  coluna; não há neste ficheiro. (O `Account_2.csv` tem uma coluna `T.` mas é a
-  **moeda**, e a `Descrição` fala de "Levantamento/Crédito de divisa" — é o
-  extrato de conta, não o de transações.)
-- **Não é o `parseAmountCents` a perder o sinal em geral** — ele trata `-` e
-  parênteses correctamente.
-
-### A hipótese que ficou (por confirmar)
-
-A quantidade passa pelo **leitor de valores monetários**:
-
-```ts
-// src/lib/import/trades.ts, rowsToTrades
-const rawQty = parseAmountCents(row[mapping.quantityCol] ?? "");
-const quantity = rawQty === null ? 0 : rawQty / 100;
-```
-
-E esse leitor faz `s.replace(/[€$£\s ]/g, "")` — onde o último carácter da classe
-**é um espaço não separável (U+00A0)**, o que o Excel usa a separar milhares.
-Suspeita: é aqui que o `-23` se perde.
-
-**Isto é hipótese, não facto.** Já me enganei duas vezes neste bug. Confirmar
-reproduzindo com a linha 99 antes de mexer.
-
-### Correção proposta
-
-1. **`parseQuantity` próprio**, com teste feito a partir da linha 99. Uma
-   quantidade não tem moeda, nem parênteses contabilísticos, nem código de
-   divisa colado — não deve passar pelo leitor de dinheiro. Precedente: já
-   fizemos `parseRate` pela mesma razão ("1,0912" era lido como 10912).
-2. **Usar o sinal do valor como verificação cruzada.** Nesta Degiro os dois
-   sinais são sempre opostos e coerentes — é uma confirmação de graça. Se
-   discordarem, **marcar para confirmação em vez de adivinhar**.
-3. A IA para vocabulário de compra/venda (`V`/`C`, `S`/`B`, `Alienação`…) fica
-   para os ficheiros que *tenham* essa coluna. Não resolve este caso.
-
----
-
-## 2. Modo demo self-serve — canalização em falta
-
-A lógica está feita e testada. Falta ligar tudo. Por ordem de dependência:
-
-- [ ] **Aplicar a migração `0021`** (já reescrita como `ALTER`, ver nota abaixo).
-      Tudo o resto depende disto.
+- [ ] **Aplicar as migrações `0021`, `0022` e `0023`.** A `0021` já foi corrigida
+      (ver secção 0) e pode ser aplicada como está. As `0022` (participação dos
+      membros) e `0023` (uid por ambiente) são desta sessão e o código já conta
+      com elas — **a app funciona sem elas, mas as correções do saldo e do dedup
+      só valem depois de aplicadas**.
 - [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
       gratuitos com a última atividade; marcar aviso; congelar/descongelar;
       gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
-      `MockRepository`.
-- [ ] **Rota de cron da retenção** + entrada no `vercel.json`. Protegida pelo
-      `CRON_SECRET` que já existe.
+      `MockRepository`. Existe já um `lastActivity` no `getPlatformStats`, mas o
+      `SpaceSummary` não traz o `plan` (não dá para escolher os gratuitos) e o
+      `lastActivity` sai só das datas das despesas — **não conta os logins**, que
+      é o que a própria regra 3 do `retencao.ts` exige.
+- [ ] **Rota de cron da retenção** + entrada no `vercel.json`.
 - [ ] **Fazer o congelamento significar alguma coisa** — bloquear escritas nos
-      ambientes congelados e explicar na app porque está bloqueado e como
-      desbloquear. **Sem isto o resto é decorativo:** uma coluna que ninguém lê
-      não protege dados de ninguém. Toca em *todos* os caminhos de escrita;
-      falhar um é pior do que não ter congelamento, porque promete uma garantia
-      que não cumpre.
-- [ ] **Ligar o `decideSignup` ao registo** — contar contas do dia no callback do
-      Auth.js, recusar quando não há vaga e encaminhar para a lista de espera.
-- [ ] **Formulário da lista de espera** — na landing e no ecrã de "não há vagas".
-- [ ] **Texto de RGPD** na `/privacidade` (a página existe e fala do mundo antigo,
-      de dois utilizadores convidados). Dizer o que se guarda, quanto tempo, o que
-      é o congelamento aos 90 dias, e como pedir os dados ou o apagamento.
-- [ ] **Emails** — aviso de congelamento e convite de saída da fila. Resend já
-      configurado.
+      ambientes congelados e explicar na app porque está bloqueado. **Sem isto o
+      resto é decorativo.** Hoje são **zero linhas**: não há uma única ocorrência
+      de `frozen`/`congelado` em `.ts`/`.tsx`. Toca em ~40 caminhos de escrita.
+- [ ] **Ligar o `decideSignup` ao registo.**
+- [ ] **Formulário da lista de espera.** Hoje a landing escreve em
+      `contact_messages`, não em `waitlist`.
+- [ ] **Texto de RGPD na `/privacidade`.** ⚠️ **A nota anterior estava errada:** a
+      página **não** fala "do mundo antigo, de dois utilizadores convidados". Já
+      está datada de 5/8/2026 e já descreve ambientes isolados, subcontratantes e
+      apagamento de conta. O que falta mesmo é só o texto dos 90 dias e do
+      congelamento — e a secção de retenção atual ("enquanto tiveres conta")
+      passa a contradizê-lo.
+- [ ] **Emails** — aviso de congelamento e convite de saída da fila. O Resend
+      está mesmo configurado; só existem `sendInvite` e `sendPasswordReset`.
 - [ ] **`AUTH_OPEN_REGISTRATION=true`** — só no fim, e é decisão do Tiago.
+      **Agora também depende das correções de segurança da secção 0.**
 
-### Nota sobre a migração `0021`
+### A migração `0021` tem o bug que ela própria diz ter evitado
 
-A primeira versão fazia `create table waitlist if not exists`. A tabela **já
-existia** com outro schema, por isso a migração passaria em silêncio sem criar as
-colunas novas e o código partia depois contra colunas inexistentes — o mesmo
-padrão de falha silenciosa que a leitura cortada das cotações já custou. Foi
-reescrita para `ALTER`. O `consent` que já lá estava é reutilizado como base
-legal para enviar o convite.
+O cabeçalho da `0021` explica, com razão, que um `create table if not exists`
+sobre uma tabela existente passa em silêncio sem criar nada. E depois, duas
+instruções abaixo, faz exatamente o mesmo com um índice:
+
+```sql
+create unique index if not exists waitlist_email_key on waitlist (lower(email));
+```
+
+A `0001_init.sql` já declara `email text not null unique` na `waitlist`, e o
+Postgres chama ao índice dessa restrição **`waitlist_email_key`** — o mesmo nome.
+O `if not exists` encontra-o, emite um `NOTICE` e **nunca cria o índice sobre
+`lower(email)`**. O comentário promete que "se já houver duplicados, isto falha —
+e é bom que falhe agora": não falha, passa calado, e `A@x.pt` e `a@x.pt` ficam
+como duas pessoas diferentes. Dar-lhe outro nome resolve.
+
+Na mesma migração, o comentário *"Sem políticas: só o service role lhe toca"* é
+falso: a `0001_init.sql` já criou duas políticas na `waitlist` que a `0021` não
+remove, uma delas a permitir `insert` a qualquer cliente que ponha
+`consent = true`.
+
+E o domínio ainda não está pronto para ser ligado: o `RetentionInput` não tem
+`frozenAt`, por isso o `retentionVerdict` não distingue "deve congelar" de "já
+está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ---
 
-## 3. Ticker a partir do nome — não começado
+## 2. Higiene de código, por fazer
 
-Ficheiros de corretora trazem `Apple Inc.` e a app precisa de `aapl.us`. Sem
-isso não há cotação e o investimento vale o que foi escrito à mão.
-
-Abordagem, com a regra que segurou tudo o resto: **o modelo sugere, os factos
-confirmam.**
-
-- O modelo propõe um símbolo candidato por nome, com bolsa e moeda esperadas.
-- O candidato é **verificado contra a fonte de cotações** antes de valer. Se o
-  Yahoo não devolver série, é descartado.
-- Aparece como sugestão a confirmar na pré-visualização. **Um ticker errado é
-  pior do que nenhum:** dá um preço plausível da empresa errada, e ninguém repara.
+- **`actions.ts` tem ~1900 linhas.** É o ficheiro onde estão quase todas as
+  escritas da app e é onde as verificações de permissão têm de ser consistentes.
+  Vale a pena parti-lo por área.
+- **As importações gravam linha a linha, em sequência** (`await` dentro do
+  `for`). Um ficheiro da Degiro de 147 linhas são 147 idas ao Supabase à vez,
+  numa função serverless com tempo limitado, e sem transação: se estourar a
+  meio, fica meio importado. O dedup salva a reimportação, mas o utilizador vê um
+  erro sem saber o que ficou lá dentro.
 
 ---
 
-## 4. Dívidas antigas
+## 3. Dívidas conhecidas
 
-- [ ] **SSO Google/Microsoft** — bloqueado à espera de credenciais do Tiago.
+- [ ] **Primeira entrada define a palavra-chave.** Se um email conhecido ainda
+      não tem palavra-chave, quem lá chegar primeiro escolhe-a e fica com a
+      conta. O Tiago decidiu não mexer nisto agora. A saída natural é o convite
+      levar um token, reutilizando o mecanismo do `password_reset_tokens`, que já
+      existe e é sólido. **Fechar antes de abrir o registo.**
+- [ ] **SSO Google/Microsoft** — falta a UI **e** as credenciais do Tiago.
+- [ ] **Ticker a partir do nome** — confirmado: não começado. A regra continua a
+      ser "o modelo sugere, os factos confirmam": o candidato só vale depois de a
+      fonte de cotações devolver série. Um ticker errado é pior do que nenhum.
 - [ ] **Fusão de comerciantes e alcunhas** — mencionado, nunca feito.
 
 ---
@@ -160,11 +212,13 @@ confirmam.**
 
 | Decisão | Estado |
 |---|---|
-| Ligar `AUTH_OPEN_REGISTRATION` | Por decidir. Só depois da canalização toda. |
-| Credenciais de SSO (Google/Microsoft) | Em falta. Bloqueia o ponto 4. |
-| Limite de contas novas por dia | **Decidido: 1/dia.** Implementado em domínio. |
-| Retenção de ambientes gratuitos | **Decidido: congelar aos 90 dias, não apagar.** |
-| Tectos do plano gratuito | **Decidido: 100 despesas, 10 bens, 2 pessoas, 1 ambiente.** |
+| Como fechar a "primeira entrada define a palavra-chave" | **Adiado pelo Tiago.** Fica como dívida conhecida. |
+| Ligar `AUTH_OPEN_REGISTRATION` | Por decidir. Só depois da canalização **e** de fechar a linha acima. |
+| Credenciais de SSO (Google/Microsoft) | Em falta. Falta também a UI. |
+| O que fazer ao histórico ao acrescentar alguém | **Decidido: perguntar.** Tudo, desde uma data, ou dali para a frente. Implementado. |
+| Limite de contas novas por dia | **Decidido: 1/dia.** Implementado em domínio, não ligado. |
+| Retenção de ambientes gratuitos | **Decidido: congelar aos 90 dias, não apagar.** Não ligado. |
+| Tectos do plano gratuito | **Decidido: 100 despesas, 10 bens, 2 pessoas, 1 ambiente.** Ligado. |
 | Modo demo | **Decidido: self-serve com limites.** |
 
 ---
@@ -173,18 +227,24 @@ confirmam.**
 
 Estão em `DECISOES.md` com o contexto todo. Os que mais se repetem:
 
-1. **Uma leitura cortada mente em silêncio.** A API do Supabase devolve 1000
-   linhas sem avisar. Toda a leitura que possa crescer passa por `todasAsLinhas`.
-2. **Um número errado com uma data ao lado é pior do que nenhum número.** A data
-   só se mostra quando é mesmo a daquele valor.
-3. **Dois caminhos que escrevem o mesmo campo aplicam as mesmas regras.** Senão o
-   valor certo depende de que botão se carregou.
-4. **A IA escolhe colunas, não lê dados.** Montantes, deduplicação e câmbio ficam
-   sempre no código determinístico e testado.
+1. **Uma leitura cortada mente em silêncio.** Toda a leitura que possa crescer
+   passa por `todasAsLinhas`.
+2. **Um número errado com uma data ao lado é pior do que nenhum número.**
+3. **Dois caminhos que escrevem o mesmo campo aplicam as mesmas regras.**
+4. **A IA escolhe colunas, não lê dados.**
 5. **Nada do que um modelo responde entra sem ser validado** contra a grelha.
-6. **Um limite nunca apaga nada.** Impede de criar mais; o que lá está fica.
-7. **Sem taxa de câmbio não se grava preço nenhum.** Dólares gravados como euros
-   inflacionam o património sem dar sinal.
+6. **Um limite nunca apaga nada.**
+7. **Sem taxa de câmbio não se grava preço nenhum.**
+
+A revisão acrescenta dois, aprendidos ao ver as mesmas falhas repetirem-se:
+
+8. **Um `if not exists` é uma falha silenciosa à espera de acontecer.** Já custou
+   a `waitlist` duas vezes: uma na tabela, outra no índice, na migração escrita
+   de propósito para evitar a primeira. Se a instrução pode não fazer nada,
+   confirma que fez.
+9. **O que a app mostra tem de ser lido do valor, não do que o Excel desenha.**
+   `raw: false` devolve texto formatado, e um formato de número chega para
+   esconder um sinal negativo.
 
 ---
 
@@ -193,7 +253,9 @@ Estão em `DECISOES.md` com o contexto todo. Os que mais se repetem:
 Os ficheiros de teste — `Transactions_1.xlsx` e `Account_2.csv` da Degiro —
 **não estão no repositório e não devem estar**: contêm movimentos financeiros
 reais e este repositório é **público**. Pedir ao Tiago que os volte a anexar
-quando se for corrigir o bug do ponto 1.
+para **confirmar** a correção da leitura do Excel (secção 0). Desta vez pedir
+também **qual é o formato de número da coluna Quantidade**: é o que diz se o
+caso real era o formato a esconder o sinal ou um template antigo gravado.
 
 Ao escrever testes a partir deles, usar só a forma das linhas (sinais, formato
 dos números, nomes de colunas) — nunca copiar o ficheiro para dentro do repo.

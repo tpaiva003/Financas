@@ -289,6 +289,7 @@ export class SupabaseRepository implements Repository {
       linkedUserId: r.linked_user_id,
       email: r.email,
       role: (r.role ?? "full") as Member["role"],
+      participatesFrom: r.participates_from ?? null,
     }));
   }
 
@@ -302,6 +303,7 @@ export class SupabaseRepository implements Repository {
         name: input.name,
         linked_user_id: input.linkedUserId ?? null,
         email: input.email ?? null,
+        participates_from: input.participatesFrom ?? null,
       })
       .select("*")
       .single();
@@ -312,6 +314,7 @@ export class SupabaseRepository implements Repository {
       name: data.name,
       linkedUserId: data.linked_user_id,
       email: data.email,
+      participatesFrom: data.participates_from ?? null,
     };
   }
 
@@ -322,6 +325,7 @@ export class SupabaseRepository implements Repository {
     if (patch.email !== undefined) update.email = patch.email;
     if (patch.role !== undefined) update.role = patch.role;
     if (patch.linkedUserId !== undefined) update.linked_user_id = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) update.participates_from = patch.participatesFrom;
     if (Object.keys(update).length === 0) return;
     const { error } = await db
       .from("members")
@@ -382,9 +386,14 @@ export class SupabaseRepository implements Repository {
     return rows;
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("expenses").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await db
+      .from("expenses")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
     const e = rowToExpense(data);
@@ -441,6 +450,7 @@ export class SupabaseRepository implements Repository {
 
   async updateExpense(
     id: string,
+    spaceId: string,
     input: import("./repository").UpdateExpenseInput,
   ): Promise<void> {
     const db = getSupabaseAdmin();
@@ -458,22 +468,28 @@ export class SupabaseRepository implements Repository {
         visible_to_partner: input.visibleToPartner ?? false,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
     const db = getSupabaseAdmin();
-    const { error } = await db.from("expenses").update({ receipt_path: path }).eq("id", id);
+    const { error } = await db
+      .from("expenses")
+      .update({ receipt_path: path })
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ deleted_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -502,12 +518,13 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ amount_cents: amountCents, status: "confirmed" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -786,12 +803,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ approval_status: status === "approved" ? null : "rejected" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 

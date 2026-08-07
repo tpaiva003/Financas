@@ -175,7 +175,19 @@ export function simulateBenchmark(
 
   for (const f of [...flows].sort((a, b) => toTime(a.date) - toTime(b.date))) {
     const price = priceOn(prices, f.date);
-    if (price === null || price <= 0) continue;
+    /**
+     * Um reforço que o índice não sabe cotar invalida a comparação inteira.
+     *
+     * Isto fazia `continue`: saltava o reforço **e** o dinheiro dele, mas
+     * mantinha o valor da carteira por inteiro. Com uma série que só começa em
+     * 2024, dez mil euros investidos em 2020 desapareciam do denominador e uma
+     * carteira de 25 000 sobre 20 000 investidos — 25% — era apresentada como
+     * 150%. Não havia nada no ecrã a dizer que faltava metade das entradas.
+     *
+     * Sem comparação é melhor do que com uma comparação errada: quem lê um
+     * número destes não tem como desconfiar dele.
+     */
+    if (price === null || price <= 0) return null;
     units += f.amountCents / price;
     investedCents += f.amountCents;
   }

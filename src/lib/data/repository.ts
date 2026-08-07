@@ -262,6 +262,11 @@ export interface Member {
   email?: string | null;
   /** "full" participa no saldo; "submitter" só submete (com aprovação). */
   role?: MemberRole;
+  /**
+   * Desde quando divide despesas em partes iguais ("AAAA-MM-DD").
+   * `null` = desde sempre, que é o que vale para quem já cá estava.
+   */
+  participatesFrom?: string | null;
 }
 
 export interface AppUser {
@@ -341,6 +346,8 @@ export interface AddMemberInput {
   name: string;
   email?: string | null;
   linkedUserId?: string | null;
+  /** Ver `Member.participatesFrom`. Ausente = desde sempre. */
+  participatesFrom?: string | null;
 }
 
 export interface UpdateMemberInput {
@@ -348,6 +355,7 @@ export interface UpdateMemberInput {
   email?: string | null;
   role?: MemberRole;
   linkedUserId?: string | null;
+  participatesFrom?: string | null;
 }
 
 export interface ContactMessage {
@@ -469,18 +477,26 @@ export interface Repository {
   countMemberActivity(memberId: string): Promise<number>;
 
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
-  getExpense(id: string, viewerId: string): Promise<Expense | null>;
+  /**
+   * Uma despesa, pelo id.
+   *
+   * O `spaceId` é obrigatório e não é decorativo: sem ele isto lê qualquer
+   * despesa de qualquer ambiente a quem souber um id. Tudo aqui corre com a
+   * chave de serviço, que ignora o RLS, por isso o isolamento entre ambientes
+   * é este parâmetro e mais nada. O mesmo vale para as escritas abaixo.
+   */
+  getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null>;
   createExpense(input: CreateExpenseInput): Promise<Expense>;
-  updateExpense(id: string, input: UpdateExpenseInput): Promise<void>;
-  setReceiptPath(id: string, path: string | null): Promise<void>;
-  softDeleteExpense(id: string, actorId: string): Promise<void>;
+  updateExpense(id: string, spaceId: string, input: UpdateExpenseInput): Promise<void>;
+  setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void>;
+  softDeleteExpense(id: string, spaceId: string, actorId: string): Promise<void>;
   /** Fecha o período: marca as despesas partilhadas abertas como liquidadas. Devolve nº afetado. */
   settleOpenExpenses(spaceId: string): Promise<number>;
   /** Reabre o período: limpa a marca de liquidação das despesas do ambiente. */
   reopenExpenses(spaceId: string): Promise<void>;
 
   /** Confirma uma despesa pendente, fixando o valor real (recorrentes variáveis). */
-  confirmExpense(id: string, amountCents: number): Promise<void>;
+  confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void>;
 
   listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;
@@ -531,7 +547,11 @@ export interface Repository {
   /** Apaga a conta e os ambientes onde era a única pessoa. */
   deleteAccountAndSoleSpaces(userId: string): Promise<void>;
   /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
-  setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
+  setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void>;
   // Templates de bancos (estrutura confirmada, reutilizável).
   findImportTemplate(fingerprint: string): Promise<ImportTemplate | null>;
   saveImportTemplate(input: Omit<ImportTemplate, "id" | "uses" | "createdAt">): Promise<void>;

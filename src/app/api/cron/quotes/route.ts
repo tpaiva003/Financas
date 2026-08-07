@@ -1,9 +1,23 @@
+import { timingSafeEqual } from "node:crypto";
 import { getRepository } from "@/lib/data";
 import { BENCHMARKS, symbolCandidates } from "@/lib/domain";
 import { getQuoteSeries } from "@/lib/services/quotes-service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * O cabeçalho corresponde ao segredo, sem deixar o tempo de resposta contar
+ * quantos caracteres acertaram. Compara-se sempre o mesmo número de bytes: o
+ * `timingSafeEqual` rebenta com comprimentos diferentes, por isso o tamanho é
+ * verificado antes e em separado.
+ */
+function bearerMatches(header: string | null, secret: string): boolean {
+  const esperado = Buffer.from(`Bearer ${secret}`);
+  const recebido = Buffer.from(header ?? "");
+  if (recebido.length !== esperado.length) return false;
+  return timingSafeEqual(recebido, esperado);
+}
 
 /**
  * Atualização diária das cotações.
@@ -24,9 +38,15 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   // A Vercel assina os pedidos do cron. Sem isto, era um endereço público a
   // fazer dezenas de chamadas externas por conta de quem lhe batesse à porta.
+  // Falha fechada. Antes era `if (secret && ...)`: sem `CRON_SECRET` definido a
+  // guarda não corria de todo, e o `.env.example` traz o segredo vazio — ou
+  // seja, a configuração por omissão deixava isto aberto a qualquer pessoa,
+  // com dezenas de chamadas externas por pedido. Sem segredo não se entra.
   const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (secret && auth !== `Bearer ${secret}`) {
+  if (!secret) {
+    return new Response("Cron não configurado.", { status: 503 });
+  }
+  if (!bearerMatches(req.headers.get("authorization"), secret)) {
     return new Response("Não autorizado.", { status: 401 });
   }
 

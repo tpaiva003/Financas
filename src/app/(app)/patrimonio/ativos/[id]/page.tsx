@@ -21,6 +21,9 @@ import {
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
+import { getAssetTwr } from "@/lib/services/asset-twr";
+import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import { SuggestSymbolButton } from "@/components/SuggestSymbolButton";
 
 export const metadata = { title: "Investimento · Rachar" };
 export const dynamic = "force-dynamic";
@@ -58,6 +61,23 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   // Sem movimentos, a posição é a que está escrita no ativo.
   const quantity = hasTrades ? position.quantity : (asset.quantity ?? 0);
   const ret = hasTrades ? buildPositionReturn(position, asset.unitPriceCents, today) : null;
+
+  /**
+   * A outra pergunta: o investimento foi bom?
+   *
+   * A TIR ao lado responde a "quanto rendeu o MEU dinheiro" e move-se com o
+   * timing dos reforços. Esta anula esse efeito e mede só o desempenho. Vão as
+   * duas lado a lado de propósito: separadas, cada uma é meia verdade.
+   */
+  const twr =
+    hasTrades && ret
+      ? await getAssetTwr({
+          symbol: asset.symbol,
+          trades: trades as Trade[],
+          currentValueCents: ret.currentValueCents,
+          today,
+        }).catch(() => null)
+      : null;
 
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("pt-PT");
 
@@ -154,10 +174,14 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
         </div>
 
         {!asset.symbol ? (
-          <p className="mt-2 text-xs text-fg-faint">
-            Sem símbolo de bolsa, o preço é sempre escrito à mão. Podes indicá-lo
-            em Ativos, no Editar deste investimento.
-          </p>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-fg-faint">
+              Sem símbolo de bolsa, o preço é sempre escrito à mão — e não há
+              cotação, nem ganho, nem rentabilidade. Indica-o em Ativos, no
+              Editar deste investimento.
+            </p>
+            {tickerSuggestAvailable() ? <SuggestSymbolButton assetId={asset.id} /> : null}
+          </div>
         ) : null}
       </section>
 
@@ -201,6 +225,40 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
                 {ret.annualPct === null
                   ? "por calcular"
                   : `${ret.annualPct >= 0 ? "+" : ""}${ret.annualPct.toFixed(1).replace(".", ",")}% ao ano`}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
+                Conta com <strong className="font-normal text-fg-muted">quando</strong> meteste o
+                dinheiro. Reforçar antes de uma subida melhora-a.
+              </p>
+            </div>
+
+            {/*
+              A segunda pergunta. Separadas, cada uma destas taxas é meia
+              verdade: a TIR mistura a escolha com o timing, e esta isola a
+              escolha. Lado a lado, a diferença entre as duas é exatamente o
+              que o timing dos reforços valeu.
+            */}
+            <div>
+              <p className="text-xs text-fg-muted">Desempenho do investimento (TWR)</p>
+              <p
+                className={`mt-0.5 font-mono text-lg tnum ${
+                  !twr || twr.annualPct === null
+                    ? "text-fg-faint"
+                    : twr.annualPct >= 0
+                      ? "text-credit"
+                      : "text-debt"
+                }`}
+              >
+                {!twr || twr.annualPct === null
+                  ? "por calcular"
+                  : `${twr.annualPct >= 0 ? "+" : ""}${twr.annualPct.toFixed(1).replace(".", ",")}% ao ano`}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
+                {twr?.problem
+                  ? twr.problem
+                  : twr && twr.totalPct !== null
+                    ? `${twr.totalPct >= 0 ? "+" : ""}${twr.totalPct.toFixed(1).replace(".", ",")}% desde ${fmtDate(twr.since!)}, sem contar com o timing dos reforços.`
+                    : "Ignora quando meteste o dinheiro: mede só o que o ativo fez."}
               </p>
             </div>
             {position.dividendsCents > 0 || position.realizedGainCents !== 0 ? (

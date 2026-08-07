@@ -70,7 +70,7 @@ export default async function AmbientePage() {
           para <span className="text-fg">submeter despesas</span> (com aprovação),
           marcando a opção e indicando o email com que vai entrar.
         </p>
-        <AddMemberForm spaceId={ctx.space.id} />
+        <AddMemberForm />
       </section>
 
       <section>

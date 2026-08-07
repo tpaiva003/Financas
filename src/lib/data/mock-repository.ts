@@ -115,6 +115,18 @@ function canView(e: Expense, viewerId: string): boolean {
   return e.visibleToPartner === true;
 }
 
+/**
+ * Uma despesa pelo id, mas só se for mesmo daquele ambiente.
+ *
+ * Procurar só pelo id deixava qualquer id chegar a qualquer ambiente. O mock
+ * aplica a mesma regra que o Supabase para não haver um backend mais permissivo
+ * do que o outro: se os testes correm contra o mock, é o mock que tem de
+ * apanhar o engano.
+ */
+function findExpense(id: string, spaceId: string): Expense | undefined {
+  return getStore().expenses.find((x) => x.id === id && (x.spaceId ?? "casa") === spaceId);
+}
+
 export class MockRepository implements Repository {
   async listSpacesForUser(userId: string): Promise<Space[]> {
     const store = getStore();
@@ -175,6 +187,7 @@ export class MockRepository implements Repository {
       name: input.name,
       linkedUserId: input.linkedUserId ?? null,
       email: input.email ?? null,
+      participatesFrom: input.participatesFrom ?? null,
     };
     getStore().members.push(member);
     return member;
@@ -187,6 +200,7 @@ export class MockRepository implements Repository {
     if (patch.email !== undefined) m.email = patch.email;
     if (patch.role !== undefined) m.role = patch.role;
     if (patch.linkedUserId !== undefined) m.linkedUserId = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) m.participatesFrom = patch.participatesFrom;
   }
 
   async deleteMember(id: string, spaceId: string): Promise<void> {
@@ -222,8 +236,8 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
+    const e = findExpense(id, spaceId);
     if (!e || !canView(e, viewerId)) return null;
     return e;
   }
@@ -274,8 +288,12 @@ export class MockRepository implements Repository {
     return expense;
   }
 
-  async updateExpense(id: string, input: import("./repository").UpdateExpenseInput): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async updateExpense(
+    id: string,
+    spaceId: string,
+    input: import("./repository").UpdateExpenseInput,
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (!e) return;
     e.description = input.description;
     e.amountCents = input.amountCents;
@@ -289,13 +307,13 @@ export class MockRepository implements Repository {
     e.updatedAt = new Date().toISOString();
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) e.receiptPath = path;
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.deletedAt = new Date().toISOString();
       e.updatedAt = e.deletedAt;
@@ -326,8 +344,8 @@ export class MockRepository implements Repository {
     }
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.amountCents = amountCents;
       e.status = "confirmed";
@@ -498,8 +516,12 @@ export class MockRepository implements Repository {
     delete store.passwords[id];
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.approvalStatus = status === "approved" ? null : "rejected";
       e.updatedAt = new Date().toISOString();

@@ -23,3 +23,4 @@ export * from "./fx";
 export * from "./quotes";
 export * from "./limits";
 export * from "./retencao";
+export * from "./monogram";

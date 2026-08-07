@@ -12,6 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import { suggestTicker } from "@/lib/services/ticker-suggest";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -44,7 +45,7 @@ export interface ActionState {
 async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
   try {
     const path = await uploadReceipt(expenseId, spaceId, formData.get("receipt"));
-    if (path) await getRepository().setReceiptPath(expenseId, path);
+    if (path) await getRepository().setReceiptPath(expenseId, spaceId, path);
   } catch {
     // upload de recibo falhou: não bloqueia a gravação da despesa
   }
@@ -310,7 +311,7 @@ export async function approveExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return; // só membros plenos aprovam
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "approved");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "approved");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -322,7 +323,7 @@ export async function rejectExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "rejected");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "rejected");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -488,7 +489,7 @@ export async function updateExpenseAction(
   if ("error" in built) return { error: built.error };
   const split = built.split;
 
-  await getRepository().updateExpense(id, {
+  await getRepository().updateExpense(id, ctx.space.id, {
     description: data.description,
     amountCents,
     transactionDate: data.transactionDate,
@@ -512,7 +513,7 @@ export async function deleteExpenseAction(formData: FormData): Promise<void> {
   if (ctx.viewerRole === "submitter") return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().softDeleteExpense(id, ctx.user.id);
+  await getRepository().softDeleteExpense(id, ctx.space.id, ctx.user.id);
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -1144,7 +1145,7 @@ export async function confirmRecurringExpenseAction(
   if (amountCents === null || Number.isNaN(amountCents)) {
     return { error: "Indica o valor real." };
   }
-  await getRepository().confirmExpense(id, amountCents);
+  await getRepository().confirmExpense(id, ctx.space.id, amountCents);
   revalidatePath("/recorrentes");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
@@ -1152,8 +1153,16 @@ export async function confirmRecurringExpenseAction(
   return { ok: true };
 }
 
+/**
+ * O `spaceId` NÃO vem daqui.
+ *
+ * Vinha do formulário, e as verificações de papel e de tecto eram feitas contra
+ * o ambiente atual enquanto a escrita ia para o ambiente que viesse no pedido —
+ * ou seja, dava para enfiar um participante (e um login) no ambiente de outra
+ * pessoa. Passa a ser sempre o `ctx.space.id`, que já foi validado contra os
+ * ambientes de quem está a pedir.
+ */
 const memberSchema = z.object({
-  spaceId: z.string().min(1),
   name: z.string().trim().min(1, "Indica um nome.").max(80),
   email: z.string().trim().email("Email inválido.").max(200).optional().or(z.literal("")),
 });
@@ -1171,7 +1180,6 @@ export async function addMemberAction(
   const accessEmail = String(formData.get("accessEmail") ?? "").trim().toLowerCase();
 
   const parsed = memberSchema.safeParse({
-    spaceId: formData.get("spaceId"),
     name: formData.get("name"),
     email: formData.get("email") || "",
   });
@@ -1192,17 +1200,39 @@ export async function addMemberAction(
     }
   }
 
+  /**
+   * O que fazer ao histórico, decidido por quem acrescenta.
+   *
+   * `null` = divide tudo, incluindo o que já lá está. Uma data = só dessa data
+   * em diante. Por omissão fica a data de hoje, que é a resposta que não mexe
+   * em saldo nenhum já apresentado — a escolha segura quando alguém carrega no
+   * botão sem ler.
+   */
+  const hoje = new Date().toISOString().slice(0, 10);
+  const participa = String(formData.get("participa") ?? "agora");
+  let participatesFrom: string | null = hoje;
+  if (participa === "tudo") {
+    participatesFrom = null;
+  } else if (participa === "desde") {
+    const escolhida = String(formData.get("participaDesde") ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(escolhida)) {
+      return { error: "Indica a data a partir da qual esta pessoa divide despesas." };
+    }
+    participatesFrom = escolhida;
+  }
+
   const member = await repo.addMember({
-    spaceId: parsed.data.spaceId,
+    spaceId: ctx.space.id,
     name: parsed.data.name,
     email: grantSubmit ? accessEmail : parsed.data.email || null,
+    participatesFrom,
   });
 
   // Dá logo acesso de submissão (role submitter + utilizador com login).
   if (grantSubmit) {
     const userId = `usr_${randomUUID()}`;
     await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
-    await repo.updateMember(member.id, parsed.data.spaceId, {
+    await repo.updateMember(member.id, ctx.space.id, {
       role: "submitter",
       linkedUserId: userId,
       email: accessEmail,
@@ -1567,6 +1597,46 @@ export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
   await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
   revalidatePath("/patrimonio");
   revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
+ * Sugere um símbolo de bolsa para um investimento, a partir do nome.
+ *
+ * Um produto importado vem com o nome que a corretora lhe dá e sem símbolo, e
+ * sem símbolo não há cotação, nem preço atual, nem ganho, nem TWR. Escrever
+ * dezenas de tickers à mão depois de uma importação não é trabalho que se peça.
+ *
+ * **A sugestão nunca se aplica sozinha.** Vem para confirmação, e o símbolo já
+ * foi verificado contra a fonte de cotações antes de chegar aqui — mas um ticker
+ * que existe e é da empresa errada passa nessa verificação e daria um preço
+ * plausível todos os dias, sem ninguém desconfiar. A última palavra é de quem
+ * conhece a carteira.
+ */
+export async function suggestAssetSymbolAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Investimento inválido." };
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const asset = assets.find((a) => a.id === id);
+  if (!asset) return { error: "Investimento inválido." };
+
+  const r = await suggestTicker(asset.name).catch(() => null);
+  if (!r || !r.suggestion) {
+    return { error: r?.problem ?? "Não consegui sugerir um símbolo." };
+  }
+
+  const s = r.suggestion;
+  const moeda = s.currencyConfirmada && s.currencyConfirmada !== "EUR" ? ` em ${s.currencyConfirmada}` : "";
+  return {
+    ok: true,
+    message: `Sugestão: ${s.symbol}${moeda} (${s.bolsa}). ${s.porque} Confere e grava no campo do símbolo se estiver certo.`,
+  };
 }
 
 /**
