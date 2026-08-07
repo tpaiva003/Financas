@@ -3,165 +3,129 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-07 (sessão de revisão).
+> Última atualização: 2026-08-07 (revisão + correções).
 
 ---
 
-## 0. O que a revisão de 2026-08-07 mudou nesta lista
+## 0. O que foi feito na sessão de 2026-08-07
 
-Uma sessão inteira a rever o repositório. O que saiu de lá, por ordem de
-importância:
+Uma sessão de revisão, seguida de correções. **Todas as fases abaixo estão
+aplicadas, com testes, e a app compila e passa em tudo** (`test`, `typecheck`,
+`lint`, `build`). Os testes passaram de 443 para 496.
 
-1. **Há falhas críticas de isolamento entre ambientes e de autenticação.**
-   Passaram a ser a prioridade número um, à frente do bug da venda. Não estão
-   descritas aqui em detalhe **de propósito**: este repositório é público e a app
-   está em produção com dados reais. O detalhe foi entregue ao Tiago em separado.
-   **Nada de registo aberto antes disto estar corrigido** — hoje o `plan` e os
-   tectos travam o volume, não o acesso.
-2. **O diagnóstico do bug da venda (secção 1) estava errado.** As três hipóteses
-   que lá estavam foram testadas e nenhuma se confirma. A secção foi reescrita
-   com o que ficou provado e com o que falta mesmo testar.
-3. **A app compila, os testes passam.** `npm test` → 443 testes, 33 ficheiros.
-   `npm run typecheck` → limpo. `npm run build` → passa. `npm run lint` → limpo.
-   Isto foi corrido, não presumido.
-4. **O `CLAUDE.md` está desatualizado ao ponto de enganar** quem abrir uma sessão
-   nova. Ver secção 6.
+### Segurança (feito)
 
----
+Estavam abertas seis portas entre ambientes. Como tudo corre com a chave de
+serviço do Supabase, que **ignora o RLS**, o `space_id` passado à mão era a
+única fronteira que existia — e não estava a ser passado.
 
-## 1. Bug por corrigir — venda lida como compra
+- O `space_id` passou a ser **obrigatório na assinatura** de `getExpense`,
+  `updateExpense`, `setReceiptPath`, `softDeleteExpense`, `confirmExpense` e
+  `setExpenseApproval`, para o compilador obrigar quem chama a dar um id já
+  validado. O mock aplica a mesma regra: um backend mais permissivo do que a
+  produção esconde o engano que os testes procuram.
+- O `addMemberAction` tirava o ambiente de um campo escondido do formulário e
+  verificava as permissões contra outro. Passa a vir da sessão.
+- O `existingAssetId` da importação vinha do payload do cliente e ia direto para
+  a escrita. É confrontado com os ativos do ambiente.
+- O `/api/cron/quotes` falhava **aberto** quando o `CRON_SECRET` não estava
+  definido, que é como o `.env.example` o entrega. Falha fechada, e a comparação
+  é em tempo constante.
+- Testes novos em `src/lib/data/isolation.test.ts`, corridos contra o código
+  antigo para confirmar que falham lá.
 
-**Continua a ser o bug funcional mais importante.** Uma venda importada como
-compra corrompe a posição e a rentabilidade, em silêncio.
+**Por fazer, por decisão do Tiago:** a primeira entrada continua a definir a
+palavra-chave — quem chegar primeiro a um email conhecido fica com a conta. Ver
+"Dívidas conhecidas".
 
-### O que foi DESCARTADO com prova (não repetir)
+### O bug da venda lida como compra (feito)
 
-A hipótese que a sessão anterior deixou como "a que ficou" **está morta**:
+O diagnóstico anterior estava errado nos três pontos, e todos foram testados a
+correr: o `\s` do JavaScript já apanha o espaço não separável, o
+`parseAmountCents("-23")` devolve `-2300`, e a deteção de colunas lê a venda da
+Degiro como venda.
 
-- **Não é o espaço não separável (U+00A0) no `parseAmountCents`.** A linha é
-  `s.replace(/[€$£\s ]/g, "")` e em JavaScript o `\s` **já** apanha o
-  U+00A0. O carácter está lá duas vezes; nenhuma delas falha. Verificado a
-  correr, não a ler.
-- **Não é o `parseAmountCents` a perder o sinal.** `parseAmountCents("-23")`
-  devolve `-2300`. Também trata parênteses e milhares com espaço.
-- **Não é a deteção de colunas.** Reconstruí o cabeçalho da Degiro descrito
-  abaixo e corri o `detectTradeMapping` + `rowsToTrades` reais: o mapeamento sai
-  certo (`quantityCol: 6`, `kindCol: -1`) e a linha da venda **é importada como
-  `venda`**, com a quantidade, o preço, a moeda e o câmbio certos.
+A causa é o leitor de ficheiros: pedia as células com `raw: false`, ou seja
+recebia o **texto que o Excel desenha**. Com o formato `#,##0;[Red]#,##0` —
+negativo a vermelho, que várias localizações oferecem por omissão — o `-23`
+chega como `"23"`, e **todas as vendas viram compras**. Passa a ler o valor.
 
-Ou seja: **pelo caminho da deteção automática, com o ficheiro em CSV, este bug
-não acontece.** O que sobra são os outros caminhos.
+Tratada também a segunda suspeita: os formatos aprendidos ganham à deteção e
+eram usados com um `as unknown as`, que não valida nada. Um template gravado por
+uma versão antiga não traz os campos novos, e `undefined >= 0` é `false` — o que
+se lê como "esta coluna não existe", desligando a moeda e o câmbio em silêncio.
+Agora um template só vale inteiro (`import/stored-mapping.ts`).
 
-### As duas hipóteses vivas
+**Falta confirmar com o ficheiro do Tiago** qual dos dois era o caso real. Ver
+"Ficheiros do Tiago" no fim.
 
-**(a) O formato de número do Excel esconde o sinal.** Esta está **provada como
-mecanismo**, falta confirmar que é o caso deste ficheiro. O `readXlsx` lê com
-`raw: false`, ou seja, recebe o texto **como o Excel o mostra**, não o valor. E
-há formatos correntes que mostram um negativo sem sinal:
+### Números errados sem aviso (feito)
 
-| Formato da célula | `-23` é lido como |
-|---|---|
-| `General` | `"-23"` ✅ |
-| `#,##0` | `"-23"` ✅ |
-| `#,##0;[Red]#,##0` | `"23"` ❌ **sinal perdido** |
-| `#,##0;(#,##0)` | `"(23)"` ✅ (os parênteses são tratados) |
+- **O saldo redividia o histórico** quando os membros mudavam. Agora, ao
+  acrescentar alguém, pergunta-se o que fazer ao passado: dividir tudo, a partir
+  de uma data, ou só dali para a frente (migração `0022`). Quem já existe fica a
+  "desde sempre", que é o comportamento antigo — **nenhum saldo já mostrado
+  muda**. Só afeta divisões em partes iguais; as percentagens já nomeiam quem
+  suporta o quê.
+- **Dois cafés iguais no mesmo dia** colidiam no mesmo UID e um desaparecia. As
+  ocorrências passam a ser numeradas dentro de cada ficheiro e continuam a ser
+  deduplicadas entre ficheiros. A primeira ocorrência mantém o UID de sempre.
+- **O índice único das despesas era global**, não por ambiente (migração `0023`).
+- **Movimentos do mesmo dia eram ordenados por UUID**, à sorte, mudando o custo
+  médio e a mais-valia realizada sem levantar o aviso de `oversold`. Entra
+  primeiro o que entra.
+- **A comparação com o índice** saltava os reforços anteriores ao início da série
+  mas mantinha a carteira inteira — 25% apresentados como 150%. Recusa comparar
+  e diz porquê.
+- **Um empréstimo que amortiza um euro por mês** era apresentado como um
+  empréstimo a 100 anos com juros de seis dígitos.
 
-O formato "negativo a vermelho sem sinal" é o que o Excel oferece por omissão em
-várias localizações. Com ele, **toda a venda vira compra** e nada avisa.
-Reproduzido a correr o `xlsx` do projeto, não em teoria.
+### Coisas partidas que se viam da rua (feito)
 
-Contra esta hipótese: o RETOMAR anterior transcreve a célula como `-23`, com
-sinal. Se o Tiago viu o sinal no Excel, o formato mostra-o e não é isto. Vale
-confirmar qual é o formato da coluna antes de mexer.
+- `/recuperar`, `/privacidade` e `/termos` estavam **atrás da sessão**, apesar de
+  a landing e o login lhes apontarem. A recuperação de palavra-chave estava morta
+  para exatamente quem precisa dela. A lista de rotas públicas passou para
+  `lib/public-routes.ts`, com testes — dentro do middleware não era testável, e é
+  por isso que o erro sobreviveu.
+- Não havia um único `error.tsx` nem `loading.tsx`. Já há, mais `global-error` e
+  `not-found`. O de erro mostra o `digest`, nunca a mensagem, que vem da base de
+  dados.
 
-**(b) Um formato aprendido antigo a sobrepor-se à deteção.** Em
-`broker-import.ts` os templates guardados **ganham à deteção** e são usados
-**sem validação nenhuma** (`tpl.mapping as unknown as TradeMapping`). Um template
-gravado uma vez com as colunas trocadas fica a estragar todas as importações
-seguintes daquele formato, para sempre e em silêncio. Pior: os campos que faltem
-num template antigo ficam `undefined`, e `undefined >= 0` é `false` — o que
-**desliga a coluna da moeda e a do câmbio** sem dizer nada, e dólares passam a
-ser gravados como euros. É exatamente a falha que o invariante 7 proíbe.
+### Limpeza e documentação (feito)
 
-Vale a pena verificar se existe um template gravado para o fingerprint deste
-ficheiro. É a explicação que melhor encaixa em "acontece-me a mim e não se
-reproduz".
+- Apagadas ~250 linhas mortas: `buildTradesPreview` e o `holdings-import`
+  inteiro, que ninguém chamava e que traziam a sua própria cópia da lógica de
+  templates — incluindo o mesmo `as unknown as`.
+- Removido o `AUTH_DEV_LOGIN`, que já não tinha chamadores.
+- O `.env.example` declarava o `AUTH_URL` duas vezes, ganhando a de produção.
+- O `npm run seed` rebentava numa chave estrangeira desde a `0003`.
+- O `CLAUDE.md` e o `README.md` reescritos: descreviam uma app de dois
+  utilizadores, com SSO como forma de entrar e parsing em Python.
 
-### Correção proposta (revista)
+### A migração `0021` (corrigida, por aplicar)
 
-1. **Ler a quantidade do valor cru, não do texto formatado.** A causa (a)
-   resolve-se lendo a célula com o valor numérico do Excel em vez do texto que
-   ele mostra. Um `parseQuantity` próprio continua a fazer sentido — uma
-   quantidade não tem moeda nem parênteses contabilísticos — mas **não é isso que
-   resolve este bug**, ao contrário do que a versão anterior desta nota dizia.
-2. **Validar os templates aprendidos antes de os usar**, e versioná-los. Um
-   template sem `currencyCol` não deve ser tratado como "sem moeda"; deve ser
-   tratado como "template velho, volta a detetar".
-3. **Usar o sinal do valor como verificação cruzada.** Nesta Degiro os dois
-   sinais são sempre opostos e coerentes. Se discordarem, **marcar para
-   confirmação em vez de adivinhar**.
+Trazia o bug que o próprio cabeçalho dizia ter evitado: criava o índice único da
+`waitlist` com o nome `waitlist_email_key`, que é exatamente o nome que o
+Postgres já deu à restrição da `0001`. O `if not exists` encontrava-o, saltava, e
+o índice sobre `lower(email)` **nunca era criado** — enquanto o comentário
+prometia falhar em voz alta. Renomeado.
 
----
-
-## 2. Correções e números errados encontrados na revisão
-
-Nenhum destes tem teste que os apanhe — os 443 que existem passam todos.
-
-- **Mudar os membros do ambiente re-divide todo o histórico.** O
-  `computeBalance` divide cada despesa pela lista de membros **atual**, e a
-  despesa não guarda quem participou nela. Acrescentar uma terceira pessoa faz
-  com que ela passe a dever a sua parte de jantares de janeiro em que não esteve,
-  e inverte o saldo de quem lá estava. Como os acertos são valores fixos, um
-  acerto já pago deixa um resíduo permanente. **É o oposto do invariante "o saldo
-  tem de ser sempre explicável".** É a correção de domínio mais séria da lista.
-- **Duas transações mesmo iguais no mesmo dia colidem no mesmo UID** e uma
-  desaparece. Dois cafés iguais, dois bilhetes de metro, dois abastecimentos: o
-  `canonicalKey` não tem índice de ocorrência, e o índice único na base de dados
-  remata. O invariante está escrito num sentido só ("nunca entra duas vezes"); o
-  sentido inverso não está guardado. Note-se o contraste com
-  `newTradesOnly`, que **conta** repetições de propósito e acerta.
-- **O índice único das despesas é global, não por ambiente**
-  (`expenses (uid) where deleted_at is null`) e o `canonicalKey` não inclui o
-  `space_id`. Dois ambientes que importem a mesma linha do mesmo banco colidem.
-- **Movimentos do mesmo dia são ordenados por `id`.** Uma compra e uma venda no
-  mesmo dia são ordenadas por UUID, ou seja, à sorte, e o custo médio e a
-  mais-valia realizada mudam conforme o sorteio — **sem `oversold`, sem aviso**.
-- **A comparação com o índice ignora as entradas anteriores ao início da série**
-  mas mantém o valor da carteira inteiro. Metade dos reforços fora da conta dá
-  150% de rentabilidade onde a verdade são 25%.
-- **Um empréstimo que nunca amortiza é reportado como um empréstimo a 100 anos**
-  em vez de "nunca paga". O `neverPaysOff` só dispara quando a prestação não
-  cobre o juro do **primeiro** mês; o tecto de 1200 meses é devolvido como se
-  fosse uma resposta.
+O comentário *"sem políticas: só o service role lhe toca"* também era falso: a
+`0001` tinha criado duas políticas na `waitlist`, uma delas a deixar qualquer
+cliente inserir. Agora são removidas.
 
 ---
 
-## 3. Coisas partidas que se veem da rua
-
-- **O link "Esqueci-me" não funciona, e as páginas legais também não.** O
-  `middleware.ts` só tem `/` e `/login` como públicos. `/recuperar`,
-  `/recuperar/[token]`, `/privacidade` e `/termos` exigem sessão. A landing e o
-  login **têm links para as três** — quem não tem sessão é atirado de volta para
-  o `/login`. Ou seja: a recuperação de palavra-chave está morta para exatamente
-  quem precisa dela, e a política de privacidade não é alcançável por um
-  visitante, o que também é um problema de RGPD com a landing pública.
-- **Não há um único `error.tsx`, `loading.tsx` ou `not-found.tsx` na app.** A
-  camada de dados atira `new Error(error.message)` por todo o lado; qualquer
-  falha do Supabase dá o ecrã de erro cru do Next, sem caminho de volta. A barra
-  de qualidade do `CLAUDE.md` pede explicitamente o contrário.
-- **`X-Robots-Tag: noindex, nofollow` está aplicado a `/:path*`**, ou seja,
-  também à landing. Se a landing passar a ser a porta de entrada de registo
-  aberto, está a ser escondida dos motores de busca.
-
----
-
-## 4. Modo demo self-serve — canalização em falta
+## 1. Modo demo self-serve — canalização em falta
 
 A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
 9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
 
-- [ ] **Aplicar a migração `0021`.** ⚠️ **Tem um bug, corrigir antes de aplicar** —
-      ver a nota a seguir.
+- [ ] **Aplicar as migrações `0021`, `0022` e `0023`.** A `0021` já foi corrigida
+      (ver secção 0) e pode ser aplicada como está. As `0022` (participação dos
+      membros) e `0023` (uid por ambiente) são desta sessão e o código já conta
+      com elas — **a app funciona sem elas, mas as correções do saldo e do dedup
+      só valem depois de aplicadas**.
 - [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
       gratuitos com a última atividade; marcar aviso; congelar/descongelar;
       gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
@@ -216,18 +180,9 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ---
 
-## 5. Código morto e duplicado
+## 2. Higiene de código, por fazer
 
-- **`buildTradesPreview` (166 linhas) e `buildHoldingsPreview` (117 linhas) não
-  são chamados por ninguém.** Foram substituídos pelo `buildBrokerPreview`, que
-  reimplementa a mesma lógica de dedup e de templates. Só o `commitTradesImport`
-  do `trades-import.ts` continua vivo. São ~250 linhas de lógica quase idêntica à
-  que está em produção, prontas a divergir — e a próxima sessão pode muito bem ir
-  corrigir o caminho morto, convencida de que está a corrigir o vivo.
-- **`isDevLoginEnabled()` não tem chamadores.** O `AUTH_DEV_LOGIN` no
-  `.env.example`, o comentário no topo do `auth.ts` e o README continuam a
-  prometer um botão de "Modo de desenvolvimento" que já não existe.
-- **`actions.ts` tem 1861 linhas.** É o ficheiro onde estão quase todas as
+- **`actions.ts` tem ~1900 linhas.** É o ficheiro onde estão quase todas as
   escritas da app e é onde as verificações de permissão têm de ser consistentes.
   Vale a pena parti-lo por área.
 - **As importações gravam linha a linha, em sequência** (`await` dentro do
@@ -238,39 +193,13 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ---
 
-## 6. O `CLAUDE.md` e o `README.md` estão a mentir
+## 3. Dívidas conhecidas
 
-Isto custa uma sessão inteira a quem chegar de novo. O `CLAUDE.md` afirma, na
-secção que diz "stack fixa, não trocar sem perguntar":
-
-| O `CLAUDE.md` diz | O código faz |
-|---|---|
-| "Só dois utilizadores" | Multi-inquilino desde a `0003`: ambientes, membros, convites, papéis, aprovações |
-| "Auth.js com Google e Microsoft + allow-list de 2 emails" | Entra-se com **email e palavra-chave**. Os fornecedores SSO estão configurados mas **não há botão nenhum na UI** — não é só falta de credenciais. E a allow-list já não decide quem entra, só o plano |
-| Despesas, divisão e saldo | Também património, ativos, movimentos, cotações, câmbio, FIRE, rendimentos, dívidas, recorrentes, metas, relatórios, exportação, consola de admin, caixa de contacto, recuperação de palavra-chave |
-| "Reutilizar a lógica Python existente" | Não há Python nenhum no repositório |
-| `REQUISITOS.md`: "sem registo aberto" | O registo aberto está implementado de ponta a ponta; só a bandeira está desligada |
-
-O próprio código já sabe disto — o `login/page.tsx` tem lá escrito *"já não são
-'2 emails'"*. **O documento com ar de autoridade é o que está errado.** O
-`RETOMAR.md` e o `DECISOES.md` são o registo fiável.
-
-**O `README.md` também:** diz para aplicar a `0001_init.sql` (são 21 migrações),
-manda clicar num botão de modo de desenvolvimento que não existe, anuncia "41
-testes" (são 443), e o `.env.example` declara `AUTH_URL` duas vezes — a segunda,
-que é a que vale, aponta para `https://rachar.pt`, o que parte os redirecionamentos
-de autenticação em local.
-
-**O `npm run seed` está partido.** Insere despesas com `payer_id`/`owner_id` a
-apontar para `"tiago"`/`"clara"`, mas desde a `0003` essas colunas são chaves
-estrangeiras para `members(id)`, e o script nunca insere um único membro. Numa
-base de dados nova rebenta na chave estrangeira. É um dos entregáveis por fase do
-`CLAUDE.md`.
-
----
-
-## 7. Dívidas antigas
-
+- [ ] **Primeira entrada define a palavra-chave.** Se um email conhecido ainda
+      não tem palavra-chave, quem lá chegar primeiro escolhe-a e fica com a
+      conta. O Tiago decidiu não mexer nisto agora. A saída natural é o convite
+      levar um token, reutilizando o mecanismo do `password_reset_tokens`, que já
+      existe e é sólido. **Fechar antes de abrir o registo.**
 - [ ] **SSO Google/Microsoft** — falta a UI **e** as credenciais do Tiago.
 - [ ] **Ticker a partir do nome** — confirmado: não começado. A regra continua a
       ser "o modelo sugere, os factos confirmam": o candidato só vale depois de a
@@ -283,9 +212,10 @@ base de dados nova rebenta na chave estrangeira. É um dos entregáveis por fase
 
 | Decisão | Estado |
 |---|---|
-| **Corrigir as falhas de segurança da secção 0** | **Por decidir — bloqueia tudo o resto** |
-| Ligar `AUTH_OPEN_REGISTRATION` | Por decidir. Só depois da canalização **e** da segurança. |
-| Credenciais de SSO (Google/Microsoft) | Em falta. |
+| Como fechar a "primeira entrada define a palavra-chave" | **Adiado pelo Tiago.** Fica como dívida conhecida. |
+| Ligar `AUTH_OPEN_REGISTRATION` | Por decidir. Só depois da canalização **e** de fechar a linha acima. |
+| Credenciais de SSO (Google/Microsoft) | Em falta. Falta também a UI. |
+| O que fazer ao histórico ao acrescentar alguém | **Decidido: perguntar.** Tudo, desde uma data, ou dali para a frente. Implementado. |
 | Limite de contas novas por dia | **Decidido: 1/dia.** Implementado em domínio, não ligado. |
 | Retenção de ambientes gratuitos | **Decidido: congelar aos 90 dias, não apagar.** Não ligado. |
 | Tectos do plano gratuito | **Decidido: 100 despesas, 10 bens, 2 pessoas, 1 ambiente.** Ligado. |
@@ -323,8 +253,9 @@ A revisão acrescenta dois, aprendidos ao ver as mesmas falhas repetirem-se:
 Os ficheiros de teste — `Transactions_1.xlsx` e `Account_2.csv` da Degiro —
 **não estão no repositório e não devem estar**: contêm movimentos financeiros
 reais e este repositório é **público**. Pedir ao Tiago que os volte a anexar
-quando se for corrigir o bug do ponto 1. Desta vez, pedir também **qual é o
-formato de número da coluna Quantidade** — é o que decide a hipótese (a).
+para **confirmar** a correção da leitura do Excel (secção 0). Desta vez pedir
+também **qual é o formato de número da coluna Quantidade**: é o que diz se o
+caso real era o formato a esconder o sinal ou um template antigo gravado.
 
 Ao escrever testes a partir deles, usar só a forma das linhas (sinais, formato
 dos números, nomes de colunas) — nunca copiar o ficheiro para dentro do repo.
