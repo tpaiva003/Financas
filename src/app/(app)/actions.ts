@@ -12,6 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import { suggestTicker } from "@/lib/services/ticker-suggest";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -1596,6 +1597,46 @@ export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
   await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
   revalidatePath("/patrimonio");
   revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
+ * Sugere um símbolo de bolsa para um investimento, a partir do nome.
+ *
+ * Um produto importado vem com o nome que a corretora lhe dá e sem símbolo, e
+ * sem símbolo não há cotação, nem preço atual, nem ganho, nem TWR. Escrever
+ * dezenas de tickers à mão depois de uma importação não é trabalho que se peça.
+ *
+ * **A sugestão nunca se aplica sozinha.** Vem para confirmação, e o símbolo já
+ * foi verificado contra a fonte de cotações antes de chegar aqui — mas um ticker
+ * que existe e é da empresa errada passa nessa verificação e daria um preço
+ * plausível todos os dias, sem ninguém desconfiar. A última palavra é de quem
+ * conhece a carteira.
+ */
+export async function suggestAssetSymbolAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Investimento inválido." };
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const asset = assets.find((a) => a.id === id);
+  if (!asset) return { error: "Investimento inválido." };
+
+  const r = await suggestTicker(asset.name).catch(() => null);
+  if (!r || !r.suggestion) {
+    return { error: r?.problem ?? "Não consegui sugerir um símbolo." };
+  }
+
+  const s = r.suggestion;
+  const moeda = s.currencyConfirmada && s.currencyConfirmada !== "EUR" ? ` em ${s.currencyConfirmada}` : "";
+  return {
+    ok: true,
+    message: `Sugestão: ${s.symbol}${moeda} (${s.bolsa}). ${s.porque} Confere e grava no campo do símbolo se estiver certo.`,
+  };
 }
 
 /**

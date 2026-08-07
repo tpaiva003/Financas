@@ -22,6 +22,8 @@ import {
 } from "@/app/(app)/actions";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 import { getAssetTwr } from "@/lib/services/asset-twr";
+import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import { SuggestSymbolButton } from "@/components/SuggestSymbolButton";
 
 export const metadata = { title: "Investimento · Rachar" };
 export const dynamic = "force-dynamic";
@@ -172,10 +174,14 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
         </div>
 
         {!asset.symbol ? (
-          <p className="mt-2 text-xs text-fg-faint">
-            Sem símbolo de bolsa, o preço é sempre escrito à mão. Podes indicá-lo
-            em Ativos, no Editar deste investimento.
-          </p>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-fg-faint">
+              Sem símbolo de bolsa, o preço é sempre escrito à mão — e não há
+              cotação, nem ganho, nem rentabilidade. Indica-o em Ativos, no
+              Editar deste investimento.
+            </p>
+            {tickerSuggestAvailable() ? <SuggestSymbolButton assetId={asset.id} /> : null}
+          </div>
         ) : null}
       </section>
 
