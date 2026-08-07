@@ -138,6 +138,30 @@ export function buildLoan(input: LoanInput): LoanPlan {
     months++;
   }
 
+  /**
+   * O tecto foi atingido: isto não é um prazo, é o fim do ciclo.
+   *
+   * Devolver `months` aqui apresentava `MAX_MONTHS` como se fosse uma resposta —
+   * "100 anos" e uma soma de juros com seis dígitos, indistinguíveis de um
+   * empréstimo que salda mesmo. O `neverPaysOff` só apanha o caso extremo em que
+   * a prestação nem cobre o juro do PRIMEIRO mês; uma prestação um cêntimo acima
+   * disso passa por ele e amortiza tão devagar que na prática nunca acaba.
+   *
+   * Sem número é melhor do que com um número inventado: `null` diz "não sei", e
+   * o `neverPaysOff` diz porquê.
+   */
+  if (balance > 0) {
+    return {
+      monthlyPaymentCents: payment,
+      paymentIsEstimated: given === null,
+      monthsToPayOff: null,
+      totalInterestCents: null,
+      nextInterestCents,
+      nextPrincipalCents: Math.min(payment, principal + nextInterestCents) - nextInterestCents,
+      neverPaysOff: true,
+    };
+  }
+
   return {
     monthlyPaymentCents: payment,
     paymentIsEstimated: given === null,

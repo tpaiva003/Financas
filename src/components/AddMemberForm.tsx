@@ -16,12 +16,14 @@ export function AddMemberForm() {
   const [state, action] = useFormState(addMemberAction, initial);
   const ref = useRef<HTMLFormElement>(null);
   const [grant, setGrant] = useState(false);
+  const [desde, setDesde] = useState(false);
 
   // Limpa o formulário só depois de adicionar com sucesso.
   useEffect(() => {
     if (state.ok) {
       ref.current?.reset();
       setGrant(false);
+      setDesde(false);
     }
   }, [state]);
 
@@ -43,6 +45,61 @@ export function AddMemberForm() {
           <input id="m-email" name="email" type="email" placeholder="opcional" className="input" />
         </div>
       ) : null}
+
+      {/*
+        O que fazer ao histórico. Sem esta escolha, acrescentar alguém redividia
+        as despesas todas que já lá estavam: a pessoa ficava a dever a sua parte
+        de jantares em que não esteve, e o saldo de quem cá estava virava-se do
+        avesso sem ninguém ter mexido em nada.
+      */}
+      <fieldset className="rounded-xl border border-hair bg-panel2/40 p-3">
+        <legend className="label px-1">Divide despesas…</legend>
+
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="radio"
+            name="participa"
+            value="agora"
+            defaultChecked
+            onChange={() => setDesde(false)}
+            className="h-4 w-4 border-hair bg-panel2 accent-fg"
+          />
+          <span>De agora em diante</span>
+        </label>
+
+        <label className="mt-2 flex items-center gap-3 text-sm">
+          <input
+            type="radio"
+            name="participa"
+            value="tudo"
+            onChange={() => setDesde(false)}
+            className="h-4 w-4 border-hair bg-panel2 accent-fg"
+          />
+          <span>Tudo, incluindo o que já cá está</span>
+        </label>
+
+        <label className="mt-2 flex items-center gap-3 text-sm">
+          <input
+            type="radio"
+            name="participa"
+            value="desde"
+            onChange={() => setDesde(true)}
+            className="h-4 w-4 border-hair bg-panel2 accent-fg"
+          />
+          <span>A partir de uma data</span>
+        </label>
+
+        {desde ? (
+          <div className="mt-2 pl-7">
+            <label className="sr-only" htmlFor="m-desde">Data a partir da qual divide</label>
+            <input id="m-desde" name="participaDesde" type="date" required className="input" />
+          </div>
+        ) : null}
+
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">
+          Só afeta divisões em partes iguais · o que já foi acertado não muda
+        </p>
+      </fieldset>
 
       <label className="flex items-center gap-3 text-sm text-fg-muted">
         <input

@@ -618,10 +618,27 @@ function AssetRow({
       </div>
       </div>
 
+      {/*
+        Duas razões diferentes para não haver prazo, e a diferença importa a
+        quem lê: numa a dívida cresce, na outra desce tão devagar que não acaba
+        em vida útil nenhuma. Antes esta segunda aparecia como "100 anos" e uma
+        soma de juros — um número inventado com ar de resposta.
+      */}
       {plan && plan.neverPaysOff ? (
         <p className="mt-2 text-xs text-debt">
-          A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
-          {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+          {(plan.monthlyPaymentCents ?? 0) <= (plan.nextInterestCents ?? 0) ? (
+            <>
+              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
+              {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+            </>
+          ) : (
+            <>
+              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} cobre os{" "}
+              {formatCents(plan.nextInterestCents ?? 0)} de juro por pouco e só abate{" "}
+              {formatCents(plan.nextPrincipalCents ?? 0)} por mês: a este ritmo não salda em
+              cem anos.
+            </>
+          )}
         </p>
       ) : null}
 

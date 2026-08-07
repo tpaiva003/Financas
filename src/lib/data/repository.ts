@@ -262,6 +262,11 @@ export interface Member {
   email?: string | null;
   /** "full" participa no saldo; "submitter" só submete (com aprovação). */
   role?: MemberRole;
+  /**
+   * Desde quando divide despesas em partes iguais ("AAAA-MM-DD").
+   * `null` = desde sempre, que é o que vale para quem já cá estava.
+   */
+  participatesFrom?: string | null;
 }
 
 export interface AppUser {
@@ -341,6 +346,8 @@ export interface AddMemberInput {
   name: string;
   email?: string | null;
   linkedUserId?: string | null;
+  /** Ver `Member.participatesFrom`. Ausente = desde sempre. */
+  participatesFrom?: string | null;
 }
 
 export interface UpdateMemberInput {
@@ -348,6 +355,7 @@ export interface UpdateMemberInput {
   email?: string | null;
   role?: MemberRole;
   linkedUserId?: string | null;
+  participatesFrom?: string | null;
 }
 
 export interface ContactMessage {

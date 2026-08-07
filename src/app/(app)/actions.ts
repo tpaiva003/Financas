@@ -1199,10 +1199,32 @@ export async function addMemberAction(
     }
   }
 
+  /**
+   * O que fazer ao histórico, decidido por quem acrescenta.
+   *
+   * `null` = divide tudo, incluindo o que já lá está. Uma data = só dessa data
+   * em diante. Por omissão fica a data de hoje, que é a resposta que não mexe
+   * em saldo nenhum já apresentado — a escolha segura quando alguém carrega no
+   * botão sem ler.
+   */
+  const hoje = new Date().toISOString().slice(0, 10);
+  const participa = String(formData.get("participa") ?? "agora");
+  let participatesFrom: string | null = hoje;
+  if (participa === "tudo") {
+    participatesFrom = null;
+  } else if (participa === "desde") {
+    const escolhida = String(formData.get("participaDesde") ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(escolhida)) {
+      return { error: "Indica a data a partir da qual esta pessoa divide despesas." };
+    }
+    participatesFrom = escolhida;
+  }
+
   const member = await repo.addMember({
     spaceId: ctx.space.id,
     name: parsed.data.name,
     email: grantSubmit ? accessEmail : parsed.data.email || null,
+    participatesFrom,
   });
 
   // Dá logo acesso de submissão (role submitter + utilizador com login).

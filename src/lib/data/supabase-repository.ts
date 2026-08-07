@@ -289,6 +289,7 @@ export class SupabaseRepository implements Repository {
       linkedUserId: r.linked_user_id,
       email: r.email,
       role: (r.role ?? "full") as Member["role"],
+      participatesFrom: r.participates_from ?? null,
     }));
   }
 
@@ -302,6 +303,7 @@ export class SupabaseRepository implements Repository {
         name: input.name,
         linked_user_id: input.linkedUserId ?? null,
         email: input.email ?? null,
+        participates_from: input.participatesFrom ?? null,
       })
       .select("*")
       .single();
@@ -312,6 +314,7 @@ export class SupabaseRepository implements Repository {
       name: data.name,
       linkedUserId: data.linked_user_id,
       email: data.email,
+      participatesFrom: data.participates_from ?? null,
     };
   }
 
@@ -322,6 +325,7 @@ export class SupabaseRepository implements Repository {
     if (patch.email !== undefined) update.email = patch.email;
     if (patch.role !== undefined) update.role = patch.role;
     if (patch.linkedUserId !== undefined) update.linked_user_id = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) update.participates_from = patch.participatesFrom;
     if (Object.keys(update).length === 0) return;
     const { error } = await db
       .from("members")

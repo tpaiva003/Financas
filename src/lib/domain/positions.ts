@@ -94,9 +94,27 @@ export function tradeAmountCents(t: Trade): number {
 export function buildPosition(trades: Trade[]): Position {
   if (trades.length === 0) return EMPTY;
 
-  const sorted = [...trades].sort((a, b) =>
-    a.date === b.date ? a.id.localeCompare(b.id) : a.date < b.date ? -1 : 1,
-  );
+  const sorted = [...trades].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    // No mesmo dia, primeiro o que entra e só depois o que sai.
+    //
+    // O desempate era `a.id.localeCompare(b.id)`, e os ids são UUID: ou seja, à
+    // sorte. Uma compra e uma venda do mesmo produto no mesmo dia — que é o que
+    // acontece quando a corretora parte uma ordem — davam custo médio e
+    // mais-valia realizada diferentes conforme o sorteio, sem sequer levantar o
+    // aviso de `oversold`. Um número errado sem aviso é o pior que esta app
+    // pode fazer.
+    //
+    // Não se pode vender o que ainda não se comprou, por isso a compra vem
+    // primeiro: é a única ordem que não inventa uma venda a descoberto que
+    // nunca existiu. Empates dentro do mesmo sentido ficam pelo id, que aí já
+    // não muda conta nenhuma.
+    const peso = (k: Trade["kind"]) => (k === "compra" ? 0 : k === "venda" ? 1 : 2);
+    const pa = peso(a.kind);
+    const pb = peso(b.kind);
+    if (pa !== pb) return pa - pb;
+    return a.id.localeCompare(b.id);
+  });
 
   let quantity = 0;
   let costCents = 0;

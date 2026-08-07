@@ -187,6 +187,7 @@ export class MockRepository implements Repository {
       name: input.name,
       linkedUserId: input.linkedUserId ?? null,
       email: input.email ?? null,
+      participatesFrom: input.participatesFrom ?? null,
     };
     getStore().members.push(member);
     return member;
@@ -199,6 +200,7 @@ export class MockRepository implements Repository {
     if (patch.email !== undefined) m.email = patch.email;
     if (patch.role !== undefined) m.role = patch.role;
     if (patch.linkedUserId !== undefined) m.linkedUserId = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) m.participatesFrom = patch.participatesFrom;
   }
 
   async deleteMember(id: string, spaceId: string): Promise<void> {
