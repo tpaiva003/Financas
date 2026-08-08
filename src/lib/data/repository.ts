@@ -168,6 +168,17 @@ export interface Asset {
   termMonths?: number | null;
   /** "fixa" ou "variavel". */
   rateKind?: string | null;
+  /** Crédito: data do último pagamento. Não envelhece, ao contrário de `termMonths`. */
+  maturityDate?: string | null;
+  /**
+   * Crédito com períodos de taxa (habitação): `{ periods, indexanteRates }`.
+   *
+   * Vem de uma coluna `jsonb`, por isso chega aqui como `unknown` de propósito.
+   * Ler **sempre** com `parseCreditTerms` — o que está guardado pode ter sido
+   * escrito por outra versão da app, e um plano de amortização feito sobre um
+   * objeto por validar é um número a sério com origem duvidosa.
+   */
+  creditTerms?: unknown;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
   updatedAt?: string | null;

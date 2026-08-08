@@ -24,3 +24,4 @@ export * from "./quotes";
 export * from "./limits";
 export * from "./retencao";
 export * from "./monogram";
+export * from "./credito";

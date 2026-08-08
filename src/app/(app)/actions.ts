@@ -33,6 +33,12 @@ import {
   type Split,
   checkLimit,
   type SpacePlan,
+  INDEXANTES,
+  type CreditTerms,
+  type Indexante,
+  type IndexanteRates,
+  type PeriodoTipo,
+  type RatePeriod,
 } from "@/lib/domain";
 
 export interface ActionState {
@@ -1479,6 +1485,54 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Os períodos de taxa de um crédito, lidos do formulário.
+ *
+ * Vêm em campos repetidos (`periodStart`, `periodKind`, …), que o `getAll`
+ * devolve como listas paralelas — é o que permite acrescentar e tirar linhas no
+ * cliente sem inventar um formato próprio.
+ *
+ * Uma linha sem data é descartada em silêncio, porque é o que a linha vazia que
+ * ficou por preencher significa. O que **não** se faz é preencher os buracos: um
+ * período variável sem indexante fica sem indexante, e mais à frente o
+ * `buildCreditoPlano` recusa-se a calcular e diz porquê. Escolher aqui uma taxa
+ * por alguém seria pôr um número com ar de resposta no meio de um plano.
+ */
+function creditTermsFromForm(formData: FormData): CreditTerms | null {
+  const datas = formData.getAll("periodStart").map((v) => String(v).trim());
+  const tipos = formData.getAll("periodKind").map((v) => String(v).trim());
+  const taxas = formData.getAll("periodRate");
+  const indexantes = formData.getAll("periodIndexante").map((v) => String(v).trim());
+  const spreads = formData.getAll("periodSpread");
+
+  const periods: RatePeriod[] = [];
+  for (let i = 0; i < datas.length; i++) {
+    const startsOn = datas[i] ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn)) continue;
+    const kind: PeriodoTipo = tipos[i] === "variavel" ? "variavel" : "fixa";
+    const indexante = indexantes[i];
+    periods.push({
+      startsOn,
+      kind,
+      ratePct: kind === "fixa" ? parseNumber(taxas[i]) : null,
+      indexante:
+        kind === "variavel" && indexante && indexante in INDEXANTES
+          ? (indexante as Indexante)
+          : null,
+      spreadPct: kind === "variavel" ? parseNumber(spreads[i]) : null,
+    });
+  }
+  if (periods.length === 0) return null;
+
+  const indexanteRates: IndexanteRates = {};
+  for (const chave of Object.keys(INDEXANTES) as Indexante[]) {
+    const v = parseNumber(formData.get(`indexanteRate-${chave}`));
+    if (v !== null) indexanteRates[chave] = v;
+  }
+
+  return { periods, indexanteRates };
+}
+
 export async function saveAssetAction(
   _prev: ActionState,
   formData: FormData,
@@ -1514,6 +1568,8 @@ export async function saveAssetAction(
   const term = parseNumber(formData.get("termMonths"));
   const rawRateKind = String(formData.get("rateKind") ?? "").trim();
   const isDebt = kind === "divida";
+  const maturity = String(formData.get("maturityDate") ?? "").trim();
+  const creditTerms = isDebt ? creditTermsFromForm(formData) : null;
 
   const patch = {
     spaceId: ctx.space.id,
@@ -1533,6 +1589,8 @@ export async function saveAssetAction(
         : null,
     termMonths: isDebt && term !== null && term > 0 ? Math.round(term) : null,
     rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
+    maturityDate: isDebt && /^\d{4}-\d{2}-\d{2}$/.test(maturity) ? maturity : null,
+    creditTerms,
     symbol:
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))

@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { saveAssetAction, type ActionState } from "@/app/(app)/actions";
-import { ASSET_KIND_LABELS, RATE_KIND_LABELS, type AssetKind, type RateKind } from "@/lib/domain";
+import {
+  ASSET_KIND_LABELS,
+  RATE_KIND_LABELS,
+  type AssetKind,
+  type CreditTerms,
+  type RateKind,
+} from "@/lib/domain";
+import { CreditPeriodsField } from "./CreditPeriodsField";
 
 const empty: ActionState = {};
 
@@ -22,6 +29,10 @@ export interface AssetFormValues {
   monthlyPaymentCents?: number | null;
   termMonths?: number | null;
   rateKind?: string | null;
+  /** Crédito: a data do último pagamento. */
+  maturityDate?: string | null;
+  /** Crédito com períodos de taxa. Já validado — quem monta isto usa `parseCreditTerms`. */
+  creditTerms?: CreditTerms | null;
   symbol?: string | null;
 }
 
@@ -280,6 +291,14 @@ export function AssetForm({
                 </p>
               </div>
             </div>
+          ) : null}
+
+          {isDebt ? (
+            <CreditPeriodsField
+              uid={uid}
+              maturityDate={asset?.maturityDate}
+              terms={asset?.creditTerms}
+            />
           ) : null}
         </div>
       )}

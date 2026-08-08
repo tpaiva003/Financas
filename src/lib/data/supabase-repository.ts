@@ -1177,6 +1177,8 @@ export class SupabaseRepository implements Repository {
         monthly_payment_cents: input.monthlyPaymentCents ?? null,
         term_months: input.termMonths ?? null,
         rate_kind: input.rateKind ?? null,
+        maturity_date: input.maturityDate ?? null,
+        credit_terms: input.creditTerms ?? null,
         symbol: input.symbol ?? null,
         created_by: input.createdBy ?? null,
       })
@@ -1201,6 +1203,8 @@ export class SupabaseRepository implements Repository {
     if (patch.monthlyPaymentCents !== undefined) row.monthly_payment_cents = patch.monthlyPaymentCents;
     if (patch.termMonths !== undefined) row.term_months = patch.termMonths;
     if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
+    if (patch.maturityDate !== undefined) row.maturity_date = patch.maturityDate;
+    if (patch.creditTerms !== undefined) row.credit_terms = patch.creditTerms;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -1664,6 +1668,9 @@ function rowToAsset(r: any): Asset {
     monthlyPaymentCents: r.monthly_payment_cents ?? null,
     termMonths: r.term_months ?? null,
     rateKind: r.rate_kind ?? null,
+    maturityDate: r.maturity_date ?? null,
+    // Cru de propósito: quem lê valida com `parseCreditTerms`.
+    creditTerms: r.credit_terms ?? null,
     symbol: r.symbol ?? null,
     updatedAt: r.updated_at ?? null,
   };

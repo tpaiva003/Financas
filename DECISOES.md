@@ -1172,3 +1172,51 @@ pode aparecer por baixo de dados que já lá estavam.
 
 Editar nunca é travado, só criar. Um bem que já existe tem de se poder corrigir
 mesmo com o ambiente cheio — caso contrário o limite passava de tecto a armadilha.
+
+## Crédito à habitação: períodos de taxa em vez de uma taxa
+
+Uma dívida guardava uma taxa e um tipo (fixa/variável). Um crédito à habitação
+português típico não tem uma taxa — tem duas ou três, com datas: "3 anos fixa a
+3,3%, depois Euribor 6M + 0,9% até 2056". Com uma taxa só, a app mostrava até ao
+fim do prazo uma prestação que deixa de ser verdade no dia em que o período fixo
+acaba, e uns juros totais que nunca vão ser esses.
+
+**A prestação recalcula-se em cada mudança**, como o banco faz: anuidade sobre o
+capital que sobra e os meses que faltam **até à maturidade** — não sobre o
+capital inicial nem sobre o prazo original. É isso que cria o degrau. Sem o
+degrau, o resto não valia a pena fazer-se: é a única coisa que um crédito misto
+sabe e um de taxa única não.
+
+**Fixa / mista / variável é um atalho, não um campo.** O Tiago pediu para poder
+"selecionar se é fixo misto ou variável". Os botões montam as linhas típicas de
+cada caso, para não se começar de uma folha em branco — mas o que fica gravado
+são os períodos, e o tipo é lido a partir deles (`tipoDoCredito`). Um campo à
+parte mais tarde ou mais cedo dizia "fixa" num crédito com um período variável lá
+dentro, e ninguém repararia.
+
+**O valor do indexante pergunta-se; não se estima.** A app não tem fonte de
+Euribor, e a Euribor daqui a três anos ninguém sabe. Quem regista escreve o valor
+de hoje, e o plano diz que daí para a frente é um **cenário** feito a esse valor.
+Deixar em branco não dá zero — zero é uma taxa perfeitamente válida, e daria um
+crédito inteiro sem juros que ninguém questionaria. Dá um plano que se recusa a
+existir e diz porquê.
+
+**`jsonb` e não uma tabela.** Os períodos só fazem sentido dentro do crédito a
+que pertencem, são dois ou três, e são sempre lidos e escritos inteiros. Uma
+tabela dava integridade referencial que aqui não paga o que custa. O preço é o
+Postgres devolver o que lá estiver, escrito por outra versão da app ou por
+engano: por isso a leitura passa toda pelo `parseCreditTerms`, que valida campo a
+campo e deita fora o que não percebe. É a mesma lição dos mapeamentos de
+importação — um `as unknown as` daria um plano de amortização com números a sério
+e origem duvidosa.
+
+**Sem maturidade recusa-se, em vez de voltar ao cálculo antigo.** A alternativa
+cómoda era, faltando a data, cair em silêncio na conta de taxa única. Mas quem
+escreveu os períodos disse que este crédito muda de taxa: mostrar-lhe a prestação
+de hoje até 2056 seria responder-lhe uma coisa que se sabe falsa.
+
+**A última prestação salda o crédito.** A anuidade é arredondada ao cêntimo, e ao
+fim de 360 vezes sobra um resto. O `buildLoan` paga-o num mês 361 que o contrato
+não tem — e por isso diz "241 meses" num crédito de 240. Aqui a última prestação
+absorve-o, que é o que o banco faz. O `buildLoan` não foi mexido: é um erro de um
+mês numa data já mostrada, e corrigi-lo mudava números que as pessoas já viram.

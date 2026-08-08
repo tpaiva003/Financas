@@ -45,6 +45,10 @@ export interface AssetInput {
   termMonths?: number | null;
   /** "fixa" ou "variavel". */
   rateKind?: string | null;
+  /** Crédito: data do último pagamento. */
+  maturityDate?: string | null;
+  /** Crédito com períodos de taxa. Cru: ler com `parseCreditTerms`. */
+  creditTerms?: unknown;
 }
 
 export interface AssetView extends AssetInput {

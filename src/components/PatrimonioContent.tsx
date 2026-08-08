@@ -15,8 +15,14 @@ import {
   formatMonths,
   payoffMonth,
   summariseRates,
+  INDEXANTES,
+  buildCreditoPlano,
+  parseCreditTerms,
+  tipoDoCredito,
   type AssetKind,
   type AssetView,
+  type CreditoPlano,
+  type RatePeriod,
   type RateKind,
   type Trade,
 } from "@/lib/domain";
@@ -100,8 +106,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   }
 
   const shown = net.assets.filter((a) => kindsToShow.includes(a.kind));
-  const rates = summariseRates(assets);
   const today = new Date().toISOString().slice(0, 10);
+  const rates = summariseRates(assets, today);
 
   return (
     <div className="space-y-8">
@@ -487,6 +493,110 @@ function formatMonthYear(ym: string | null): string {
   });
 }
 
+/** "2029-01-01" lido como se fala. */
+function formatDia(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("pt-PT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function pct(n: number): string {
+  return `${n.toFixed(2).replace(/0$/, "").replace(/[.,]$/, "").replace(".", ",")}%`;
+}
+
+/**
+ * O plano de um crédito com períodos de taxa.
+ *
+ * O que se procura primeiro é a prestação de hoje, e logo a seguir a pergunta
+ * que a app existe para responder: **quanto vai passar a ser quando a taxa
+ * mudar**. Por isso o degrau vem em cima, antes do resto — é a informação que
+ * um crédito misto tem e um crédito de taxa única não.
+ *
+ * Quando não há plano, mostra-se a razão em vez de nada. "Falta o valor da
+ * Euribor" resolve-se em dez segundos; um espaço em branco não se resolve.
+ */
+function CreditoResumo({
+  plano,
+  periodos,
+}: {
+  plano: CreditoPlano;
+  periodos: RatePeriod[];
+}) {
+  if (plano.problem) {
+    return (
+      <p className="mt-2 text-xs text-fg-faint">
+        Crédito de taxa {tipoDoCredito(periodos) ?? "—"}, sem plano:{" "}
+        <span className="text-fg-muted">{plano.problem}</span>
+      </p>
+    );
+  }
+
+  const atual = plano.tramos[0]!;
+  const sobe =
+    plano.nextPaymentCents !== null && plano.nextPaymentCents > atual.monthlyPaymentCents;
+
+  return (
+    <div className="mt-2 space-y-0.5 text-xs text-fg-muted">
+      <p>
+        <span className="tnum text-fg">{formatCents(atual.monthlyPaymentCents)}</span> por mês
+        {" · "}
+        <span className="tnum">{pct(atual.annualRatePct)}</span>
+        {atual.origem.kind === "variavel" && atual.origem.indexante
+          ? ` (${INDEXANTES[atual.origem.indexante]}${
+              atual.origem.spreadPct ? ` + ${pct(atual.origem.spreadPct)}` : ""
+            })`
+          : " fixa"}
+      </p>
+
+      {/* O degrau. É a única coisa que um crédito misto sabe e um de taxa única
+          não — e é por não a mostrar que a prestação antiga passava por eterna. */}
+      {plano.nextPaymentCents !== null && plano.nextChangeOn ? (
+        <p className={sobe ? "text-debt" : "text-credit"}>
+          Em {formatDia(plano.nextChangeOn)} passa a{" "}
+          <span className="tnum">{formatCents(plano.nextPaymentCents)}</span> por mês,{" "}
+          {sobe ? "mais" : "menos"}{" "}
+          <span className="tnum">
+            {formatCents(Math.abs(plano.nextPaymentCents - atual.monthlyPaymentCents))}
+          </span>
+          .
+        </p>
+      ) : null}
+
+      <p>
+        Último pagamento em{" "}
+        <span className="text-fg">
+          {formatMonthYear(
+            payoffMonth(
+              atual.startsOn,
+              plano.tramos.reduce((s, t) => s + t.months, 0),
+            ),
+          )}
+        </span>
+        {plano.totalInterestCents > 0 ? (
+          <>
+            {", com "}
+            <span className="tnum text-debt">{formatCents(plano.totalInterestCents)}</span> de
+            juros até lá
+          </>
+        ) : null}
+        .
+      </p>
+
+      {/* Um plano que assenta na Euribor de hoje é um cenário. Deixar isto
+          implícito era apresentar uma suposição como se fosse um facto. */}
+      {plano.scenarioFrom ? (
+        <p className="text-fg-faint">
+          A partir de {formatDia(plano.scenarioFrom)} é um cenário: assenta no valor de hoje do
+          indexante, que ninguém sabe qual será.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function AssetRow({
   asset: a,
   stored,
@@ -512,16 +622,36 @@ function AssetRow({
       ? RATE_KIND_LABELS[a.rateKind as RateKind].toLowerCase()
       : null;
 
-  // Só as dívidas têm plano de pagamento; os outros bens com taxa mostram
-  // quanto rendem por ano, que é a mesma informação vista do outro lado.
-  const plan = isDebt
-    ? buildLoan({
-        principalCents: a.currentValueCents,
-        annualRatePct: a.interestRatePct,
-        termMonths: a.termMonths,
-        monthlyPaymentCents: a.monthlyPaymentCents,
+  /**
+   * O crédito com períodos de taxa ganha ao cálculo de taxa única.
+   *
+   * Quando há períodos, é porque alguém escreveu que este crédito muda de taxa
+   * numa data — e nesse caso mostrar a prestação de hoje até 2055 é dizer uma
+   * coisa que se sabe falsa. Os dois nunca aparecem ao mesmo tempo: duas
+   * prestações diferentes lado a lado não informam, confundem.
+   */
+  const terms = isDebt ? parseCreditTerms(stored?.creditTerms) : null;
+  const credito = terms
+    ? buildCreditoPlano({
+        balanceCents: a.currentValueCents,
+        startDate: today,
+        maturityDate: stored?.maturityDate,
+        periods: terms.periods,
+        indexanteRates: terms.indexanteRates,
       })
     : null;
+
+  // Só as dívidas têm plano de pagamento; os outros bens com taxa mostram
+  // quanto rendem por ano, que é a mesma informação vista do outro lado.
+  const plan =
+    isDebt && !credito
+      ? buildLoan({
+          principalCents: a.currentValueCents,
+          annualRatePct: a.interestRatePct,
+          termMonths: a.termMonths,
+          monthlyPaymentCents: a.monthlyPaymentCents,
+        })
+      : null;
   const yearlyInterest =
     !isDebt && a.interestRatePct
       ? annualInterestCents(a.currentValueCents, a.interestRatePct)
@@ -653,6 +783,8 @@ function AssetRow({
       </div>
       </div>
 
+      {credito ? <CreditoResumo plano={credito} periodos={terms!.periods} /> : null}
+
       {/*
         Duas razões diferentes para não haver prazo, e a diferença importa a
         quem lê: numa a dívida cresce, na outra desce tão devagar que não acaba
@@ -771,6 +903,9 @@ function AssetRow({
               monthlyPaymentCents: a.monthlyPaymentCents,
               termMonths: a.termMonths,
               rateKind: a.rateKind,
+              maturityDate: stored?.maturityDate ?? null,
+              // Já validado: o formulário nunca vê o `jsonb` em cru.
+              creditTerms: terms,
               symbol: stored?.symbol ?? null,
             }}
           />

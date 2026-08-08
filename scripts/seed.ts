@@ -129,6 +129,41 @@ async function main() {
   }));
   await upsert("expenses", expenses, "space_id,uid");
 
+  /**
+   * Um crédito à habitação misto, para a página das Dívidas não abrir vazia.
+   *
+   * É o caso que o cálculo de taxa única não sabe fazer: três anos fixa e
+   * depois Euribor 6M + spread até 2056, com a prestação a ser recalculada na
+   * mudança. Números redondos e inventados — nada aqui é de ninguém.
+   */
+  console.log("→ A semear um crédito à habitação de exemplo…");
+  await upsert(
+    "assets",
+    [
+      {
+        id: "ast_seed_habitacao",
+        space_id: DEFAULT_SPACE,
+        name: "Crédito à habitação",
+        kind: "divida",
+        value_cents: 150_000_00,
+        maturity_date: "2056-01-01",
+        credit_terms: {
+          periods: [
+            { startsOn: "2026-01-01", kind: "fixa", ratePct: 3.3 },
+            {
+              startsOn: "2029-01-01",
+              kind: "variavel",
+              indexante: "euribor6m",
+              spreadPct: 0.9,
+            },
+          ],
+          indexanteRates: { euribor6m: 2.1 },
+        },
+      },
+    ],
+    "id",
+  );
+
   console.log("→ A semear acertos de exemplo…");
   const settlements = seedSettlements().map((s) => ({
     space_id: s.spaceId ?? DEFAULT_SPACE,

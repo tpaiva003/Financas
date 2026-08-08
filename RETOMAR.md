@@ -3,7 +3,7 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-07 (revisão + correções).
+> Última atualização: 2026-08-08 (investimentos e crédito à habitação).
 
 ---
 
@@ -116,16 +116,84 @@ cliente inserir. Agora são removidas.
 
 ---
 
+## 0b. Sessão de 2026-08-08 — investimentos e crédito à habitação
+
+Pedidos do Tiago, pela ordem que ele escolheu. Tudo com testes; o portão
+completo (`test`, `typecheck`, `lint`, `build`) passa. Os testes passaram de 496
+para 545.
+
+### Símbolo de bolsa sugerido por IA (feito)
+
+O modelo propõe candidatos a partir do nome, e **cada candidato é confirmado
+contra a fonte de cotações** antes de aparecer: só entra na lista o que devolve
+mesmo uma série. A sugestão **nunca é aplicada sozinha** — fica um botão para
+quem regista aceitar. A IA escolhe o candidato, os factos vêm da fonte, que é o
+mesmo princípio da importação ("a IA escolhe colunas, não lê dados").
+
+### Investimentos em cartões, com venda rápida (feito)
+
+- Cartão quadrado com emblema, ticker, unidades, custo médio, preço e ganho.
+  O emblema é um monograma com cor tirada do próprio símbolo (`domain/monogram.ts`),
+  sempre a mesma para a mesma ação. Logos reais ficam para trás de bandeira.
+- **Um cartão por ativo, nunca por compra.** Comprar hoje mais da mesma ação
+  acrescenta um movimento ao cartão que já existe.
+- Venda rápida no próprio cartão: data, unidades e valor em euros. Vender mais
+  do que se tem **avisa mas não impede** — pode faltar uma compra por lançar.
+  Câmbio, dividendos e comissões ficam no formulário completo, que é onde se
+  pode conferir a taxa.
+
+### Rentabilidade ponderada pelo tempo, ao lado da TIR (feito)
+
+A TIR (ponderada pelo dinheiro) já existia; a TWR estava escrita e nunca era
+chamada. São perguntas diferentes — "o que rendeu o meu dinheiro" e "o que
+rendeu o ativo, independentemente de quando reforcei" — e agora aparecem as
+duas. Recusa-se a responder quando falta cotação num dia de movimento.
+
+### Crédito à habitação com períodos de taxa (feito)
+
+O formulário das dívidas mostrava um formulário de bens. Agora:
+
+- Na vista das Dívidas, o tipo já vem escolhido e a secção passou a "Plano de
+  pagamento" em vez de "Rendimento" — numa dívida o dinheiro não rende, custa.
+- **Períodos de taxa** (`domain/credito.ts`, migração `0024`): um crédito
+  português não tem uma taxa, tem duas ou três com datas ("3 anos fixa a 3,3%,
+  depois Euribor 6M + 0,9% até 2056"). Com uma taxa só, a app mostrava até ao
+  fim uma prestação que deixa de ser verdade no dia em que o período fixo acaba.
+- A prestação é **recalculada em cada mudança**, como o banco faz: anuidade
+  sobre o capital que sobra e os meses que faltam **até à maturidade**. É isso
+  que cria o degrau, e o degrau é mostrado em destaque.
+- Fixa / mista / variável é um **atalho que monta as linhas**, não um campo
+  gravado: o tipo é lido a partir dos períodos, senão mais tarde ou mais cedo
+  dizia "fixa" num crédito com um período variável lá dentro.
+- **O valor do indexante pergunta-se.** A app não tem fonte de Euribor. Em
+  branco não dá zero: dá um plano que se recusa a existir e diz porquê. A partir
+  do primeiro período variável o plano diz que é um **cenário**, e a que valor.
+- O `credit_terms` é `jsonb` e é lido **sempre** pelo `parseCreditTerms`, que
+  valida campo a campo. Um `as unknown as` aqui daria um plano de amortização
+  com números a sério e origem duvidosa — o erro que os mapeamentos de
+  importação já pagaram.
+- O total das prestações (`summariseRates`) passa pelo plano quando há períodos.
+  Sem isso a maior dívida da casa desaparecia do total sem dizer nada.
+
+**Nota sobre o `buildLoan`:** num crédito de 240 meses ele devolve
+`monthsToPayOff: 241`, porque a prestação arredondada deixa um resto de cêntimos
+que ele paga num mês a mais. O `buildCreditoPlano` ajusta a última prestação, que
+é o que o banco faz. Não foi mexido no `buildLoan` — é um erro de um mês numa
+data que já lá estava, e mexer nele mudava números já mostrados.
+
+---
+
 ## 1. Modo demo self-serve — canalização em falta
 
 A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
 9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
 
-- [ ] **Aplicar as migrações `0021`, `0022` e `0023`.** A `0021` já foi corrigida
-      (ver secção 0) e pode ser aplicada como está. As `0022` (participação dos
-      membros) e `0023` (uid por ambiente) são desta sessão e o código já conta
-      com elas — **a app funciona sem elas, mas as correções do saldo e do dedup
-      só valem depois de aplicadas**.
+- [ ] **Aplicar as migrações `0021`, `0022`, `0023` e `0024`.** A `0021` já foi
+      corrigida (ver secção 0) e pode ser aplicada como está. As `0022`
+      (participação dos membros), `0023` (uid por ambiente) e `0024` (crédito à
+      habitação) são das duas últimas sessões e o código já conta com elas — **a
+      app funciona sem elas, mas as correções do saldo e do dedup, e os períodos
+      de taxa, só valem depois de aplicadas**.
 - [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
       gratuitos com a última atividade; marcar aviso; congelar/descongelar;
       gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
