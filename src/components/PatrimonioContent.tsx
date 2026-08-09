@@ -49,6 +49,8 @@ import {
   getNetWorthHistory,
 } from "@/lib/services/networth-history-service";
 import { NetWorthChart } from "@/components/NetWorthChart";
+import { ConversaFinanceira } from "@/components/ConversaFinanceira";
+import { conversaAvailable } from "@/lib/services/conversa-service";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -125,6 +127,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const semSimbolo = stored.filter((a) => a.kind === "investimento" && !a.symbol).length;
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
+  const podeConversar = conversaAvailable();
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
@@ -212,6 +215,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       </section>
 
       {series ? <NetWorthChart series={series} /> : null}
+
+      {podeConversar ? <ConversaFinanceira /> : null}
 
       {net.byKind.length > 0 ? (
         <section className="card p-5">

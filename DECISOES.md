@@ -1328,3 +1328,36 @@ negativos: sem ela, uma série toda negativa desenhava-se igual a uma positiva.
 conveniência, mas quem lê recalcula-o a partir das duas parcelas. Uma linha
 escrita por uma versão antiga com a soma errada desenhava um degrau que nunca
 existiu.
+
+## Conversar sobre os números: o modelo discute, não calcula
+
+O resumo da situação é montado por código com testes (`buildSituacao`) e vai para
+o modelo **já em euros**. Ele recebe totais, dívidas com taxa e prestação, médias
+por categoria e a evolução; discute-os, compara-os, aponta o que salta à vista.
+Não soma, não projeta, não estima rendibilidades — e é-lhe dito que, se para
+responder fizer falta uma conta que não está no resumo, diga que não tem esse
+número em vez de o produzir.
+
+É a mesma divisão de trabalho da importação (a IA escolhe colunas, não lê valores)
+e da leitura do contrato (copia, não calcula). A razão é a de sempre: *"a tua taxa
+de poupança é 34%"* é exatamente o tipo de frase em que ninguém desconfia.
+
+**Euros e nunca cêntimos.** Um modelo a ler "18000000" tanto pode dizer dezoito
+milhões como cento e oitenta mil, e a frase sai com o mesmo ar de certeza nos dois
+casos. Há teste.
+
+**As divisões por zero devolvem `null`, não infinito.** Taxa de poupança sem
+rendimento registado, anos de despesa cobertos sem despesa registada: os dois dão
+`Infinity`, e "o teu património dá para infinitos anos" lê-se mesmo como boa
+notícia. O resumo diz por extenso que não dá para saber.
+
+**O que não sai do servidor:** as despesas uma a uma (vão médias por categoria),
+as notas dos bens (texto livre, onde cabe o que alguém escreveu sem pensar que
+sairia dali) e os nomes das pessoas, que não acrescentam nada a uma conversa sobre
+dinheiro. O ecrã diz isto **antes** da primeira pergunta.
+
+**A conversa não fica guardada.** Vive na página e vai e volta em cada pedido. Uma
+tabela de conversas sobre dinheiro é uma responsabilidade que esta app não precisa
+de ter, e o valor de a guardar é pequeno. O histórico que volta do cliente é
+tratado como território de quem o envia: cortado, com os papéis a alternar e a
+começar sempre do lado de quem pergunta.

@@ -181,6 +181,48 @@ que ele paga num mês a mais. O `buildCreditoPlano` ajusta a última prestação
 é o que o banco faz. Não foi mexido no `buildLoan` — é um erro de um mês numa
 data que já lá estava, e mexer nele mudava números já mostrados.
 
+### Sessão de 2026-08-09 (feito)
+
+Quatro coisas novas, todas com o mesmo desenho: o modelo propõe, o código
+verifica, a pessoa confirma.
+
+- **Quota em cada bem** (`0025`). `ownership_pct` multiplica o valor, o custo, a
+  prestação e o plano — e mais nada. Em branco ou fora do intervalo vale
+  **tudo**, nunca zero: um bem que valesse zero por um campo mal preenchido
+  desaparecia do património sem dizer nada. `co_owner_member_id` é só registo e
+  não entra em conta nenhuma; quando aponta para alguém do ambiente, a app
+  **avisa** que a quota devia provavelmente ser 100%, e não corrige.
+- **Ler o contrato do crédito** (`domain/credito-contrato.ts`). Ao modelo é
+  pedido que **copie e não calcule** — incluindo a prestação. É essa prestação
+  copiada que permite verificar tudo o resto: o `reviewContrato` recalcula-a a
+  partir do capital, da taxa e do prazo e compara. Uma taxa lida como 0,33% em
+  vez de 3,3% mantém o formato perfeito e não sobrevive a essa conta. O valor do
+  indexante que vem no contrato é ignorado de propósito (é o do dia da
+  escritura). O ficheiro não fica guardado.
+- **Preço dos imóveis pelo INE** (`domain/imovel.ts`, `0026`). O idealista não
+  tem API e raspar as páginas é contra os termos deles. O concelho casa pelo
+  **nome** que o INE devolve, sem acentos — uma tabela de 308 códigos aqui
+  dentro dessincronizava-se em silêncio. Um nome ambíguo não se desempata (há
+  duas Lagoas, com o dobro do preço uma da outra). A estimativa aparece **ao
+  lado** do valor registado, nunca por cima.
+- **Evolução do património** (`domain/networth-history.ts`, `0027`). O passado do
+  património não se reconstrói — cada bem só sabe o que vale hoje —, por isso
+  grava-se uma fotografia por dia, **na visita** e não num cron. O histórico
+  começa vazio. Não há percentagem a partir de um património negativo: de -50
+  mil para -10 mil a divisão dá o sinal ao contrário. A leitura é paginada (uma
+  por dia passa as mil linhas em três anos).
+- **Conversa sobre os números** (`domain/situacao.ts`). O resumo é montado por
+  código com testes, em euros, e é isso que o modelo recebe: ele discute, não
+  calcula. Não vão despesas uma a uma, notas de bens nem nomes de pessoas. A
+  conversa não fica guardada.
+
+**Por confirmar:** a chamada ao INE **nunca foi corrida** — a rede do ambiente
+onde isto foi escrito bloqueia o `ine.pt`. O parser tem testes contra o formato
+documentado, mas o código do indicador (`INE_PRECO_M2_VARCD`) e a forma exata da
+resposta só se confirmam na primeira utilização a sério. Se falhar, a app diz o
+que recebeu e aponta para a variável de ambiente; o preço pode sempre ser escrito
+à mão.
+
 ---
 
 ## 1. Modo demo self-serve — canalização em falta
@@ -188,12 +230,15 @@ data que já lá estava, e mexer nele mudava números já mostrados.
 A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
 9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
 
-- [ ] **Aplicar as migrações `0021`, `0022`, `0023` e `0024`.** A `0021` já foi
-      corrigida (ver secção 0) e pode ser aplicada como está. As `0022`
-      (participação dos membros), `0023` (uid por ambiente) e `0024` (crédito à
-      habitação) são das duas últimas sessões e o código já conta com elas — **a
-      app funciona sem elas, mas as correções do saldo e do dedup, e os períodos
-      de taxa, só valem depois de aplicadas**.
+- [ ] **Aplicar as migrações `0021` a `0027`.** A `0021` já foi corrigida (ver
+      secção 0) e pode ser aplicada como está. As `0022` (participação dos
+      membros), `0023` (uid por ambiente), `0024` (crédito à habitação), `0025`
+      (quota no bem), `0026` (área, concelho e preço de referência dos imóveis) e
+      `0027` (histórico do património) são das últimas sessões e o código já
+      conta com elas — **a app funciona sem elas, mas as correções do saldo e do
+      dedup, os períodos de taxa, a quota, o preço da zona e o gráfico de
+      evolução só valem depois de aplicadas**. Nenhuma delas mexe em dados que já
+      lá estejam: acrescentam colunas nulas e uma tabela nova.
 - [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
       gratuitos com a última atividade; marcar aviso; congelar/descongelar;
       gravar na lista de espera. Em `Repository`, `SupabaseRepository` e

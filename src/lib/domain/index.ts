@@ -28,3 +28,4 @@ export * from "./credito";
 export * from "./credito-contrato";
 export * from "./imovel";
 export * from "./networth-history";
+export * from "./situacao";

@@ -19,6 +19,13 @@ import {
 } from "@/lib/services/credit-contract-service";
 import { readPdfText } from "@/lib/import/read-file";
 import { getInePriceTable } from "@/lib/services/ine-service";
+import {
+  conversar,
+  conversaAvailable,
+  limparHistorico,
+  type MensagemConversa,
+} from "@/lib/services/conversa-service";
+import { getNetWorthHistory } from "@/lib/services/networth-history-service";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -47,6 +54,12 @@ import {
   type RatePeriod,
   type ContratoRevisto,
   procurarLocal,
+  buildNetWorth,
+  buildNetWorthSeries,
+  buildSituacao,
+  buildCreditoPlano,
+  parseCreditTerms,
+  derivePosition,
 } from "@/lib/domain";
 
 export interface ActionState {
@@ -2282,4 +2295,167 @@ export async function lookupPropertyPriceAction(local: string): Promise<InePrice
     return { escolhido: null, candidatos: r.candidatos.map(opcao), period: table.period };
   }
   return { error: `O INE não tem "${query}" na lista de ${table.rows.length} concelhos.` };
+}
+
+export interface ConversaState extends ActionState {
+  /** A conversa toda, para a página a voltar a mostrar. */
+  mensagens?: MensagemConversa[];
+}
+
+/**
+ * Uma pergunta sobre a própria situação financeira.
+ *
+ * **Os números vão calculados.** O resumo é montado aqui a partir do que a app
+ * já sabe somar — património, dívidas com taxa e prestação, média de despesa,
+ * rendimento, evolução — e é isso que o modelo recebe. Ele discute; não calcula.
+ *
+ * **A conversa não fica guardada.** Vive no ecrã e vai e volta em cada pedido.
+ * Uma tabela de conversas sobre dinheiro é uma responsabilidade que esta app não
+ * precisa de ter, e o valor de a guardar é pequeno.
+ */
+export async function conversarAction(
+  _prev: ConversaState,
+  formData: FormData,
+): Promise<ConversaState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (!conversaAvailable()) return { error: "A conversa assistida não está configurada." };
+
+  const pergunta = String(formData.get("pergunta") ?? "").trim();
+  if (!pergunta) return { error: "Escreve uma pergunta." };
+
+  let anteriores: unknown[] = [];
+  try {
+    const bruto = JSON.parse(String(formData.get("historico") ?? "[]"));
+    if (Array.isArray(bruto)) anteriores = bruto;
+  } catch {
+    // Histórico ilegível: começa-se de novo em vez de rebentar.
+  }
+  const historico = [...limparHistorico(anteriores), { role: "user" as const, content: pergunta }];
+
+  const situacao = await buildSituacaoDoAmbiente(ctx.space.id, ctx.viewerMemberId);
+  const r = await conversar(situacao, historico);
+  if (r.problem || !r.reply) {
+    return { error: r.problem ?? "Não consegui responder.", mensagens: historico };
+  }
+
+  return { ok: true, mensagens: [...historico, { role: "assistant", content: r.reply }] };
+}
+
+/** Quantas categorias entram no resumo. As maiores; o resto é ruído. */
+const CATEGORIAS_NO_RESUMO = 8;
+
+/**
+ * O resumo da situação, montado do que a app já sabe.
+ *
+ * Tudo aqui sai de funções com testes. O que **não** entra: as notas dos bens
+ * (texto livre, onde cabe o que alguém escreveu sem pensar que sairia daqui),
+ * os nomes das pessoas e as despesas uma a uma. O extrato não sai deste
+ * servidor.
+ */
+async function buildSituacaoDoAmbiente(spaceId: string, viewerId: string) {
+  const repo = getRepository();
+  const [stored, trades, expenses, incomes, categories, historico] = await Promise.all([
+    repo.listAssets(spaceId).catch(() => []),
+    repo.listAssetTrades(spaceId).catch(() => []),
+    repo.listExpenses({ spaceId, viewerId }).catch(() => []),
+    repo.listIncome(spaceId).catch(() => []),
+    repo.listCategories(spaceId).catch(() => []),
+    getNetWorthHistory(spaceId),
+  ]);
+
+  const tradesByAsset = new Map<string, typeof trades>();
+  for (const t of trades) {
+    tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t]);
+  }
+  const assets = stored.map((a) => {
+    const d = derivePosition(a, tradesByAsset.get(a.id) ?? []);
+    return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+  });
+  const net = buildNetWorth(assets);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Despesa por mês e por categoria. Médias sobre os meses COM movimento: um
+  // mês sem despesas registadas quase nunca é um mês sem despesas.
+  const porMesTotal = new Map<string, number>();
+  const porCategoria = new Map<string, number>();
+  for (const e of expenses) {
+    if (e.status !== "confirmed" || e.deletedAt) continue;
+    const ym = e.transactionDate.slice(0, 7);
+    porMesTotal.set(ym, (porMesTotal.get(ym) ?? 0) + e.amountCents);
+    const cat = e.categoryId ?? "";
+    porCategoria.set(cat, (porCategoria.get(cat) ?? 0) + e.amountCents);
+  }
+  const meses = porMesTotal.size;
+  const monthlyExpenseCents =
+    meses > 0
+      ? Math.round([...porMesTotal.values()].reduce((a, b) => a + b, 0) / meses)
+      : null;
+
+  const nomeCategoria = new Map(categories.map((c) => [c.id, c.name]));
+  const categorias =
+    meses > 0
+      ? [...porCategoria.entries()]
+          .map(([id, cents]) => ({
+            label: nomeCategoria.get(id) ?? "Sem categoria",
+            monthlyCents: Math.round(cents / meses),
+          }))
+          .sort((a, b) => b.monthlyCents - a.monthlyCents)
+          .slice(0, CATEGORIAS_NO_RESUMO)
+      : [];
+
+  // Rendimento: o que se recebe por mês, dos registos recorrentes. Os pontuais
+  // ficam de fora — um prémio de um ano não é rendimento mensal.
+  const recorrentes = incomes.filter((i) => i.recurring);
+  const monthlyIncomeCents =
+    recorrentes.length > 0 ? recorrentes.reduce((s, i) => s + i.amountCents, 0) : null;
+
+  const dividas = net.assets
+    .filter((a) => a.kind === "divida")
+    .map((a) => {
+      const stored0 = stored.find((s) => s.id === a.id) ?? null;
+      const terms = parseCreditTerms(stored0?.creditTerms);
+      const plano = terms
+        ? buildCreditoPlano({
+            balanceCents: a.currentValueCents,
+            startDate: today,
+            maturityDate: stored0?.maturityDate,
+            periods: terms.periods,
+            indexanteRates: terms.indexanteRates,
+          })
+        : null;
+      return {
+        label: a.name,
+        balanceCents: a.currentValueCents,
+        monthlyPaymentCents: plano?.currentPaymentCents ?? a.monthlyPaymentCents ?? null,
+        annualRatePct: plano?.tramos[0]?.annualRatePct ?? a.interestRatePct ?? null,
+        nextChangeOn: plano?.nextChangeOn ?? null,
+        nextPaymentCents: plano?.nextPaymentCents ?? null,
+      };
+    });
+
+  const serie = buildNetWorthSeries(historico);
+  const primeiro = serie.points[0];
+  const ultimo = serie.points.at(-1);
+
+  return buildSituacao({
+    assetsCents: net.totalAssetsCents,
+    debtsCents: net.totalLiabilitiesCents,
+    byKind: net.byKind.map((k) => ({ label: k.label, totalCents: k.totalCents })),
+    dividas,
+    monthlyExpenseCents,
+    monthlyIncomeCents,
+    categorias,
+    investmentCostCents: net.investmentCostCents,
+    investmentGainCents: net.investmentCostCents > 0 ? net.investmentGainCents : null,
+    historico:
+      serie.changeCents !== null && primeiro && ultimo
+        ? {
+            dePeriodo: primeiro.label,
+            aPeriodo: ultimo.label,
+            changeCents: serie.changeCents,
+            changePct: serie.changePct,
+          }
+        : null,
+  });
 }
