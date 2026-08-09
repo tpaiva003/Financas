@@ -9,6 +9,8 @@ import {
   annualInterestCents,
   buildLoan,
   buildNetWorth,
+  assetTotalValueCents,
+  ownershipShare,
   derivePosition,
   formatCents,
   formatForeignCents,
@@ -106,6 +108,9 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   }
 
   const shown = net.assets.filter((a) => kindsToShow.includes(a.kind));
+  // Para se poder dizer quem tem a outra parte de um bem comprado a meias. Só
+  // nome e id: o campo não precisa de mais nada de ninguém.
+  const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
@@ -343,6 +348,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                         quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
                         today={today}
                         tradeCount={(tradesByAsset.get(a.id) ?? []).length}
+                        members={memberOptions}
                       />
                     ))}
                   </ul>
@@ -356,7 +362,10 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       {view === "ativos" ? <PortfolioReturnSection spaceId={ctx.space.id} /> : null}
 
       {view === "ativos" || view === "dividas" ? (
-        <AssetForm contexto={view === "dividas" ? "dividas" : "ativos"} />
+        <AssetForm
+          contexto={view === "dividas" ? "dividas" : "ativos"}
+          members={memberOptions}
+        />
       ) : null}
 
       <Link href="/relatorios" className="inline-block text-sm text-fg-muted hover:text-fg">
@@ -605,9 +614,11 @@ function AssetRow({
   quoteOriginal,
   today,
   tradeCount,
+  members,
 }: {
   asset: AssetView;
   stored: Asset | null;
+  members: { id: string; name: string }[];
   quoteDate: string | null;
   quoteProblem: string | null;
   /** O fecho na moeda da bolsa, quando não é euro. */
@@ -617,6 +628,10 @@ function AssetRow({
 }) {
   const isInvestment = a.kind === "investimento";
   const isDebt = a.kind === "divida";
+  // A quota vem do que está gravado, não da vista: a vista já traz o valor com
+  // a quota aplicada, e voltar a aplicá-la aqui contava metade de metade.
+  const quota = ownershipShare(stored ?? {});
+  const quotaLabel = `${String(Math.round(quota * 1000) / 10).replace(".", ",")}%`;
   const rateLabel =
     a.rateKind === "fixa" || a.rateKind === "variavel"
       ? RATE_KIND_LABELS[a.rateKind as RateKind].toLowerCase()
@@ -765,6 +780,15 @@ function AssetRow({
 
         <div className="text-right">
           <p className="font-mono text-sm tnum text-fg">{formatCents(a.currentValueCents)}</p>
+          {/* Com quota parcial, o número acima é só a tua parte. Dizer de quanto
+              é que ele é parte evita a pergunta "porque é que isto está a
+              menos?" — e evita a resposta errada, que seria alguém corrigir o
+              valor para o dobro e passar a contar a casa toda. */}
+          {quota < 1 ? (
+            <p className="font-mono text-[11px] tnum text-fg-faint">
+              {quotaLabel} de {formatCents(assetTotalValueCents(a))}
+            </p>
+          ) : null}
           {a.gainCents !== null ? (
             <p className={`font-mono text-[11px] tnum ${a.gainCents >= 0 ? "text-credit" : "text-debt"}`}>
               {a.gainCents >= 0 ? "+" : ""}
@@ -889,6 +913,7 @@ function AssetRow({
             </p>
           ) : null}
           <AssetForm
+            members={members}
             asset={{
               id: a.id,
               name: a.name,
@@ -906,6 +931,8 @@ function AssetRow({
               maturityDate: stored?.maturityDate ?? null,
               // Já validado: o formulário nunca vê o `jsonb` em cru.
               creditTerms: terms,
+              ownershipPct: stored?.ownershipPct ?? null,
+              coOwnerMemberId: stored?.coOwnerMemberId ?? null,
               symbol: stored?.symbol ?? null,
             }}
           />

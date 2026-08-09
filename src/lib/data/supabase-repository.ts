@@ -1179,6 +1179,8 @@ export class SupabaseRepository implements Repository {
         rate_kind: input.rateKind ?? null,
         maturity_date: input.maturityDate ?? null,
         credit_terms: input.creditTerms ?? null,
+        ownership_pct: input.ownershipPct ?? null,
+        co_owner_member_id: input.coOwnerMemberId ?? null,
         symbol: input.symbol ?? null,
         created_by: input.createdBy ?? null,
       })
@@ -1205,6 +1207,8 @@ export class SupabaseRepository implements Repository {
     if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
     if (patch.maturityDate !== undefined) row.maturity_date = patch.maturityDate;
     if (patch.creditTerms !== undefined) row.credit_terms = patch.creditTerms;
+    if (patch.ownershipPct !== undefined) row.ownership_pct = patch.ownershipPct;
+    if (patch.coOwnerMemberId !== undefined) row.co_owner_member_id = patch.coOwnerMemberId;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -1671,6 +1675,9 @@ function rowToAsset(r: any): Asset {
     maturityDate: r.maturity_date ?? null,
     // Cru de propósito: quem lê valida com `parseCreditTerms`.
     creditTerms: r.credit_terms ?? null,
+    ownershipPct:
+      r.ownership_pct === null || r.ownership_pct === undefined ? null : Number(r.ownership_pct),
+    coOwnerMemberId: r.co_owner_member_id ?? null,
     symbol: r.symbol ?? null,
     updatedAt: r.updated_at ?? null,
   };

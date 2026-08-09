@@ -11,6 +11,7 @@ import {
   type RateKind,
 } from "@/lib/domain";
 import { CreditPeriodsField } from "./CreditPeriodsField";
+import { OwnershipField, type OwnershipMember } from "./OwnershipField";
 
 const empty: ActionState = {};
 
@@ -29,6 +30,10 @@ export interface AssetFormValues {
   monthlyPaymentCents?: number | null;
   termMonths?: number | null;
   rateKind?: string | null;
+  /** Que fatia deste bem é deste ambiente, em percentagem. */
+  ownershipPct?: number | null;
+  /** Quem tem o resto, quando é alguém do ambiente. */
+  coOwnerMemberId?: string | null;
   /** Crédito: a data do último pagamento. */
   maturityDate?: string | null;
   /** Crédito com períodos de taxa. Já validado — quem monta isto usa `parseCreditTerms`. */
@@ -71,9 +76,12 @@ export function AssetForm({
    * devia trocar o tipo primeiro.
    */
   contexto = "ativos",
+  /** Membros do ambiente, para se poder dizer quem tem a outra parte. */
+  members = [],
 }: {
   asset?: AssetFormValues;
   contexto?: "ativos" | "dividas";
+  members?: OwnershipMember[];
 }) {
   const [state, action] = useFormState(saveAssetAction, empty);
   const emDividas = contexto === "dividas";
@@ -301,6 +309,19 @@ export function AssetForm({
             />
           ) : null}
         </div>
+      )}
+
+      {/* A quota não se oferece nos investimentos: ali a verdade são os
+          movimentos, e uma percentagem por cima de uma posição derivada dos
+          movimentos é uma segunda fonte de verdade a discordar da primeira. */}
+      {isInvestment ? null : (
+        <OwnershipField
+          uid={uid}
+          members={members}
+          ownershipPct={asset?.ownershipPct}
+          coOwnerMemberId={asset?.coOwnerMemberId}
+          noun={isDebt ? "crédito" : kind === "imovel" ? "imóvel" : "bem"}
+        />
       )}
 
       <div>

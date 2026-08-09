@@ -1571,6 +1571,19 @@ export async function saveAssetAction(
   const maturity = String(formData.get("maturityDate") ?? "").trim();
   const creditTerms = isDebt ? creditTermsFromForm(formData) : null;
 
+  /**
+   * A quota deste ambiente no bem.
+   *
+   * Fora do intervalo, ou em branco, vale "tudo" — nunca zero. Um bem que
+   * passasse a valer zero por um campo mal preenchido desaparecia do património
+   * sem dizer nada, e um património a menos não levanta suspeitas como um erro
+   * levanta.
+   */
+  const rawQuota = parseNumber(formData.get("ownershipPct"));
+  const ownershipPct =
+    rawQuota !== null && rawQuota > 0 && rawQuota < 100 ? rawQuota : null;
+  const rawCoOwner = String(formData.get("coOwnerMemberId") ?? "").trim();
+
   const patch = {
     spaceId: ctx.space.id,
     name: name.slice(0, 120),
@@ -1591,6 +1604,11 @@ export async function saveAssetAction(
     rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
     maturityDate: isDebt && /^\d{4}-\d{2}-\d{2}$/.test(maturity) ? maturity : null,
     creditTerms,
+    ownershipPct,
+    // Só vale se for mesmo alguém deste ambiente: um id vindo do formulário não
+    // é prova de nada, e apontar para fora do ambiente seria uma fuga.
+    coOwnerMemberId:
+      rawCoOwner && ctx.members.some((m) => m.id === rawCoOwner) ? rawCoOwner : null,
     symbol:
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))

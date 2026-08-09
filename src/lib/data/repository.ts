@@ -179,6 +179,10 @@ export interface Asset {
    * objeto por validar é um número a sério com origem duvidosa.
    */
   creditTerms?: unknown;
+  /** Que fatia deste bem conta para este ambiente, em percentagem. Null = tudo. */
+  ownershipPct?: number | null;
+  /** Quem tem o resto, quando é alguém deste ambiente. Só para o registo. */
+  coOwnerMemberId?: string | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
   updatedAt?: string | null;
