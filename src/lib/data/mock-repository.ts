@@ -30,6 +30,8 @@ import type {
   StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
+  CreateNetWorthSnapshot,
+  NetWorthSnapshotRow,
   Income,
   CreateIncomeInput,
   Membership,
@@ -71,6 +73,7 @@ interface Store {
   spendingGoals: SpendingGoal[];
   assets: Asset[];
   assetTrades: AssetTrade[];
+  netWorthSnapshots: NetWorthSnapshotRow[];
   quotes: Record<string, StoredQuote[]>;
   quoteCurrencies: Record<string, string>;
   income: Income[];
@@ -99,6 +102,7 @@ function getStore(): Store {
       spendingGoals: [],
       assets: [],
       assetTrades: [],
+      netWorthSnapshots: [],
       quotes: {},
       quoteCurrencies: {},
       income: [],
@@ -719,6 +723,23 @@ export class MockRepository implements Repository {
 
   async listAssets(spaceId: string): Promise<Asset[]> {
     return getStore().assets.filter((a) => a.spaceId === spaceId);
+  }
+
+  async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
+    return getStore()
+      .netWorthSnapshots.filter((s) => s.spaceId === spaceId)
+      .sort((a, b) => (a.onDate < b.onDate ? -1 : a.onDate > b.onDate ? 1 : 0));
+  }
+
+  async saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void> {
+    const store = getStore();
+    // Uma por dia e por ambiente: a do dia substitui a anterior.
+    const i = store.netWorthSnapshots.findIndex(
+      (s) => s.spaceId === input.spaceId && s.onDate === input.onDate,
+    );
+    const row: NetWorthSnapshotRow = { id: i >= 0 ? store.netWorthSnapshots[i]!.id : randomUUID(), ...input };
+    if (i >= 0) store.netWorthSnapshots[i] = row;
+    else store.netWorthSnapshots.push(row);
   }
 
   async createAsset(input: CreateAssetInput): Promise<Asset> {

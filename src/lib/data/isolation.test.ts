@@ -97,3 +97,69 @@ describe("uma despesa não é acessível a partir de outro ambiente", () => {
     expect(e?.receiptPath ?? null).not.toBe("recibos/do-atacante.png");
   });
 });
+
+/**
+ * As fotografias do património contam o que uma pessoa tem, mês a mês. É dos
+ * dados mais sensíveis que a app guarda, e chegam à página por uma leitura que
+ * só se limita pelo `space_id` que o código passa — não há RLS a apanhar um
+ * descuido aqui.
+ */
+describe("o histórico do património não atravessa ambientes", () => {
+  it("lê-se no ambiente onde foi gravado, e só lá", async () => {
+    await repo.saveNetWorthSnapshot({
+      spaceId: MEU,
+      onDate: "2026-08-09",
+      assetsCents: 100_000_00,
+      debtsCents: 40_000_00,
+      netCents: 60_000_00,
+      breakdown: { conta: 100_000_00 },
+    });
+
+    const meu = await repo.listNetWorthSnapshots(MEU);
+    expect(meu.some((s) => s.onDate === "2026-08-09")).toBe(true);
+
+    const alheio = await repo.listNetWorthSnapshots(ALHEIO);
+    expect(alheio.some((s) => s.onDate === "2026-08-09")).toBe(false);
+  });
+
+  it("a fotografia do dia substitui a anterior em vez de acrescentar um ponto", async () => {
+    await repo.saveNetWorthSnapshot({
+      spaceId: MEU,
+      onDate: "2026-08-10",
+      assetsCents: 1_000_00,
+      debtsCents: 0,
+      netCents: 1_000_00,
+    });
+    await repo.saveNetWorthSnapshot({
+      spaceId: MEU,
+      onDate: "2026-08-10",
+      assetsCents: 2_000_00,
+      debtsCents: 0,
+      netCents: 2_000_00,
+    });
+
+    const doDia = (await repo.listNetWorthSnapshots(MEU)).filter((s) => s.onDate === "2026-08-10");
+    expect(doDia).toHaveLength(1);
+    expect(doDia[0]?.assetsCents).toBe(2_000_00);
+  });
+
+  it("a mesma data noutro ambiente é outra fotografia", async () => {
+    await repo.saveNetWorthSnapshot({
+      spaceId: MEU,
+      onDate: "2026-08-11",
+      assetsCents: 5_000_00,
+      debtsCents: 0,
+      netCents: 5_000_00,
+    });
+    await repo.saveNetWorthSnapshot({
+      spaceId: ALHEIO,
+      onDate: "2026-08-11",
+      assetsCents: 9_000_00,
+      debtsCents: 0,
+      netCents: 9_000_00,
+    });
+
+    const meu = (await repo.listNetWorthSnapshots(MEU)).find((s) => s.onDate === "2026-08-11");
+    expect(meu?.assetsCents).toBe(5_000_00);
+  });
+});

@@ -1298,3 +1298,33 @@ quando muda a metodologia, e um número fixo no código obrigava a um deploy par
 uma coisa de configuração. Quando o pedido não devolve nada que se perceba, a app
 diz isso e aponta para a variável — em vez de mostrar zero concelhos, que se leria
 como "o teu concelho não tem dados".
+
+## Evolução do património: guarda-se, porque o passado não se reconstrói
+
+O património da app é uma fotografia — cada bem tem o valor de hoje e mais nada.
+O depósito que hoje tem 12 mil não sabe que teve 8 mil no ano passado, e a casa
+registada em 2019 não guardou o que valia então. As despesas dão-se a reconstruir
+porque são movimentos datados; um saldo não. Logo: ou se grava uma fotografia por
+dia, ou não há gráfico nenhum para desenhar. **O histórico começa vazio e enche-se
+para a frente**, e o ecrã diz isso em vez de mostrar um gráfico a fingir.
+
+**Grava-se na visita, não num cron.** Um cron diário obrigava a mais um segredo,
+mais uma entrada no `vercel.json` e uma lista de ambientes a percorrer. A
+gravação na visita é idempotente (uma por dia e por ambiente, por índice único) e
+não custa nada. O preço são buracos nos períodos em que ninguém abriu a app.
+
+**Os buracos não se preenchem.** Se faltarem meses, os pontos ficam mais afastados
+e vê-se que ficam. Ligá-los com uma recta era afirmar uma coisa sobre meses de que
+não se sabe nada.
+
+**Não há percentagem a partir de um património negativo.** Ir de -50 mil para -10
+mil é uma melhoria de 40 mil, e a divisão dá -80%: o sinal ao contrário do que
+aconteceu. Quem começa com mais dívida do que bens — o normal nos primeiros anos
+de um crédito à habitação — vê a variação em euros e não vê percentagem nenhuma.
+Pela mesma razão, o gráfico desenha a linha do zero sempre que há valores
+negativos: sem ela, uma série toda negativa desenhava-se igual a uma positiva.
+
+**O líquido gravado não se acredita.** `net_cents` está na tabela por
+conveniência, mas quem lê recalcula-o a partir das duas parcelas. Uma linha
+escrita por uma versão antiga com a soma errada desenhava um degrau que nunca
+existiu.

@@ -205,6 +205,28 @@ export interface Asset {
 export type CreateAssetInput = Omit<Asset, "id" | "updatedAt"> & { createdBy?: string | null };
 
 /**
+ * Uma fotografia do património num dia.
+ *
+ * O património da app é uma fotografia: cada bem tem o valor de hoje e mais
+ * nada. O passado não se reconstrói, por isso guarda-se. O histórico começa
+ * vazio e enche-se para a frente.
+ */
+export interface NetWorthSnapshotRow {
+  id: string;
+  spaceId: string;
+  /** "AAAA-MM-DD". */
+  onDate: string;
+  assetsCents: number;
+  debtsCents: number;
+  /** Derivado das duas parcelas. Quem lê recalcula em vez de acreditar. */
+  netCents: number;
+  /** Valor por tipo de bem. Vem de `jsonb`, por isso chega como `unknown`. */
+  breakdown?: unknown;
+}
+
+export type CreateNetWorthSnapshot = Omit<NetWorthSnapshotRow, "id">;
+
+/**
  * Um movimento datado de um investimento: compra, venda, dividendo ou custo.
  *
  * `amountCents` é sempre em euros, que é o dinheiro que saiu mesmo da conta.
@@ -614,6 +636,16 @@ export interface Repository {
   createAsset(input: CreateAssetInput): Promise<Asset>;
   updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void>;
   deleteAsset(id: string, spaceId: string): Promise<void>;
+  /**
+   * As fotografias do património do ambiente, da mais antiga para a mais recente.
+   *
+   * Cresce uma por dia: passa as mil linhas ao fim de três anos, e por isso a
+   * leitura tem de ser paginada. Uma leitura cortada aqui apagava o princípio do
+   * gráfico sem dizer nada.
+   */
+  listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]>;
+  /** Grava a fotografia do dia. A última do dia manda. */
+  saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */

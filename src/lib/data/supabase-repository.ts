@@ -24,6 +24,8 @@ import type {
   StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
+  CreateNetWorthSnapshot,
+  NetWorthSnapshotRow,
   Income,
   CreateIncomeInput,
   Membership,
@@ -1157,6 +1159,41 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map(rowToAsset);
   }
 
+  async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
+    const db = getSupabaseAdmin();
+    // Paginado de propósito: uma fotografia por dia passa as mil linhas ao fim
+    // de três anos, e o Supabase corta nas mil sem avisar. Cortado, o gráfico
+    // perdia o princípio da série e ninguém percebia porquê.
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("net_worth_snapshots")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("on_date")
+        .range(de, ate),
+    );
+    return rows.map(rowToSnapshot);
+  }
+
+  async saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void> {
+    const db = getSupabaseAdmin();
+    // Uma por dia e por ambiente: a do dia substitui a anterior em vez de
+    // acrescentar um ponto sobreposto ao gráfico.
+    const { error } = await db.from("net_worth_snapshots").upsert(
+      {
+        id: randomUUID(),
+        space_id: input.spaceId,
+        on_date: input.onDate,
+        assets_cents: input.assetsCents,
+        debts_cents: input.debtsCents,
+        net_cents: input.netCents,
+        breakdown: input.breakdown ?? null,
+      },
+      { onConflict: "space_id,on_date" },
+    );
+    if (error) throw new Error(error.message);
+  }
+
   async createAsset(input: CreateAssetInput): Promise<Asset> {
     const db = getSupabaseAdmin();
     const id = `ast_${randomUUID()}`;
@@ -1661,6 +1698,19 @@ function rowToAssetTrade(r: any): AssetTrade {
     fxRate: r.fx_rate === null || r.fx_rate === undefined ? null : Number(r.fx_rate),
     notes: r.notes ?? null,
     createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToSnapshot(r: any): NetWorthSnapshotRow {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    onDate: String(r.on_date ?? "").slice(0, 10),
+    assetsCents: Number(r.assets_cents ?? 0),
+    debtsCents: Number(r.debts_cents ?? 0),
+    netCents: Number(r.net_cents ?? 0),
+    // Cru de propósito: quem lê valida. Ver o comentário do `creditTerms`.
+    breakdown: r.breakdown ?? null,
   };
 }
 

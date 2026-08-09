@@ -9,6 +9,7 @@ import {
   annualInterestCents,
   buildLoan,
   buildNetWorth,
+  buildNetWorthSeries,
   assetTotalValueCents,
   ownershipShare,
   derivePosition,
@@ -43,6 +44,11 @@ import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
+import {
+  captureNetWorthSnapshot,
+  getNetWorthHistory,
+} from "@/lib/services/networth-history-service";
+import { NetWorthChart } from "@/components/NetWorthChart";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -122,6 +128,24 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
+  /**
+   * A fotografia de hoje, e o histórico para o gráfico.
+   *
+   * Grava-se na visita e não num cron: é idempotente (uma por dia e por
+   * ambiente) e poupa mais um segredo, mais uma entrada no `vercel.json` e uma
+   * lista de ambientes a percorrer. O preço são buracos nos períodos em que
+   * ninguém abriu a app — que o gráfico mostra como buracos, sem os preencher.
+   *
+   * A gravação vem primeiro para o ponto de hoje já entrar na série. Nenhuma
+   * das duas pode deitar a página abaixo: antes da migração ser corrida, a
+   * tabela não existe e o gráfico diz apenas que o histórico está a começar.
+   */
+  const series = await (async () => {
+    if (view !== "resumo") return null;
+    await captureNetWorthSnapshot(ctx.space.id, net, today);
+    return buildNetWorthSeries(await getNetWorthHistory(ctx.space.id));
+  })();
+
   return (
     <div className="space-y-8">
       <PlanoAviso spaceId={ctx.space.id} plan={ctx.space.plan} kind="assets" />
@@ -186,6 +210,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
           </p>
         ) : null}
       </section>
+
+      {series ? <NetWorthChart series={series} /> : null}
 
       {net.byKind.length > 0 ? (
         <section className="card p-5">
