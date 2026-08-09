@@ -38,6 +38,8 @@ import {
 } from "@/app/(app)/actions";
 import { InvestmentCard } from "./InvestmentCard";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
+import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
+import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -111,6 +113,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   // Para se poder dizer quem tem a outra parte de um bem comprado a meias. Só
   // nome e id: o campo não precisa de mais nada de ninguém.
   const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
+  const semSimbolo = stored.filter((a) => a.kind === "investimento" && !a.symbol).length;
+  const podeSugerir = tickerSuggestAvailable();
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
@@ -303,6 +307,21 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                     <RefreshQuotesButton />
                   ) : null}
                 </div>
+
+                {/* Depois de uma importação ficam dezenas de ativos sem símbolo,
+                    e sem símbolo não há cotação, ganho nem rentabilidade. Só
+                    aparece quando há mesmo algum por resolver. */}
+                {kind === "investimento" && semSimbolo > 0 && podeSugerir ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <p className="mb-2 text-xs text-fg-faint">
+                      {semSimbolo}{" "}
+                      {semSimbolo === 1 ? "investimento está" : "investimentos estão"} sem
+                      símbolo de bolsa, e por isso sem cotação, sem ganho e sem
+                      rentabilidade.
+                    </p>
+                    <SuggestMissingSymbols />
+                  </div>
+                ) : null}
                 {/*
                   Os investimentos em grelha de cartões; o resto continua em
                   linha. A diferença não é estética: numa carteira com uma dúzia

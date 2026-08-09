@@ -12,7 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
-import { suggestTicker } from "@/lib/services/ticker-suggest";
+import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -1713,6 +1713,145 @@ export async function suggestAssetSymbolAction(
     ok: true,
     message: `Sugestão: ${s.symbol}${moeda} (${s.bolsa}). ${s.porque} Confere e grava no campo do símbolo se estiver certo.`,
   };
+}
+
+/** Uma proposta de símbolo, já verificada contra a fonte, à espera de confirmação. */
+export interface SymbolProposal {
+  assetId: string;
+  assetName: string;
+  symbol: string;
+  bolsa: string;
+  moeda: string;
+  porque: string;
+  lastDate: string | null;
+}
+
+export interface SuggestMissingState extends ActionState {
+  proposals?: SymbolProposal[];
+  /** Ativos sem símbolo para os quais não houve proposta, e porquê. */
+  semProposta?: { assetName: string; problem: string }[];
+}
+
+/** Quantos ativos se processam de uma vez. Acima disto é uma espera absurda. */
+const MAX_SUGESTOES = 25;
+/** Quantas chamadas em paralelo. Serve para não afogar a API nem a fonte. */
+const LOTE = 4;
+
+/**
+ * Sugere símbolos para **todos** os investimentos que não têm nenhum.
+ *
+ * **Porquê existir, ao lado do botão de cada ficha.** Uma importação de
+ * corretora cria dezenas de ativos de uma vez, todos sem símbolo — e sem símbolo
+ * não há cotação, nem preço atual, nem ganho, nem TWR. Abrir quarenta fichas
+ * para carregar quarenta vezes no mesmo botão não é trabalho que se peça a
+ * ninguém, e o resultado previsível é a carteira ficar por atualizar.
+ *
+ * **Não corre durante a importação, de propósito.** Uma chamada ao modelo por
+ * produto tornaria a pré-visualização lenta ao ponto de parecer avariada, e
+ * amarrava um caminho que tem de funcionar sempre (importar) a um que é
+ * opcional (sugerir). Corre quando alguém pede, sobre o que já está gravado.
+ *
+ * **Nada é aplicado aqui.** Devolve propostas para se escolherem uma a uma. Um
+ * ticker que existe mas é de outra empresa passa na verificação contra a fonte e
+ * daria um preço plausível todos os dias, para sempre, sem ninguém desconfiar.
+ */
+export async function suggestMissingSymbolsAction(
+  _prev: SuggestMissingState,
+  _formData: FormData,
+): Promise<SuggestMissingState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (!tickerSuggestAvailable()) {
+    return { error: "A sugestão assistida não está configurada." };
+  }
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const semSimbolo = assets.filter(
+    (a) => a.kind === "investimento" && !normalizeSymbol(String(a.symbol ?? "")),
+  );
+  if (semSimbolo.length === 0) {
+    return { ok: true, message: "Todos os investimentos já têm símbolo." };
+  }
+
+  const alvo = semSimbolo.slice(0, MAX_SUGESTOES);
+  const proposals: SymbolProposal[] = [];
+  const semProposta: { assetName: string; problem: string }[] = [];
+
+  for (let i = 0; i < alvo.length; i += LOTE) {
+    const lote = alvo.slice(i, i + LOTE);
+    const rs = await Promise.all(
+      lote.map((a) =>
+        suggestTicker(a.name)
+          .then((r) => ({ a, r }))
+          .catch(() => ({ a, r: null })),
+      ),
+    );
+    for (const { a, r } of rs) {
+      const s = r?.suggestion;
+      if (s) {
+        proposals.push({
+          assetId: a.id,
+          assetName: a.name,
+          symbol: s.symbol,
+          bolsa: s.bolsa,
+          moeda: s.currencyConfirmada || s.moeda,
+          porque: s.porque,
+          lastDate: s.lastDate,
+        });
+      } else {
+        semProposta.push({ assetName: a.name, problem: r?.problem ?? "Não consegui sugerir." });
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    proposals,
+    semProposta,
+    // Diz sempre o que ficou de fora. Um resultado que só mostra os acertos
+    // lê-se como "está tudo tratado", e não está.
+    message:
+      semSimbolo.length > alvo.length
+        ? `${proposals.length} de ${alvo.length} propostos. Ficaram ${semSimbolo.length - alvo.length} para uma próxima vez.`
+        : `${proposals.length} de ${alvo.length} propostos.`,
+  };
+}
+
+/**
+ * Aplica os símbolos que alguém confirmou, e vai buscar as cotações.
+ *
+ * Só entra o que vem marcado, e cada id é confrontado com os ativos do ambiente
+ * antes de tocar em nada: um id vindo do formulário não é prova de nada.
+ */
+export async function applySymbolsAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const escolhidos = formData.getAll("apply").map((v) => String(v));
+  if (escolhidos.length === 0) return { error: "Não escolheste nenhum." };
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const validos = new Set(assets.map((a) => a.id));
+
+  let aplicados = 0;
+  for (const par of escolhidos) {
+    // "assetId:simbolo", que é como a caixa o traz.
+    const sep = par.indexOf(":");
+    if (sep <= 0) continue;
+    const id = par.slice(0, sep);
+    const symbol = normalizeSymbol(par.slice(sep + 1));
+    if (!symbol || !validos.has(id)) continue;
+    await getRepository().updateAsset(id, ctx.space.id, { symbol });
+    await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
+    aplicados += 1;
+  }
+
+  revalidatePath("/patrimonio");
+  if (aplicados === 0) return { error: "Nenhum símbolo era válido." };
+  return { ok: true, message: `${aplicados} símbolo(s) aplicado(s), com a cotação buscada.` };
 }
 
 /**
