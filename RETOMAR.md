@@ -230,15 +230,10 @@ que recebeu e aponta para a variável de ambiente; o preço pode sempre ser escr
 A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
 9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
 
-- [ ] **Aplicar as migrações `0021` a `0027`.** A `0021` já foi corrigida (ver
-      secção 0) e pode ser aplicada como está. As `0022` (participação dos
-      membros), `0023` (uid por ambiente), `0024` (crédito à habitação), `0025`
-      (quota no bem), `0026` (área, concelho e preço de referência dos imóveis) e
-      `0027` (histórico do património) são das últimas sessões e o código já
-      conta com elas — **a app funciona sem elas, mas as correções do saldo e do
-      dedup, os períodos de taxa, a quota, o preço da zona e o gráfico de
-      evolução só valem depois de aplicadas**. Nenhuma delas mexe em dados que já
-      lá estejam: acrescentam colunas nulas e uma tabela nova.
+- [x] **Migrações `0021` a `0027` aplicadas** (o Tiago correu-as no Supabase a
+      2026-08-09). Já valem as correções do saldo e do dedup, os períodos de
+      taxa, a quota nos bens, o preço da zona nos imóveis e o histórico do
+      património.
 - [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
       gratuitos com a última atividade; marcar aviso; congelar/descongelar;
       gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
@@ -295,7 +290,7 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ## 2. Higiene de código, por fazer
 
-- **`actions.ts` tem ~1900 linhas.** É o ficheiro onde estão quase todas as
+- **`actions.ts` passou das 2400 linhas** (eram ~1900 há duas sessões, e cresce a cada funcionalidade nova). É o ficheiro onde estão quase todas as
   escritas da app e é onde as verificações de permissão têm de ser consistentes.
   Vale a pena parti-lo por área.
 - **As importações gravam linha a linha, em sequência** (`await` dentro do
@@ -314,9 +309,12 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
       levar um token, reutilizando o mecanismo do `password_reset_tokens`, que já
       existe e é sólido. **Fechar antes de abrir o registo.**
 - [ ] **SSO Google/Microsoft** — falta a UI **e** as credenciais do Tiago.
-- [ ] **Ticker a partir do nome** — confirmado: não começado. A regra continua a
-      ser "o modelo sugere, os factos confirmam": o candidato só vale depois de a
-      fonte de cotações devolver série. Um ticker errado é pior do que nenhum.
+- [x] **Ticker a partir do nome** — feito na sessão de 2026-08-08 (por ficha) e
+      08-09 (todos de uma vez, `suggestMissingSymbolsAction`). A regra é "o
+      modelo sugere, os factos confirmam": o candidato só vale depois de a fonte
+      de cotações devolver série, e a aplicação é sempre confirmada à mão. Esta
+      linha esteve a dizer "não começado" durante duas sessões depois de estar
+      feito.
 - [ ] **Fusão de comerciantes e alcunhas** — mencionado, nunca feito.
 
 ---
