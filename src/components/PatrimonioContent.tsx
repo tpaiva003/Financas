@@ -20,6 +20,8 @@ import {
   INDEXANTES,
   buildCreditoPlano,
   parseCreditTerms,
+  estimatedPropertyCents,
+  compararComRegistado,
   tipoDoCredito,
   type AssetKind,
   type AssetView,
@@ -671,6 +673,20 @@ function AssetRow({
    * coisa que se sabe falsa. Os dois nunca aparecem ao mesmo tempo: duas
    * prestações diferentes lado a lado não informam, confundem.
    */
+  /**
+   * O imóvel ao preço da zona, quando há área e preço de referência.
+   *
+   * Aparece **ao lado** do valor registado e nunca por cima: a mediana do
+   * concelho não sabe se a casa é num último andar com vista ou num rés do chão
+   * para as traseiras. Compara-se com o valor TOTAL, não com a fatia deste
+   * ambiente — a quota aplica-se igual aos dois lados e não muda a percentagem.
+   */
+  const zonaCents = estimatedPropertyCents({
+    areaM2: stored?.areaM2,
+    priceRefCents: stored?.priceRefCents,
+  });
+  const zona = compararComRegistado(zonaCents, assetTotalValueCents(a));
+
   const terms = isDebt ? parseCreditTerms(stored?.creditTerms) : null;
   const credito = terms
     ? buildCreditoPlano({
@@ -740,7 +756,10 @@ function AssetRow({
               {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
             </>
           ) : (
-            a.purchasedAt ?? ""
+            <>
+              {a.purchasedAt ?? ""}
+              {stored?.location ? `${a.purchasedAt ? " · " : ""}${stored.location}` : ""}
+            </>
           )}
         </p>
       </div>
@@ -813,6 +832,15 @@ function AssetRow({
           {quota < 1 ? (
             <p className="font-mono text-[11px] tnum text-fg-faint">
               {quotaLabel} de {formatCents(assetTotalValueCents(a))}
+            </p>
+          ) : null}
+          {/* A estimativa da zona, com a diferença em percentagem: é a diferença
+              que faz alguém ir ver o valor, não o valor absoluto. Fica apagada
+              e identificada — é uma referência, não uma avaliação. */}
+          {zonaCents !== null ? (
+            <p className="font-mono text-[11px] tnum text-fg-faint">
+              zona: {formatCents(zonaCents)}
+              {zona ? ` (${zona.ratio >= 1 ? "+" : ""}${Math.round((zona.ratio - 1) * 100)}%)` : ""}
             </p>
           ) : null}
           {a.gainCents !== null ? (
@@ -950,6 +978,10 @@ function AssetRow({
               unitPriceCents: a.unitPriceCents,
               valueCents: a.valueCents,
               purchasedAt: a.purchasedAt,
+              areaM2: stored?.areaM2 ?? null,
+              location: stored?.location ?? null,
+              priceRefCents: stored?.priceRefCents ?? null,
+              priceRefSource: stored?.priceRefSource ?? null,
               notes: a.notes,
               interestRatePct: a.interestRatePct,
               monthlyPaymentCents: a.monthlyPaymentCents,

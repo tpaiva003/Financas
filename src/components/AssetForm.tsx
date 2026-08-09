@@ -13,6 +13,7 @@ import {
 } from "@/lib/domain";
 import { CreditContractImport } from "./CreditContractImport";
 import { CreditPeriodsField } from "./CreditPeriodsField";
+import { PropertyPriceField } from "./PropertyPriceField";
 import { OwnershipField, type OwnershipMember } from "./OwnershipField";
 
 const empty: ActionState = {};
@@ -40,6 +41,11 @@ export interface AssetFormValues {
   maturityDate?: string | null;
   /** Crédito com períodos de taxa. Já validado — quem monta isto usa `parseCreditTerms`. */
   creditTerms?: CreditTerms | null;
+  /** Imóvel: área, concelho e preço de referência por m². */
+  areaM2?: number | null;
+  location?: string | null;
+  priceRefCents?: number | null;
+  priceRefSource?: string | null;
   symbol?: string | null;
 }
 
@@ -93,6 +99,7 @@ export function AssetForm({
   const [kind, setKind] = useState<AssetKind>(asset?.kind ?? (emDividas ? "divida" : "conta"));
   const isInvestment = kind === "investimento";
   const isDebt = kind === "divida";
+  const isImovel = kind === "imovel";
   const editing = Boolean(asset);
   const uid = asset?.id ?? "novo";
 
@@ -331,6 +338,16 @@ export function AssetForm({
           ) : null}
         </div>
       )}
+
+      {isImovel ? (
+        <PropertyPriceField
+          uid={uid}
+          areaM2={asset?.areaM2}
+          location={asset?.location}
+          priceRefCents={asset?.priceRefCents}
+          priceRefSource={asset?.priceRefSource}
+        />
+      ) : null}
 
       {/* A quota não se oferece nos investimentos: ali a verdade são os
           movimentos, e uma percentagem por cima de uma posição derivada dos

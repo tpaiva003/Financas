@@ -183,6 +183,20 @@ export interface Asset {
   ownershipPct?: number | null;
   /** Quem tem o resto, quando é alguém deste ambiente. Só para o registo. */
   coOwnerMemberId?: string | null;
+  /** Imóvel: área em metros quadrados. Com o preço por m², dá a estimativa. */
+  areaM2?: number | null;
+  /** Imóvel: concelho, como se escreve. Casa com o nome que o INE devolve. */
+  location?: string | null;
+  /**
+   * Imóvel: preço de referência por m², em cêntimos.
+   *
+   * **Nunca substitui o `valueCents`.** A mediana do concelho não sabe se a casa
+   * é num último andar com vista ou num rés do chão para as traseiras — a
+   * estimativa mostra-se ao lado do valor registado, não por cima dele.
+   */
+  priceRefCents?: number | null;
+  /** De onde veio o preço e de quando é ("INE · Lisboa · 2025"). */
+  priceRefSource?: string | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
   updatedAt?: string | null;

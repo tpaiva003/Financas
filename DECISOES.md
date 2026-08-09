@@ -1261,3 +1261,40 @@ para nada era uma responsabilidade que esta app não precisa de ter.
 porque é o melhor ponto de partida que existe, mas com um aviso por baixo: num
 crédito com anos, a diferença são dezenas de milhares de euros, e é o erro mais
 fácil de deixar passar neste ecrã.
+
+## Preço dos imóveis: INE, e não o idealista
+
+O pedido falava do relatório de preços do idealista, que é o que toda a gente
+conhece. Não dá: o idealista não tem API pública, e só se lá chegava a raspar as
+páginas — o que viola os termos deles e parte no dia em que mudarem o HTML. O INE
+publica o mesmo tipo de indicador (valor mediano das vendas de alojamentos
+familiares, em €/m², por concelho) numa API pública e documentada.
+
+**Não são a mesma coisa, e é bom que se saiba.** O idealista mede anúncios, o INE
+mede escrituras. Pedidos contra pagos: o INE costuma dar mais baixo, e sai com uns
+meses de atraso. Em compensação é o que se pagou mesmo.
+
+**A geografia resolve-se por nome, não por código.** Uma tabela com os códigos dos
+308 concelhos era trezentas linhas a manter aqui dentro e a dessincronizar-se em
+silêncio. Em vez disso pede-se ao INE a lista toda e compara-se pelo nome que ele
+próprio devolve, sem acentos e sem maiúsculas. Um nome ambíguo **não se
+desempata**: há duas Lagoas em Portugal, uma nos Açores e outra no Algarve, com o
+dobro do preço uma da outra — escolher a primeira era acertar por sorte numa em
+duas, e o erro ficava calado.
+
+**A estimativa nunca substitui o valor.** `price_ref_cents` vive ao lado de
+`value_cents` e a estimativa aparece por baixo do valor, apagada e identificada. A
+mediana do concelho não sabe se a casa é num último andar com vista ou num rés do
+chão para as traseiras, e entre uma coisa e outra vão facilmente 30%. Trocar um
+valor desatualizado, que se sabe desatualizado, por um número errado com ar de
+facto seria uma troca má.
+
+**Escrever o preço à mão troca a proveniência.** Mexer no campo põe a fonte a
+"escrito à mão". Um preço com a etiqueta do INE que não veio do INE é pior do que
+um preço sem etiqueta nenhuma.
+
+**O código do indicador está numa variável de ambiente.** O INE renumera as séries
+quando muda a metodologia, e um número fixo no código obrigava a um deploy para
+uma coisa de configuração. Quando o pedido não devolve nada que se perceba, a app
+diz isso e aponta para a variável — em vez de mostrar zero concelhos, que se leria
+como "o teu concelho não tem dados".

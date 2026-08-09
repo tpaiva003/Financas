@@ -1181,6 +1181,10 @@ export class SupabaseRepository implements Repository {
         credit_terms: input.creditTerms ?? null,
         ownership_pct: input.ownershipPct ?? null,
         co_owner_member_id: input.coOwnerMemberId ?? null,
+        area_m2: input.areaM2 ?? null,
+        location: input.location ?? null,
+        price_ref_cents: input.priceRefCents ?? null,
+        price_ref_source: input.priceRefSource ?? null,
         symbol: input.symbol ?? null,
         created_by: input.createdBy ?? null,
       })
@@ -1209,6 +1213,10 @@ export class SupabaseRepository implements Repository {
     if (patch.creditTerms !== undefined) row.credit_terms = patch.creditTerms;
     if (patch.ownershipPct !== undefined) row.ownership_pct = patch.ownershipPct;
     if (patch.coOwnerMemberId !== undefined) row.co_owner_member_id = patch.coOwnerMemberId;
+    if (patch.areaM2 !== undefined) row.area_m2 = patch.areaM2;
+    if (patch.location !== undefined) row.location = patch.location;
+    if (patch.priceRefCents !== undefined) row.price_ref_cents = patch.priceRefCents;
+    if (patch.priceRefSource !== undefined) row.price_ref_source = patch.priceRefSource;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -1678,6 +1686,10 @@ function rowToAsset(r: any): Asset {
     ownershipPct:
       r.ownership_pct === null || r.ownership_pct === undefined ? null : Number(r.ownership_pct),
     coOwnerMemberId: r.co_owner_member_id ?? null,
+    areaM2: r.area_m2 === null || r.area_m2 === undefined ? null : Number(r.area_m2),
+    location: r.location ?? null,
+    priceRefCents: r.price_ref_cents ?? null,
+    priceRefSource: r.price_ref_source ?? null,
     symbol: r.symbol ?? null,
     updatedAt: r.updated_at ?? null,
   };

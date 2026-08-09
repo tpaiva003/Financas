@@ -18,6 +18,7 @@ import {
   extractCreditContract,
 } from "@/lib/services/credit-contract-service";
 import { readPdfText } from "@/lib/import/read-file";
+import { getInePriceTable } from "@/lib/services/ine-service";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -45,6 +46,7 @@ import {
   type PeriodoTipo,
   type RatePeriod,
   type ContratoRevisto,
+  procurarLocal,
 } from "@/lib/domain";
 
 export interface ActionState {
@@ -1590,6 +1592,17 @@ export async function saveAssetAction(
     rawQuota !== null && rawQuota > 0 && rawQuota < 100 ? rawQuota : null;
   const rawCoOwner = String(formData.get("coOwnerMemberId") ?? "").trim();
 
+  /**
+   * Imóvel: área, concelho e preço de referência por m².
+   *
+   * O preço de referência **não substitui** o valor: fica ao lado dele, e a
+   * estimativa é mostrada como estimativa. A mediana do concelho não sabe se a
+   * casa é num último andar com vista ou num rés do chão para as traseiras.
+   */
+  const isImovel = kind === "imovel";
+  const rawArea = parseNumber(formData.get("areaM2"));
+  const rawPrecoM2 = parseNumber(formData.get("priceRefEurM2"));
+
   const patch = {
     spaceId: ctx.space.id,
     name: name.slice(0, 120),
@@ -1615,6 +1628,13 @@ export async function saveAssetAction(
     // é prova de nada, e apontar para fora do ambiente seria uma fuga.
     coOwnerMemberId:
       rawCoOwner && ctx.members.some((m) => m.id === rawCoOwner) ? rawCoOwner : null,
+    areaM2: isImovel && rawArea !== null && rawArea > 0 ? rawArea : null,
+    location: isImovel ? String(formData.get("location") ?? "").trim().slice(0, 120) || null : null,
+    priceRefCents:
+      isImovel && rawPrecoM2 !== null && rawPrecoM2 > 0 ? toCents(rawPrecoM2) : null,
+    priceRefSource: isImovel
+      ? String(formData.get("priceRefSource") ?? "").trim().slice(0, 120) || null
+      : null,
     symbol:
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))
@@ -2204,4 +2224,62 @@ export async function extractCreditContractAction(
   const r = await extractCreditContract(texto);
   if (r.problem) return { error: r.problem };
   return { ok: true, revisto: r.revisto ?? null, notas: r.notas };
+}
+
+export interface InePriceOption {
+  geodsg: string;
+  pricePerM2Cents: number;
+}
+
+export interface InePriceLookup {
+  error?: string;
+  /** O que se escolheu sozinho, quando o nome bateu certo. */
+  escolhido?: InePriceOption | null;
+  /** O nome batia certo por inteiro, ou foi uma aproximação? */
+  exato?: boolean;
+  /** Nomes parecidos, para se escolher à mão. */
+  candidatos?: InePriceOption[];
+  /** O período do INE, para a proveniência. */
+  period?: string;
+}
+
+/**
+ * O preço mediano por m² que o INE publica para um concelho.
+ *
+ * Chamada direta em vez de `useFormState`: isto vive **dentro** do formulário do
+ * bem, e um `<form>` dentro de outro `<form>` não é HTML válido.
+ *
+ * Não grava nada. Devolve o preço para se pôr no campo, e quando o nome não é
+ * inequívoco devolve os candidatos em vez de escolher — há duas Lagoas em
+ * Portugal, uma nos Açores e outra no Algarve, com o dobro do preço uma da
+ * outra.
+ */
+export async function lookupPropertyPriceAction(local: string): Promise<InePriceLookup> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const query = String(local ?? "").trim();
+  if (!query) return { error: "Escreve o concelho." };
+
+  const { table, problem } = await getInePriceTable();
+  if (!table) return { error: problem ?? "Não consegui obter os preços do INE." };
+
+  const r = procurarLocal(table.rows, query);
+  const opcao = (row: { geodsg: string; pricePerM2Cents: number }): InePriceOption => ({
+    geodsg: row.geodsg,
+    pricePerM2Cents: row.pricePerM2Cents,
+  });
+
+  if (r.escolhido) {
+    return {
+      escolhido: opcao(r.escolhido.row),
+      exato: r.escolhido.exato,
+      candidatos: [],
+      period: table.period,
+    };
+  }
+  if (r.candidatos.length > 0) {
+    return { escolhido: null, candidatos: r.candidatos.map(opcao), period: table.period };
+  }
+  return { error: `O INE não tem "${query}" na lista de ${table.rows.length} concelhos.` };
 }

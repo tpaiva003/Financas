@@ -26,3 +26,4 @@ export * from "./retencao";
 export * from "./monogram";
 export * from "./credito";
 export * from "./credito-contrato";
+export * from "./imovel";
