@@ -40,6 +40,7 @@ import { InvestmentCard } from "./InvestmentCard";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -115,6 +116,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
   const semSimbolo = stored.filter((a) => a.kind === "investimento" && !a.symbol).length;
   const podeSugerir = tickerSuggestAvailable();
+  const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
@@ -368,6 +370,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                         today={today}
                         tradeCount={(tradesByAsset.get(a.id) ?? []).length}
                         members={memberOptions}
+                        podeLerContrato={podeLerContrato}
                       />
                     ))}
                   </ul>
@@ -384,6 +387,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
         <AssetForm
           contexto={view === "dividas" ? "dividas" : "ativos"}
           members={memberOptions}
+          podeLerContrato={podeLerContrato}
         />
       ) : null}
 
@@ -634,10 +638,13 @@ function AssetRow({
   today,
   tradeCount,
   members,
+  podeLerContrato,
 }: {
   asset: AssetView;
   stored: Asset | null;
   members: { id: string; name: string }[];
+  /** Há leitura de contratos configurada? */
+  podeLerContrato: boolean;
   quoteDate: string | null;
   quoteProblem: string | null;
   /** O fecho na moeda da bolsa, quando não é euro. */
@@ -933,6 +940,7 @@ function AssetRow({
           ) : null}
           <AssetForm
             members={members}
+            podeLerContrato={podeLerContrato}
             asset={{
               id: a.id,
               name: a.name,

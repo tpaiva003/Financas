@@ -1220,3 +1220,44 @@ fim de 360 vezes sobra um resto. O `buildLoan` paga-o num mês 361 que o contrat
 não tem — e por isso diz "241 meses" num crédito de 240. Aqui a última prestação
 absorve-o, que é o que o banco faz. O `buildLoan` não foi mexido: é um erro de um
 mês numa data já mostrada, e corrigi-lo mudava números que as pessoas já viram.
+
+## Ler o contrato do crédito: o modelo copia, a conta é que confirma
+
+Registar um crédito à habitação à mão é ir buscar o montante, a data da
+escritura, o prazo e dois ou três períodos de taxa com indexante e spread ao meio
+de trinta páginas escritas para um notário. É chato o suficiente para se fazer de
+qualquer maneira, e um crédito registado de qualquer maneira dá uma prestação
+errada durante trinta anos sem nunca dar erro.
+
+**Ao modelo pede-se que copie, não que calcule.** É-lhe dito explicitamente para
+não somar prazos, não deduzir a data do último pagamento e não estimar a
+prestação — só copiar o que está escrito. A razão é que a prestação copiada é o
+que permite verificar tudo o resto: o `reviewContrato` **recalcula-a** a partir do
+capital, da taxa do primeiro período e do prazo, e compara. Uma vírgula fora do
+sítio na taxa (0,33% em vez de 3,3%) mantém o formato perfeito e números
+plausíveis — e não sobrevive a essa conta. Se o modelo calculasse em vez de
+copiar, a comparação passava a confrontar o modelo consigo próprio e não valia
+nada.
+
+**Uns euros de diferença não são um erro.** A tolerância é 2% (mínimo 2 €), e é
+deliberadamente generosa: arredondamentos e um seguro pequeno na mesma prestação
+cabem lá dentro. Gritar por dois euros ensinava quem confirma a ignorar o aviso, e
+no dia em que ele fosse a sério já não valia nada.
+
+**O que não passa é deitado fora com aviso, nunca corrigido.** Um período com uma
+taxa de 330% desaparece e diz-se que desapareceu. Adivinhar a taxa certa a partir
+de uma taxa errada seria escolher por alguém um número que vai valer trinta anos.
+
+**O valor do indexante que está no contrato não se aproveita.** Está lá quase
+sempre ("Euribor a 6 meses em vigor: 2,532%") e era fácil usá-lo. Não se usa: é o
+valor do dia da escritura, e um plano de amortização construído sobre ele seria um
+cenário com ar de facto. O campo fica vazio de propósito e diz-se porquê.
+
+**O ficheiro não é guardado.** Entra, dá o texto, é lido e desaparece com o
+pedido. Um contrato de crédito tem morada, número fiscal e assinatura; guardá-lo
+para nada era uma responsabilidade que esta app não precisa de ter.
+
+**O montante do contrato não é o que falta pagar.** Vai para o campo do saldo
+porque é o melhor ponto de partida que existe, mas com um aviso por baixo: num
+crédito com anos, a diferença são dezenas de milhares de euros, e é o erro mais
+fácil de deixar passar neste ecrã.

@@ -13,6 +13,11 @@ import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import {
+  creditContractExtractAvailable,
+  extractCreditContract,
+} from "@/lib/services/credit-contract-service";
+import { readPdfText } from "@/lib/import/read-file";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -39,6 +44,7 @@ import {
   type IndexanteRates,
   type PeriodoTipo,
   type RatePeriod,
+  type ContratoRevisto,
 } from "@/lib/domain";
 
 export interface ActionState {
@@ -2143,4 +2149,59 @@ export async function dismissOnboardingAction(): Promise<void> {
     sameSite: "lax",
   });
   revalidatePath("/dashboard");
+}
+
+export interface ContractExtractState extends ActionState {
+  /** A proposta já verificada. Nunca gravada: vai preencher o formulário. */
+  revisto?: ContratoRevisto | null;
+  /** O que o modelo percebeu do documento, para se ver que leu o ficheiro certo. */
+  notas?: string;
+}
+
+/** Uma escritura em PDF anda pelos 2 MB. Acima disto é outra coisa qualquer. */
+const MAX_CONTRATO_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Lê o contrato do crédito e devolve os campos propostos.
+ *
+ * **O ficheiro não é guardado em lado nenhum.** Entra, dá o texto, é lido e
+ * desaparece com o pedido. Um contrato de crédito tem morada, número fiscal e
+ * a assinatura de quem o assinou; guardá-lo para nada seria uma responsabilidade
+ * que esta app não precisa de ter.
+ *
+ * O que sai daqui **não é gravado**: preenche o formulário do crédito, que ainda
+ * tem de ser conferido e submetido por quem o carregou.
+ */
+export async function extractCreditContractAction(
+  _prev: ContractExtractState,
+  formData: FormData,
+): Promise<ContractExtractState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (!creditContractExtractAvailable()) {
+    return { error: "A leitura assistida não está configurada." };
+  }
+
+  const file = formData.get("contract");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Escolhe o ficheiro do contrato." };
+  }
+  if (file.size > MAX_CONTRATO_BYTES) {
+    return { error: "O ficheiro é demasiado grande: o máximo são 15 MB." };
+  }
+
+  const nome = (file.name ?? "").toLowerCase();
+  let texto = "";
+  if (nome.endsWith(".pdf")) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    texto = await readPdfText(buf).catch(() => "");
+  } else if (nome.endsWith(".txt")) {
+    texto = await file.text().catch(() => "");
+  } else {
+    return { error: "Só consigo ler o contrato em PDF ou em texto." };
+  }
+
+  const r = await extractCreditContract(texto);
+  if (r.problem) return { error: r.problem };
+  return { ok: true, revisto: r.revisto ?? null, notas: r.notas };
 }

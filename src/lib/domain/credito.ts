@@ -140,7 +140,11 @@ const SEM_PLANO = (problem: string): CreditoPlano => ({
 });
 
 /** Prestação de anuidade sobre o capital e os meses que faltam. */
-function prestacao(principalCents: number, annualRatePct: number, months: number): number {
+export function prestacaoAnuidadeCents(
+  principalCents: number,
+  annualRatePct: number,
+  months: number,
+): number {
   if (months <= 0 || principalCents <= 0) return 0;
   const i = annualRatePct / 100 / 12;
   if (i === 0) return Math.round(principalCents / months);
@@ -220,7 +224,7 @@ export function buildCreditoPlano(input: {
     // A prestação recalcula-se sobre o que falta pagar e os meses que faltam
     // ATÉ À MATURIDADE — é isso que o banco faz, e é o que cria o degrau.
     const mesesAteMaturidade = monthsBetween(inicio, maturidade);
-    const pagamento = prestacao(saldo, taxa, mesesAteMaturidade);
+    const pagamento = prestacaoAnuidadeCents(saldo, taxa, mesesAteMaturidade);
 
     const abertura = saldo;
     let jurosTramo = 0;

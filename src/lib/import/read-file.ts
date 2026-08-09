@@ -107,17 +107,30 @@ function readXlsx(buf: Buffer): Grid {
 }
 
 /**
- * Extrai o texto de um PDF e converte-o em grelha. Para já só o extrato do
- * cartão Universo; outros PDFs devolvem vazio (a UI explica que não reconheceu).
+ * O texto cru de um PDF.
+ *
+ * Serve os dois usos que a app tem para PDF: a grelha dos extratos e a leitura
+ * de um contrato. Devolve vazio num PDF digitalizado — que é uma imagem e não
+ * tem texto nenhum lá dentro — e quem chama diz isso a quem carregou, em vez de
+ * seguir com zero linhas e dar a entender que o ficheiro não tinha nada.
  */
-async function readPdf(buf: Buffer): Promise<Grid> {
+export async function readPdfText(buf: Buffer): Promise<string> {
   // Import dinâmico: a biblioteca só é carregada quando há mesmo um PDF.
   // Usamos o módulo interno porque o index de `pdf-parse` tem um bloco de debug
   // que tenta ler um ficheiro de teste do próprio pacote quando empacotado.
   const mod = await import("pdf-parse/lib/pdf-parse.js");
   const pdfParse = (mod.default ?? mod) as (b: Buffer) => Promise<{ text: string }>;
   const data = await pdfParse(buf);
-  const lines = data.text.split("\n").map((l) => l.trim());
+  return data.text ?? "";
+}
+
+/**
+ * Extrai o texto de um PDF e converte-o em grelha. Para já só o extrato do
+ * cartão Universo; outros PDFs devolvem vazio (a UI explica que não reconheceu).
+ */
+async function readPdf(buf: Buffer): Promise<Grid> {
+  const text = await readPdfText(buf);
+  const lines = text.split("\n").map((l) => l.trim());
   return universoLinesToGrid(lines);
 }
 

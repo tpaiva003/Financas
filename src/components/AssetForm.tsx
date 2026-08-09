@@ -7,9 +7,11 @@ import {
   ASSET_KIND_LABELS,
   RATE_KIND_LABELS,
   type AssetKind,
+  type ContratoRevisto,
   type CreditTerms,
   type RateKind,
 } from "@/lib/domain";
+import { CreditContractImport } from "./CreditContractImport";
 import { CreditPeriodsField } from "./CreditPeriodsField";
 import { OwnershipField, type OwnershipMember } from "./OwnershipField";
 
@@ -78,10 +80,13 @@ export function AssetForm({
   contexto = "ativos",
   /** Membros do ambiente, para se poder dizer quem tem a outra parte. */
   members = [],
+  /** Há leitura de contratos configurada? Sem chave não se anuncia. */
+  podeLerContrato = false,
 }: {
   asset?: AssetFormValues;
   contexto?: "ativos" | "dividas";
   members?: OwnershipMember[];
+  podeLerContrato?: boolean;
 }) {
   const [state, action] = useFormState(saveAssetAction, empty);
   const emDividas = contexto === "dividas";
@@ -90,6 +95,19 @@ export function AssetForm({
   const isDebt = kind === "divida";
   const editing = Boolean(asset);
   const uid = asset?.id ?? "novo";
+
+  /**
+   * O que veio do contrato, quando alguém o carregou e mandou preencher.
+   *
+   * Os campos são não controlados (`defaultValue`), que é o que se quer num
+   * formulário onde se escreve à mão. Para os preencher de fora troca-se a
+   * `chave` e o React remonta-os com os valores novos — em vez de os passar a
+   * controlados, que obrigaria a duplicar em estado todos os campos do
+   * formulário só por causa de um caminho opcional.
+   */
+  const [doContrato, setDoContrato] = useState<{ r: ContratoRevisto; n: number } | null>(null);
+  const chave = doContrato ? `contrato-${doContrato.n}` : "base";
+  const contrato = doContrato?.r ?? null;
 
   const form = (
     <form action={action} className={editing ? "space-y-4" : "mt-4 space-y-4"}>
@@ -176,10 +194,11 @@ export function AssetForm({
               {isDebt ? "Quanto falta pagar" : "Valor atual"}
             </label>
             <input
+              key={chave}
               id={`asset-value-${uid}`}
               name="value"
               inputMode="decimal"
-              defaultValue={decimal(asset?.valueCents)}
+              defaultValue={decimal(contrato?.capitalCents ?? asset?.valueCents)}
               placeholder="0,00"
               className="input"
             />
@@ -189,10 +208,11 @@ export function AssetForm({
               {isDebt ? "Data de início (opcional)" : "Data (opcional)"}
             </label>
             <input
+              key={chave}
               id={`asset-date-${uid}`}
               name="purchasedAt"
               type="date"
-              defaultValue={asset?.purchasedAt ?? ""}
+              defaultValue={contrato?.startDate ?? asset?.purchasedAt ?? ""}
               className="input"
             />
           </div>
@@ -303,9 +323,10 @@ export function AssetForm({
 
           {isDebt ? (
             <CreditPeriodsField
+              key={chave}
               uid={uid}
-              maturityDate={asset?.maturityDate}
-              terms={asset?.creditTerms}
+              maturityDate={contrato?.maturityDate ?? asset?.maturityDate}
+              terms={contrato?.terms ?? asset?.creditTerms}
             />
           ) : null}
         </div>
@@ -346,13 +367,30 @@ export function AssetForm({
     </form>
   );
 
-  if (editing) return form;
+  /**
+   * Fora do `<form>` de propósito: são dois formulários e um não pode estar
+   * dentro do outro. Só aparece nas dívidas, que é onde há contrato para ler.
+   */
+  const contratoBloco =
+    isDebt && podeLerContrato ? (
+      <CreditContractImport onUse={(r) => setDoContrato((p) => ({ r, n: (p?.n ?? 0) + 1 }))} />
+    ) : null;
+
+  if (editing) {
+    return (
+      <>
+        {contratoBloco}
+        {form}
+      </>
+    );
+  }
 
   return (
     <details className="card p-5">
       <summary className="cursor-pointer text-sm font-medium text-fg">
         {emDividas ? "Adicionar dívida" : "Adicionar ao património"}
       </summary>
+      {contratoBloco ? <div className="mt-4">{contratoBloco}</div> : null}
       {form}
     </details>
   );
