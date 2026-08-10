@@ -2242,6 +2242,16 @@ export async function extractCreditContractAction(
 export interface InePriceOption {
   geodsg: string;
   pricePerM2Cents: number;
+  /**
+   * Onde é que este sítio está, na hierarquia do INE.
+   *
+   * Sem isto, "Odivelas" — que é concelho E freguesia dentro dele — dava dois
+   * botões com a mesma etiqueta e preços diferentes, e não havia forma de
+   * escolher. O nome sozinho não chega.
+   */
+  dentroDe: string | null;
+  /** A categoria de alojamento, quando o indicador a separa. */
+  categoria: string | null;
 }
 
 export interface InePriceLookup {
@@ -2278,15 +2288,17 @@ export async function lookupPropertyPriceAction(local: string): Promise<InePrice
   if (!table) return { error: problem ?? "Não consegui obter os preços do INE." };
 
   const r = procurarLocal(table.rows, query);
-  const opcao = (row: { geodsg: string; pricePerM2Cents: number }): InePriceOption => ({
-    geodsg: row.geodsg,
-    pricePerM2Cents: row.pricePerM2Cents,
+  const opcao = (c: { row: { geodsg: string; pricePerM2Cents: number; categoria?: string | null }; dentroDe: string | null }): InePriceOption => ({
+    geodsg: c.row.geodsg,
+    pricePerM2Cents: c.row.pricePerM2Cents,
+    dentroDe: c.dentroDe,
+    categoria: c.row.categoria ?? null,
   });
 
   if (r.escolhido) {
     return {
-      escolhido: opcao(r.escolhido.row),
-      exato: r.escolhido.exato,
+      escolhido: opcao(r.escolhido),
+      exato: r.exato,
       candidatos: [],
       period: table.period,
     };
@@ -2294,7 +2306,7 @@ export async function lookupPropertyPriceAction(local: string): Promise<InePrice
   if (r.candidatos.length > 0) {
     return { escolhido: null, candidatos: r.candidatos.map(opcao), period: table.period };
   }
-  return { error: `O INE não tem "${query}" na lista de ${table.rows.length} concelhos.` };
+  return { error: `O INE não tem "${query}" na lista de ${table.rows.length} sítios.` };
 }
 
 export interface ConversaState extends ActionState {
@@ -2333,7 +2345,11 @@ export async function conversarAction(
   }
   const historico = [...limparHistorico(anteriores), { role: "user" as const, content: pergunta }];
 
-  const situacao = await buildSituacaoDoAmbiente(ctx.space.id, ctx.viewerMemberId);
+  // A página é só para o modelo poder falar do que a pessoa tem à frente.
+  // Vem do cliente, por isso é cortada e nunca usada para decidir nada.
+  const pagina = String(formData.get("pagina") ?? "").trim().slice(0, 80) || null;
+
+  const situacao = await buildSituacaoDoAmbiente(ctx, pagina);
   const r = await conversar(situacao, historico);
   if (r.problem || !r.reply) {
     return { error: r.problem ?? "Não consegui responder.", mensagens: historico };
@@ -2353,15 +2369,23 @@ const CATEGORIAS_NO_RESUMO = 8;
  * os nomes das pessoas e as despesas uma a uma. O extrato não sai deste
  * servidor.
  */
-async function buildSituacaoDoAmbiente(spaceId: string, viewerId: string) {
+async function buildSituacaoDoAmbiente(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+  pagina: string | null,
+) {
+  const spaceId = ctx.space.id;
+  const viewerId = ctx.viewerMemberId;
   const repo = getRepository();
-  const [stored, trades, expenses, incomes, categories, historico] = await Promise.all([
+  const [stored, trades, expenses, incomes, categories, historico, saldo] = await Promise.all([
     repo.listAssets(spaceId).catch(() => []),
     repo.listAssetTrades(spaceId).catch(() => []),
     repo.listExpenses({ spaceId, viewerId }).catch(() => []),
     repo.listIncome(spaceId).catch(() => []),
     repo.listCategories(spaceId).catch(() => []),
     getNetWorthHistory(spaceId),
+    // Metade desta app é despesa partilhada. Um chat sobre "a minha situação"
+    // que não saiba responder a "quem me deve o quê?" não serve para nada.
+    getSpaceBalance(spaceId, ctx.members, viewerId).catch(() => null),
   ]);
 
   const tradesByAsset = new Map<string, typeof trades>();
@@ -2434,6 +2458,21 @@ async function buildSituacaoDoAmbiente(spaceId: string, viewerId: string) {
       };
     });
 
+  const nomeMembro = new Map(ctx.members.map((m) => [m.id, m.name]));
+  const saldos = saldo
+    ? Object.entries(saldo.balance.netByUser).map(([id, cents]) => ({
+        nome: nomeMembro.get(id) ?? "alguém",
+        netCents: Number(cents) || 0,
+      }))
+    : [];
+  const acertos = saldo
+    ? saldo.transfers.map((t) => ({
+        de: nomeMembro.get(t.fromUserId) ?? "alguém",
+        para: nomeMembro.get(t.toUserId) ?? "alguém",
+        cents: t.amountCents,
+      }))
+    : [];
+
   const serie = buildNetWorthSeries(historico);
   const primeiro = serie.points[0];
   const ultimo = serie.points.at(-1);
@@ -2448,6 +2487,9 @@ async function buildSituacaoDoAmbiente(spaceId: string, viewerId: string) {
     categorias,
     investmentCostCents: net.investmentCostCents,
     investmentGainCents: net.investmentCostCents > 0 ? net.investmentGainCents : null,
+    saldos,
+    acertos,
+    pagina,
     historico:
       serie.changeCents !== null && primeiro && ultimo
         ? {

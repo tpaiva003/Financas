@@ -69,6 +69,8 @@ export function PropertyPriceField({
 
   function aplicar(o: InePriceOption, period: string | null) {
     setPreco(decimal(o.pricePerM2Cents));
+    // A proveniência leva o sítio E o período: esta série é trimestral e sai
+    // com atraso, e sem a data um valor de há dois anos passa por atual.
     setFonte(`INE · ${o.geodsg}${period ? ` · ${period}` : ""}`);
     setCandidatos([]);
   }
@@ -87,11 +89,17 @@ export function PropertyPriceField({
         aplicar(r.escolhido, r.period ?? null);
         // Um nome que só bate por aproximação preenche na mesma, mas diz que
         // foi aproximado: preencher calado é que era enganar.
-        if (!r.exato) setAviso(`Assumi ${r.escolhido.geodsg}. Confirma que é esse o concelho.`);
+        if (!r.exato) {
+          setAviso(
+            `Assumi ${r.escolhido.geodsg}${r.escolhido.dentroDe ? `, em ${r.escolhido.dentroDe}` : ""}. Confirma que é esse o sítio.`,
+          );
+        }
         return;
       }
       setCandidatos(r.candidatos ?? []);
-      if ((r.candidatos ?? []).length > 0) setAviso("Há mais do que um sítio com esse nome. Escolhe.");
+      if ((r.candidatos ?? []).length > 0) {
+        setAviso("Há mais do que um sítio com esse nome. Escolhe qual — os preços são diferentes.");
+      }
     });
   }
 
@@ -99,10 +107,11 @@ export function PropertyPriceField({
     <div className="rounded-xl border border-hair bg-panel2/30 p-4">
       <p className="label mb-1">O imóvel ao preço da zona</p>
       <p className="mb-3 text-xs text-fg-faint">
-        Com a área e o concelho, o preço mediano por m² que o INE publica diz
+        Com a área e o sítio, o preço mediano por m² que o INE publica diz
         quanto valeria à mediana da zona. É uma referência, não uma avaliação: a
-        mediana do concelho não sabe como é esta casa. O valor lá em cima não se
-        mexe sozinho.
+        mediana não sabe como é esta casa. O valor lá em cima não se mexe
+        sozinho. Escreve o concelho — ou a freguesia e o concelho, como numa
+        morada: &quot;Paranhos, Porto&quot;.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -119,7 +128,7 @@ export function PropertyPriceField({
           />
         </div>
         <div>
-          <label className="label" htmlFor={`imo-local-${uid}`}>Concelho</label>
+          <label className="label" htmlFor={`imo-local-${uid}`}>Concelho ou freguesia</label>
           <div className="flex items-center gap-1.5">
             <input
               id={`imo-local-${uid}`}
@@ -127,7 +136,7 @@ export function PropertyPriceField({
               maxLength={120}
               value={local}
               onChange={(e) => setLocal(e.target.value)}
-              placeholder="Vila Nova de Gaia"
+              placeholder="Paranhos, Porto"
               className="input"
             />
             <button
@@ -147,13 +156,19 @@ export function PropertyPriceField({
       {candidatos.length > 0 ? (
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {candidatos.map((c) => (
-            <li key={`${c.geodsg}-${c.pricePerM2Cents}`}>
+            <li key={`${c.geodsg}-${c.dentroDe ?? ""}-${c.pricePerM2Cents}`}>
+              {/* O "dentro de" não é decoração: Odivelas é concelho e é
+                  freguesia dentro dele, e sem isto os dois botões ficavam
+                  iguais com preços diferentes. */}
               <button
                 type="button"
                 onClick={() => aplicar(c, periodo)}
-                className="rounded-full border border-hair px-2.5 py-1 text-xs text-fg-muted transition hover:border-fg/30 hover:text-fg"
+                className="rounded-full border border-hair px-2.5 py-1 text-left text-xs text-fg-muted transition hover:border-fg/30 hover:text-fg"
               >
-                {c.geodsg} — {formatCents(c.pricePerM2Cents)}/m²
+                {c.geodsg}
+                {c.dentroDe ? <span className="text-fg-faint"> · em {c.dentroDe}</span> : null}
+                {" — "}
+                {formatCents(c.pricePerM2Cents)}/m²
               </button>
             </li>
           ))}

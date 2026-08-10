@@ -1181,7 +1181,10 @@ export class SupabaseRepository implements Repository {
     // acrescentar um ponto sobreposto ao gráfico.
     const { error } = await db.from("net_worth_snapshots").upsert(
       {
-        id: randomUUID(),
+        // Determinístico: a fotografia de um dia é sempre a mesma linha. Com um
+        // uuid novo a cada gravação, o upsert reescrevia a chave primária todos
+        // os dias — funciona, mas deixa de haver forma de apontar para a linha.
+        id: `nw_${input.spaceId}_${input.onDate}`,
         space_id: input.spaceId,
         on_date: input.onDate,
         assets_cents: input.assetsCents,

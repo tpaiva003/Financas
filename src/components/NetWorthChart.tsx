@@ -13,26 +13,58 @@
  */
 
 import { formatCents, type NetWorthSeries } from "@/lib/domain";
+import type { CapturaEstado } from "@/lib/services/networth-history-service";
 
 /** Quantos pontos cabem sem ficar ilegível no telemóvel. */
 const MAX_PONTOS = 24;
 
-export function NetWorthChart({ series }: { series: NetWorthSeries }) {
+export function NetWorthChart({
+  series,
+  captura,
+}: {
+  series: NetWorthSeries;
+  /** O que aconteceu à fotografia de hoje. */
+  captura?: CapturaEstado;
+}) {
   const points = series.points.slice(-MAX_PONTOS);
 
   // Com um ponto só não há evolução nenhuma para mostrar — e é isso que se diz,
   // em vez de um gráfico com um traço solitário que ninguém sabe ler.
   if (points.length < 2) {
+    /**
+     * O estado vazio tem de dizer QUAL dos vazios é. Antes dizia sempre "o
+     * histórico está a começar", o que era verdade no primeiro dia e mentira em
+     * todos os outros se a escrita estivesse a falhar — e ninguém tinha como
+     * saber a diferença.
+     */
+    if (captura === "falhou") {
+      return (
+        <div className="card p-5">
+          <p className="eyebrow mb-2">Evolução do património</p>
+          <p role="alert" className="text-sm text-debt">
+            Não consegui guardar a fotografia de hoje. Enquanto isto durar não há
+            histórico nenhum a acumular — se a migração `0027` não tiver sido
+            corrida, a tabela ainda não existe.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="card p-5">
         <p className="eyebrow mb-2">Evolução do património</p>
         <p className="text-sm text-fg-muted">
           {points.length === 0
-            ? "Ainda não há histórico."
-            : `Há uma fotografia, de ${points[0]!.label}.`}{" "}
+            ? captura === "sem-bens"
+              ? "Ainda não há bens registados, por isso não há o que fotografar."
+              : "A fotografia de hoje ficou guardada. É a primeira."
+            : `Está guardada a fotografia de ${points[0]!.label}, com ${formatCents(points[0]!.netCents)}.`}
+        </p>
+        <p className="mt-2 text-xs text-fg-faint">
           O património de antes não se reconstrói — cada bem só sabe o que vale
-          hoje. Guarda-se uma fotografia por dia a partir de agora, e o gráfico
-          aparece com a segunda.
+          hoje, ao contrário das despesas, que são movimentos datados. Guarda-se
+          uma por dia a partir de agora, e o gráfico aparece assim que houver
+          duas.
         </p>
       </div>
     );

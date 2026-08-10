@@ -26,6 +26,12 @@ function entrada(patch: Partial<SituacaoInput> = {}): SituacaoInput {
     investmentCostCents: 0,
     investmentGainCents: null,
     historico: null,
+    saldos: [
+      { nome: "Tiago", netCents: 40_00 },
+      { nome: "Rita", netCents: -40_00 },
+    ],
+    acertos: [{ de: "Rita", para: "Tiago", cents: 40_00 }],
+    pagina: null,
     ...patch,
   };
 }
@@ -141,10 +147,35 @@ describe("situacaoParaTexto", () => {
    * campo para elas na entrada. Este teste existe para que acrescentar um seja
    * uma decisão e não um descuido.
    */
-  it("não tem por onde levar notas nem nomes de pessoas", () => {
+  it("não tem por onde levar as notas dos bens", () => {
     const chaves = Object.keys(entrada());
 
     expect(chaves).not.toContain("notes");
-    expect(chaves).not.toContain("members");
+    expect(chaves).not.toContain("notas");
+  });
+
+  /**
+   * Os nomes dos membros VÃO, e isso é deliberado: metade desta app é despesa
+   * partilhada, e "quem me deve o quê?" não tem resposta possível sem eles.
+   */
+  it("diz quem tem a receber e quem tem a pagar, pelo nome", () => {
+    const t = situacaoParaTexto(buildSituacao(entrada()));
+
+    expect(t).toContain("Tiago tem a receber");
+    expect(t).toContain("Rita tem a pagar");
+    expect(t).toContain("Rita paga");
+  });
+
+  it("não fala de saldos quando o ambiente está sozinho", () => {
+    const t = situacaoParaTexto(buildSituacao(entrada({ saldos: [], acertos: [] })));
+
+    expect(t).not.toContain("Saldo entre as pessoas");
+    expect(t).not.toContain("Pagamentos que zerariam");
+  });
+
+  it("diz em que página a pessoa está, quando se sabe", () => {
+    const t = situacaoParaTexto(buildSituacao(entrada({ pagina: "/patrimonio" })));
+
+    expect(t).toContain("/patrimonio");
   });
 });

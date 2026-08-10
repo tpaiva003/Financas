@@ -78,12 +78,28 @@ interface Attempt {
   quotes: Quote[];
   currency: string;
   blocked: boolean;
+  /**
+   * Porque é que não deu, por extenso.
+   *
+   * O `blocked` existia e **nunca era lido**: uma fonte a recusar o pedido era
+   * indistinguível de um símbolo que não existe, e a app acusava o símbolo. São
+   * coisas opostas — uma resolve-se esperando, a outra corrigindo o ticker.
+   */
+  motivo?: string | null;
 }
 
 async function fetchFrom(
   source: QuoteSourceId,
   symbol: string,
   from?: string | null,
+  /**
+   * Quem carregou no botão quer o valor de agora.
+   *
+   * Sem isto, o `force` só saltava a verificação contra a base de dados: uma
+   * resposta 200 sem dados ficava uma hora na cache do Next e o botão não a
+   * contornava — carregar outra vez dava exatamente o mesmo nada.
+   */
+  force = false,
 ): Promise<Attempt> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -96,14 +112,23 @@ async function fetchFrom(
         // pedidos que não parecem vir de um browser.
         "user-agent": "Mozilla/5.0 (compatible; Rachar/1.0; +https://rachar.pt)",
       },
-      next: { revalidate: 3_600 },
+      ...(force ? { cache: "no-store" as const } : { next: { revalidate: 3_600 } }),
     });
-    if (!res.ok) return { quotes: [], currency: "EUR", blocked: false };
+    if (!res.ok) {
+      return { quotes: [], currency: "EUR", blocked: false, motivo: `${source} respondeu ${res.status}` };
+    }
     const text = await res.text();
-    if (looksBlocked(text)) return { quotes: [], currency: "EUR", blocked: true };
-    return { ...parseFor(source, text), blocked: false };
+    if (looksBlocked(text)) {
+      return { quotes: [], currency: "EUR", blocked: true, motivo: `${source} recusou o pedido` };
+    }
+    const lido = parseFor(source, text);
+    return {
+      ...lido,
+      blocked: false,
+      motivo: lido.quotes.length === 0 ? `${source} não conhece este símbolo` : null,
+    };
   } catch {
-    return { quotes: [], currency: "EUR", blocked: false };
+    return { quotes: [], currency: "EUR", blocked: false, motivo: `não consegui falar com a ${source}` };
   } finally {
     clearTimeout(timer);
   }
@@ -119,12 +144,20 @@ async function fetchFrom(
 async function fetchFromSource(
   symbol: string,
   from?: string | null,
-): Promise<{ quotes: StoredQuote[]; currency: string }> {
+  force = false,
+): Promise<{ quotes: StoredQuote[]; currency: string; motivo: string | null }> {
+  const motivos: string[] = [];
   for (const source of QUOTE_SOURCES) {
-    const attempt = await fetchFrom(source, symbol, from);
-    if (attempt.quotes.length > 0) return { quotes: attempt.quotes, currency: attempt.currency };
+    const attempt = await fetchFrom(source, symbol, from, force);
+    if (attempt.quotes.length > 0) {
+      return { quotes: attempt.quotes, currency: attempt.currency, motivo: null };
+    }
+    if (attempt.motivo) motivos.push(attempt.motivo);
   }
-  return { quotes: [], currency: "EUR" };
+  // Todas falharam: diz-se o que cada uma respondeu. "Não encontrei cotações
+  // para este símbolo" culpa o símbolo, e na maior parte das vezes o símbolo
+  // está certo e quem recusou foi a fonte.
+  return { quotes: [], currency: "EUR", motivo: motivos.join("; ") || null };
 }
 
 /**
@@ -166,12 +199,21 @@ export async function getQuoteSeries(
 
   if (options.force || isStale(lastDate, today)) {
     // Pede-se só o que falta. Da primeira vez não há nada, e vem tudo.
-    const { quotes: fetched, currency } = await fetchFromSource(symbol, lastDate);
+    const { quotes: fetched, currency, motivo } = await fetchFromSource(
+      symbol,
+      lastDate,
+      options.force,
+    );
     fetchedCurrency = currency;
     if (fetched.length === 0) {
-      problem = lastDate
-        ? "Não consegui atualizar as cotações agora."
-        : "Não encontrei cotações para este símbolo.";
+      // O motivo por extenso quando o há. "Não encontrei cotações para este
+      // símbolo" acusa o símbolo, e quase sempre o símbolo está certo e quem
+      // recusou foi a fonte — que são problemas opostos: um espera-se, o outro
+      // corrige-se à mão.
+      const base = lastDate
+        ? "Não consegui atualizar as cotações agora"
+        : "Não consegui obter cotações para este símbolo";
+      problem = motivo ? `${base}: ${motivo}.` : `${base}.`;
     } else {
       try {
         await repo.saveQuotes(symbol, fetched, currency);
@@ -410,6 +452,15 @@ export async function refreshStalePrices(
       // tentar três de cada vez para sempre.
       const candidatos = symbolCandidates(a.symbol!);
       let series = null;
+      /**
+       * O motivo da última tentativa falhada.
+       *
+       * Sem isto o motivo era **provadamente sempre perdido**: `series` só era
+       * atribuída quando vinham cotações, e por isso `series?.problem` no fim
+       * dava sempre `null`. O botão "Atualizar preços" respondia "1 já estava em
+       * dia" a um investimento que não tem preço nenhum.
+       */
+      let porque: string | null = null;
       for (const c of candidatos) {
         // Com `force`, vai-se à fonte mesmo que a cotação guardada pareça
         // fresca: quem carregou no botão quer o valor de agora, não o de ontem.
@@ -424,6 +475,7 @@ export async function refreshStalePrices(
           }
           break;
         }
+        porque = tentativa?.problem ?? porque ?? "Não consegui falar com a fonte de cotações.";
       }
       const symbol = series?.symbol ?? a.symbol!;
       const quoteDate = series?.lastDate ?? null;
@@ -441,7 +493,7 @@ export async function refreshStalePrices(
           symbol,
           quoteDate,
           refreshed: false,
-          problem: series?.problem ?? null,
+          problem: series?.problem ?? porque,
           ...vazio,
         };
       }
@@ -465,8 +517,21 @@ export async function refreshStalePrices(
 
       // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
       if (emEuros !== a.unitPriceCents) {
-        await repo.updateAsset(a.id, spaceId, { unitPriceCents: emEuros }).catch(() => {});
-        return { assetId: a.id, symbol, quoteDate, refreshed: true, problem: null, ...original };
+        // Uma escrita que falha não é uma atualização. Devolver `refreshed:
+        // true` aqui fazia o botão dizer "1 preço atualizado" e o ecrã continuar
+        // a mostrar o preço velho — a mentira mais convincente das duas.
+        const gravou = await repo
+          .updateAsset(a.id, spaceId, { unitPriceCents: emEuros })
+          .then(() => true)
+          .catch(() => false);
+        return {
+          assetId: a.id,
+          symbol,
+          quoteDate,
+          refreshed: gravou,
+          problem: gravou ? null : "Fui buscar a cotação mas não a consegui guardar.",
+          ...original,
+        };
       }
       return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: null, ...original };
     }),

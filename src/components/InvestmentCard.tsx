@@ -37,6 +37,16 @@ export interface InvestmentCardData {
   gainCents: number | null;
   gainPct: number | null;
   tradeCount: number;
+  /** A data do fecho, quando há cotação. */
+  quoteDate?: string | null;
+  /**
+   * Porque é que não há cotação, quando não há.
+   *
+   * O cartão dizia só "sem cotação" e mais nada. "A fonte recusou o pedido" e
+   * "este símbolo não existe" são problemas opostos — um espera-se, o outro
+   * corrige-se à mão — e sem o motivo não havia como saber qual era.
+   */
+  quoteProblem?: string | null;
 }
 
 /** Quantidades vêm com casas decimais nos ETF fracionados; inteiros ficam limpos. */
@@ -111,9 +121,14 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
           melhor do que mostrar zero, que se leria como "não subiu nem desceu". */}
       <div className="mt-3 border-t border-hair2 pt-3">
         {data.gainCents === null ? (
-          <p className="text-xs text-fg-faint">
-            Sem cotação, não dá para saber o ganho.
-          </p>
+          <>
+            <p className="text-xs text-fg-faint">
+              Sem cotação, não dá para saber o ganho.
+            </p>
+            {data.quoteProblem ? (
+              <p className="mt-1 text-[11px] leading-snug text-debt">{data.quoteProblem}</p>
+            ) : null}
+          </>
         ) : (
           <p className={`font-mono text-base tnum ${ganhoPositivo ? "text-credit" : "text-debt"}`}>
             {ganhoPositivo ? "+" : ""}

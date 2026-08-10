@@ -49,8 +49,6 @@ import {
   getNetWorthHistory,
 } from "@/lib/services/networth-history-service";
 import { NetWorthChart } from "@/components/NetWorthChart";
-import { ConversaFinanceira } from "@/components/ConversaFinanceira";
-import { conversaAvailable } from "@/lib/services/conversa-service";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -127,7 +125,6 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const semSimbolo = stored.filter((a) => a.kind === "investimento" && !a.symbol).length;
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
-  const podeConversar = conversaAvailable();
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
 
@@ -143,10 +140,10 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
    * das duas pode deitar a página abaixo: antes da migração ser corrida, a
    * tabela não existe e o gráfico diz apenas que o histórico está a começar.
    */
-  const series = await (async () => {
+  const historico = await (async () => {
     if (view !== "resumo") return null;
-    await captureNetWorthSnapshot(ctx.space.id, net, today);
-    return buildNetWorthSeries(await getNetWorthHistory(ctx.space.id));
+    const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
+    return { captura, series: buildNetWorthSeries(await getNetWorthHistory(ctx.space.id)) };
   })();
 
   return (
@@ -214,9 +211,9 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
         ) : null}
       </section>
 
-      {series ? <NetWorthChart series={series} /> : null}
-
-      {podeConversar ? <ConversaFinanceira /> : null}
+      {historico ? (
+        <NetWorthChart series={historico.series} captura={historico.captura} />
+      ) : null}
 
       {net.byKind.length > 0 ? (
         <section className="card p-5">
@@ -383,6 +380,11 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                           gainCents: a.missingPrice ? null : a.gainCents,
                           gainPct: a.missingPrice ? null : a.gainPct,
                           tradeCount: (tradesByAsset.get(a.id) ?? []).length,
+                          quoteDate: quoteDateOf.get(a.id) ?? null,
+                          // Sem isto, o motivo era calculado e deitado fora: o
+                          // bloco que o mostrava vivia no AssetRow, que nunca é
+                          // desenhado para investimentos.
+                          quoteProblem: quoteProblemOf.get(a.id) ?? null,
                         }}
                       />
                     ))}

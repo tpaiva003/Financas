@@ -17,6 +17,11 @@
  * `INE_PRECO_M2_URL` permite substituir o pedido inteiro, para o caso de o
  * indicador precisar de dimensões que este não passa.
  *
+ * **Esta série é trimestral e sai com atraso.** O que se mostra é o valor
+ * mediano dos últimos doze meses do trimestre mais recente publicado, e o
+ * período vai junto ao preço — sem ele, um valor de há dois anos passa por
+ * atual.
+ *
  * **Nada disto deita a app abaixo.** Se o INE não responder, ou responder uma
  * coisa que não se percebe, diz-se — e continua a poder escrever-se o preço à
  * mão. O que não se faz é devolver uma tabela vazia em silêncio, que se leria
@@ -28,11 +33,20 @@ import { parseInePriceTable, type InePriceTable } from "@/lib/domain";
 const BASE = "https://www.ine.pt/ine/json_indicador/pindica.jsp";
 
 /**
- * O indicador por omissão: valor mediano das vendas de alojamentos familiares
- * por m². **Confirma-o** na página do indicador do INE antes de contar com ele
- * — foi escrito sem se poder fazer a chamada, e o INE renumera as séries.
+ * O indicador: **0012234**, "Valor mediano das vendas de alojamentos familiares
+ * nos últimos 12 meses (Metodologia 2022 - €/m²) por Localização geográfica
+ * (NUTS - 2024) e Categoria do alojamento familiar; Trimestral".
+ *
+ * O primeiro palpite foi `0012530` e estava errado: devolvia outra coisa
+ * qualquer, com valores entre 1 e 3, que a app mostrava como "1,00 €/m²". Este
+ * está confirmado contra uma resposta a sério da API — 931 linhas, preços entre
+ * 280 e 6986 €/m², país, regiões, os 308 municípios e 584 freguesias.
+ *
+ * Não se passa `Dim2` (a geografia) de propósito: filtrar por concelho obrigava
+ * a saber o código do concelho ANTES de perguntar, que é a tabela de trezentas
+ * linhas que este módulo decidiu não manter. Pede-se tudo e procura-se por nome.
  */
-const VARCD_OMISSAO = "0012530";
+const VARCD_OMISSAO = "0012234";
 
 const TIMEOUT_MS = 20_000;
 /** Estatística que sai uma vez por trimestre não precisa de vir a cada visita. */

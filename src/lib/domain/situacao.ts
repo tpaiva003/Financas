@@ -14,10 +14,16 @@
  * desconfia.
  *
  * **O que não vai no resumo.** As notas dos bens não vão — é texto livre, onde
- * cabe tudo o que alguém escreveu sem pensar que seria enviado para fora. Os
- * nomes das pessoas também não: não acrescentam nada a uma conversa sobre
- * dinheiro. As despesas vão em média mensal e por categoria, nunca uma a uma;
- * o extrato não sai daqui.
+ * cabe tudo o que alguém escreveu sem pensar que seria enviado para fora. As
+ * despesas vão em média mensal e por categoria, nunca uma a uma; o extrato não
+ * sai daqui.
+ *
+ * **Os nomes dos membros vão, e isso mudou.** A primeira versão excluía-os por
+ * princípio. Estava errado para o que esta app é: metade dela é despesa
+ * partilhada, e a pergunta mais óbvia que alguém faz — "quem me deve o quê?" —
+ * não tem resposta possível sem nomes. São pessoas do próprio ambiente de quem
+ * pergunta, que já aparecem em todos os ecrãs. O que continua de fora é tudo o
+ * que não faz falta para responder.
  *
  * Lógica pura, sem rede.
  */
@@ -35,9 +41,22 @@ export interface SituacaoDivida {
   nextPaymentCents: number | null;
 }
 
+/** Um pagamento que zeraria o saldo entre duas pessoas do ambiente. */
+export interface SituacaoAcerto {
+  de: string;
+  para: string;
+  cents: number;
+}
+
 export interface SituacaoInput {
   assetsCents: number;
   debtsCents: number;
+  /** Como está o ambiente de quem pergunta: nome e saldo de cada pessoa. */
+  saldos: { nome: string; netCents: number }[];
+  /** Os pagamentos mínimos que zerariam tudo. */
+  acertos: SituacaoAcerto[];
+  /** Em que página é que a pessoa está, para se poder falar do que ela vê. */
+  pagina?: string | null;
   byKind: { label: string; totalCents: number }[];
   dividas: SituacaoDivida[];
   /** Média mensal das despesas registadas. */
@@ -178,6 +197,30 @@ export function situacaoParaTexto(s: Situacao): string {
   } else {
     l.push("Ainda não há histórico do património: só existe a fotografia de agora.");
   }
+
+  /**
+   * O saldo entre as pessoas do ambiente. Sem isto, um chat sobre "a minha
+   * situação" não sabe responder à pergunta mais comum que se faz a esta app.
+   */
+  if (s.saldos.length > 0) {
+    l.push(
+      `Saldo entre as pessoas do ambiente: ${s.saldos
+        .map(
+          (p) =>
+            `${p.nome} ${p.netCents === 0 ? "está a zero" : p.netCents > 0 ? `tem a receber ${formatCents(p.netCents)}` : `tem a pagar ${formatCents(-p.netCents)}`}`,
+        )
+        .join("; ")}.`,
+    );
+  }
+  if (s.acertos.length > 0) {
+    l.push(
+      `Pagamentos que zerariam tudo: ${s.acertos
+        .map((t) => `${t.de} paga ${formatCents(t.cents)} a ${t.para}`)
+        .join("; ")}.`,
+    );
+  }
+
+  if (s.pagina) l.push(`A pessoa está agora na página ${s.pagina} da app.`);
 
   return l.join("\n");
 }

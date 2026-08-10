@@ -1361,3 +1361,60 @@ tabela de conversas sobre dinheiro é uma responsabilidade que esta app não pre
 de ter, e o valor de a guardar é pequeno. O histórico que volta do cliente é
 tratado como território de quem o envia: cortado, com os papéis a alternar e a
 começar sempre do lado de quem pergunta.
+
+## O chat vive no layout, e é por isso que sobrevive à navegação
+
+No App Router, o layout **não é remontado** quando se muda de rota — só o
+`children` é. Pôr o chat lá é o que faz a conversa aguentar uma ida às despesas e
+voltar, sem uma linha de código para isso. Numa página, cada clique no menu
+apagava tudo.
+
+O resumo que vai para o modelo passou a incluir o **saldo entre as pessoas do
+ambiente, com nomes**. A primeira versão excluía-os por princípio, e estava
+errado para o que esta app é: metade dela é despesa partilhada, e "quem me deve o
+quê?" não tem resposta possível sem nomes. São pessoas do próprio ambiente de
+quem pergunta, que já aparecem em todos os ecrãs. Continua de fora tudo o que não
+faz falta: as despesas uma a uma, as notas dos bens.
+
+## O que a revisão dos quatro problemas apanhou
+
+**O preço do INE estava a vir do indicador errado.** O `0012530` era um palpite —
+escrito sem se poder fazer a chamada — e devolvia outra coisa qualquer, com
+valores entre 1 e 3 que o ecrã mostrava como "1,00 €/m²". O certo é o **0012234**,
+confirmado contra uma resposta a sério: 931 linhas, preços entre 280 e 6986 €/m².
+
+**Os períodos do INE vêm por extenso, e ordená-los por texto mente.** As chaves
+são "1.º Trimestre de 2026"; ordenadas alfabeticamente, "4.º Trimestre de 2019"
+fica à frente e a app mostrava preços de há sete anos como se fossem os de agora.
+Lê-se o ano e o trimestre.
+
+**Comparar nomes por sub-cadeia era pior do que não comparar.** "Paranhos, Porto"
+trazia **Tó**, a freguesia de Mogadouro, porque "por**to**" contém "to" — e com
+oito lugares na lista, os oito "Tó" empurravam o Porto e Paranhos para fora do
+ecrã. Agora compara-se por **palavras inteiras**, com uma escada de pontuação, e
+a vírgula separa o sítio do contexto: em "Paranhos, Porto" procura-se Paranhos e
+"Porto" só desempata. Um nome de duas letras só entra se for escrito como palavra.
+
+**A lista do INE tem vários níveis ao mesmo tempo**, e há nomes repetidos entre
+eles — Odivelas é concelho e é freguesia lá dentro. Cada candidato leva agora o
+"dentro de", tirado da hierarquia dos próprios códigos (o da freguesia começa
+pelo do concelho). Sem isso, o ecrã mostrava dois botões iguais com preços
+diferentes e não havia forma de escolher.
+
+**A cotação em falta não era do símbolo — era da fonte, e a app não sabia
+dizê-lo.** O `googl.us` chega ao Yahoo como `GOOGL`, que é a forma certa. O que
+falhava era o motivo desaparecer: em `refreshStalePrices`, a série só era
+atribuída quando vinham cotações, e por isso o `problem` saía **provadamente
+sempre nulo**. O botão "Atualizar preços" respondia *"1 já estava em dia"* a um
+investimento sem preço nenhum. Agora o motivo de cada fonte é guardado e mostrado
+no cartão: "a fonte recusou o pedido" e "este símbolo não existe" são problemas
+opostos — um espera-se, o outro corrige-se à mão.
+
+Na mesma passagem: o `force` passou a saltar também a cache do Next (uma resposta
+200 sem dados ficava lá uma hora e o botão não a contornava), e uma escrita que
+falha deixou de contar como "preço atualizado".
+
+**O gráfico do património não estava partido — o estado vazio é que mentia.** A
+gravação da fotografia engolia o erro por inteiro, e o cartão dizia "o histórico
+está a começar" tanto no primeiro dia como todos os dias em que a escrita
+falhasse. Agora diz qual dos vazios é.
