@@ -220,3 +220,43 @@ describe("newTradesOnly", () => {
     expect(r.fresh).toHaveLength(1);
   });
 });
+
+describe("a coluna da bolsa", () => {
+  const grelha = [
+    ["Data", "Produto", "Bolsa", "Quantidade", "Preço", "Valor", "Moeda"],
+    ["07-04-2025", "ALPHABET INC. CLASS A", "NDQ", "25", "141,24", "3531,00", "USD"],
+    ["14-05-2024", "VANGUARD FTSE ALL-WORLD", "EAM", "5", "112,50", "562,50", "EUR"],
+  ];
+
+  it("é lida quando o ficheiro a traz", () => {
+    const mapping = detectTradeMapping(grelha);
+    const linhas = rowsToTrades(grelha, mapping!);
+
+    expect(linhas.map((l) => l.exchange)).toEqual(["NDQ", "EAM"]);
+  });
+
+  /**
+   * A praça é a pista mais fiável para o símbolo: duas empresas com nomes
+   * parecidos em países diferentes são a forma mais fácil de acertar no ticker
+   * errado, e esta coluna resolve isso de graça.
+   */
+  it("fica nula num ficheiro que não a tenha, sem estragar o resto", () => {
+    const semBolsa = [
+      ["Data", "Produto", "Quantidade", "Valor"],
+      ["07-04-2025", "ALPHABET INC. CLASS A", "25", "3531,00"],
+    ];
+    const mapping = detectTradeMapping(semBolsa);
+    const linhas = rowsToTrades(semBolsa, mapping!);
+
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]!.exchange).toBeNull();
+  });
+
+  it("não confunde a bolsa com a moeda", () => {
+    const mapping = detectTradeMapping(grelha);
+    const linhas = rowsToTrades(grelha, mapping!);
+
+    expect(linhas[0]!.currency).toBe("USD");
+    expect(linhas[0]!.exchange).toBe("NDQ");
+  });
+});

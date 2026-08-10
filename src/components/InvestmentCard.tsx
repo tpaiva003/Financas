@@ -37,6 +37,8 @@ export interface InvestmentCardData {
   gainCents: number | null;
   gainPct: number | null;
   tradeCount: number;
+  /** A bolsa como a corretora a escreve. Vem do ficheiro importado. */
+  exchange?: string | null;
   /** A data do fecho, quando há cotação. */
   quoteDate?: string | null;
   /**
@@ -90,6 +92,13 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
           <p className="mt-0.5 truncate text-xs text-fg-muted" title={data.name}>
             {data.symbol ? data.name : "Sem símbolo de bolsa"}
           </p>
+          {/* A praça, quando a corretora a disse. É o que distingue duas
+              empresas com nomes parecidos em países diferentes. */}
+          {data.exchange ? (
+            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+              {data.exchange}
+            </p>
+          ) : null}
         </div>
       </div>
 

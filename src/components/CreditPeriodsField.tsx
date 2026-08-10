@@ -88,14 +88,25 @@ export function CreditPeriodsField({
   uid,
   maturityDate,
   terms,
+  /**
+   * Alguém escolheu "taxa mista" no campo de cima.
+   *
+   * Abre já aberto e com as linhas típicas — fixa no princípio, variável a
+   * partir de uma data. Escolher "mista" lá em cima e não acontecer nada aqui
+   * era prometer uma coisa e não a cumprir.
+   */
+  abrirComoMista = false,
 }: {
   uid: string;
   maturityDate?: string | null;
   terms?: CreditTerms | null;
+  abrirComoMista?: boolean;
 }) {
   const iniciais = linhasDe(terms);
-  const [ativo, setAtivo] = useState(iniciais.length > 0);
-  const [linhas, setLinhas] = useState<Linha[]>(iniciais);
+  const [ativo, setAtivo] = useState(iniciais.length > 0 || abrirComoMista);
+  const [linhas, setLinhas] = useState<Linha[]>(
+    iniciais.length > 0 ? iniciais : abrirComoMista ? esqueleto("mista", hoje()) : [],
+  );
   const [maturidade, setMaturidade] = useState(maturityDate ?? "");
   const [taxas, setTaxas] = useState<Record<string, string>>(() => {
     const r: Record<string, string> = {};

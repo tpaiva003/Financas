@@ -1229,6 +1229,7 @@ export class SupabaseRepository implements Repository {
         purchase_price_cents: input.purchasePriceCents ?? null,
         works_cents: input.worksCents ?? null,
         symbol: input.symbol ?? null,
+        exchange: input.exchange ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1264,6 +1265,7 @@ export class SupabaseRepository implements Repository {
     if (patch.purchasePriceCents !== undefined) row.purchase_price_cents = patch.purchasePriceCents;
     if (patch.worksCents !== undefined) row.works_cents = patch.worksCents;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
+    if (patch.exchange !== undefined) row.exchange = patch.exchange;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1315,6 +1317,28 @@ export class SupabaseRepository implements Repository {
   async deleteAssetTrade(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db.from("asset_trades").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = {};
+    if (patch.date !== undefined) row.date = patch.date;
+    if (patch.kind !== undefined) row.kind = patch.kind;
+    if (patch.quantity !== undefined) row.quantity = patch.quantity;
+    if (patch.unitPriceCents !== undefined) row.unit_price_cents = patch.unitPriceCents;
+    if (patch.amountCents !== undefined) row.amount_cents = patch.amountCents;
+    if (patch.currency !== undefined) row.currency = patch.currency;
+    if (patch.originalAmountCents !== undefined) row.original_amount_cents = patch.originalAmountCents;
+    if (patch.fxRate !== undefined) row.fx_rate = patch.fxRate;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (Object.keys(row).length === 0) return;
+    // O `space_id` filtra a escrita: ver o comentário na interface.
+    const { error } = await db.from("asset_trades").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -1753,6 +1777,7 @@ function rowToAsset(r: any): Asset {
     purchasePriceCents: r.purchase_price_cents ?? null,
     worksCents: r.works_cents ?? null,
     symbol: r.symbol ?? null,
+    exchange: r.exchange ?? null,
     updatedAt: r.updated_at ?? null,
   };
 }

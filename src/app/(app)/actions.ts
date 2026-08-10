@@ -1759,7 +1759,7 @@ export async function suggestAssetSymbolAction(
   const asset = assets.find((a) => a.id === id);
   if (!asset) return { error: "Investimento inválido." };
 
-  const r = await suggestTicker(asset.name).catch(() => null);
+  const r = await suggestTicker(asset.name, asset.exchange).catch(() => null);
   if (!r || !r.suggestion) {
     return { error: r?.problem ?? "Não consegui sugerir um símbolo." };
   }
@@ -1838,7 +1838,9 @@ export async function suggestMissingSymbolsAction(
     const lote = alvo.slice(i, i + LOTE);
     const rs = await Promise.all(
       lote.map((a) =>
-        suggestTicker(a.name)
+        // A praça vem do ficheiro importado: é um facto, e poupa ao modelo o
+        // palpite onde ele mais erra.
+        suggestTicker(a.name, a.exchange)
           .then((r) => ({ a, r }))
           .catch(() => ({ a, r: null })),
       ),
@@ -1988,6 +1990,15 @@ export async function addAssetTradeAction(
   const assetId = String(formData.get("assetId") ?? "").trim();
   if (!assetId) return { error: "Falta o investimento." };
 
+  /**
+   * A corrigir um movimento já registado, em vez de acrescentar um.
+   *
+   * É o mesmo caminho de propósito: as regras que impedem gravar dólares como
+   * euros, ou um movimento sem valor, têm de valer tanto a criar como a
+   * corrigir. Duas validações separadas divergem ao segundo mês.
+   */
+  const tradeId = String(formData.get("tradeId") ?? "").trim();
+
   const rawKind = String(formData.get("kind") ?? "compra");
   const kind = (TRADE_KINDS as readonly string[]).includes(rawKind)
     ? (rawKind as (typeof TRADE_KINDS)[number])
@@ -2029,9 +2040,8 @@ export async function addAssetTradeAction(
     amountCents = eur;
   }
 
-  try {
-    await getRepository().createAssetTrade({
-      spaceId: ctx.space.id,
+  const dados = {
+    spaceId: ctx.space.id,
       assetId,
       date,
       kind,
@@ -2047,14 +2057,23 @@ export async function addAssetTradeAction(
       fxRate: foreign ? fxRate : null,
       notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
       createdBy: ctx.user.id,
-    });
+  };
+
+  try {
+    if (tradeId) {
+      // O `space_id` filtra a escrita: um id vindo do formulário não é prova
+      // de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+      await getRepository().updateAssetTrade(tradeId, ctx.space.id, dados);
+    } else {
+      await getRepository().createAssetTrade(dados);
+    }
   } catch {
     return { error: "Não consegui gravar o movimento." };
   }
 
   await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
-  return { ok: true, message: "Movimento registado." };
+  return { ok: true, message: tradeId ? "Movimento corrigido." : "Movimento registado." };
 }
 
 export async function deleteAssetTradeAction(formData: FormData): Promise<void> {

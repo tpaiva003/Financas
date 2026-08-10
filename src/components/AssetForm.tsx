@@ -118,6 +118,16 @@ export function AssetForm({
   /** A data de compra é usada pelo bloco do imóvel, para ir buscar o índice. */
   const [dataCompra, setDataCompra] = useState(asset?.purchasedAt ?? "");
 
+  /**
+   * O tipo de taxa escolhido no campo de cima.
+   *
+   * "mista" não é um valor que se grave — a ação só aceita "fixa" e "variavel",
+   * e o tipo de um crédito com períodos lê-se dos períodos. Serve para abrir o
+   * editor de períodos com as linhas certas quando alguém o escolhe aqui, que é
+   * onde vem à procura dele.
+   */
+  const [tipoTaxa, setTipoTaxa] = useState(asset?.rateKind ?? "");
+
   const [doContrato, setDoContrato] = useState<{ r: ContratoRevisto; n: number } | null>(null);
   const chave = doContrato ? `contrato-${doContrato.n}` : "base";
   const contrato = doContrato?.r ?? null;
@@ -297,14 +307,31 @@ export function AssetForm({
               <select
                 id={`asset-ratekind-${uid}`}
                 name="rateKind"
-                defaultValue={asset?.rateKind ?? ""}
+                value={tipoTaxa}
+                onChange={(e) => setTipoTaxa(e.target.value)}
                 className="select"
               >
                 <option value="">Não indicado</option>
                 {(Object.keys(RATE_KIND_LABELS) as RateKind[]).map((k) => (
                   <option key={k} value={k}>{RATE_KIND_LABELS[k]}</option>
                 ))}
+                {/*
+                  A mista não é um terceiro valor a gravar: é um crédito com
+                  DOIS períodos, e o tipo lê-se deles. Escolhê-la aqui abre o
+                  editor de períodos já com as linhas típicas — fixa no
+                  princípio, variável com indexante a partir de uma data.
+
+                  Estava escondida atrás de um botão lá em baixo, e quem vinha
+                  a este campo à procura dela não a encontrava.
+                */}
+                {isDebt ? <option value="mista">Taxa mista (muda numa data)</option> : null}
               </select>
+              {isDebt && tipoTaxa === "mista" ? (
+                <p className="mt-1 text-xs text-fg-faint">
+                  Diz em baixo a partir de que data passa a variável, e com que
+                  indexante e spread.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -340,10 +367,11 @@ export function AssetForm({
 
           {isDebt ? (
             <CreditPeriodsField
-              key={chave}
+              key={`${chave}-${tipoTaxa === "mista" ? "mista" : "normal"}`}
               uid={uid}
               maturityDate={contrato?.maturityDate ?? asset?.maturityDate}
               terms={contrato?.terms ?? asset?.creditTerms}
+              abrirComoMista={tipoTaxa === "mista"}
             />
           ) : null}
         </div>

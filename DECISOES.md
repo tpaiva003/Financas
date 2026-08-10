@@ -1515,3 +1515,54 @@ ocupam o mesmo espaço que as posições vivas. Ficam escondidas por omissão, c
 contagem à vista e a um clique de aparecerem. Esconder sem dizer que se escondeu
 seria fazer desaparecer coisas a quem está a contar dinheiro. Não mexe em número
 nenhum: uma posição a zero vale zero, esteja à vista ou não.
+
+## A bolsa vinha no ficheiro e estava a ser deitada fora
+
+O ficheiro da corretora traz uma coluna "Bolsa" ("NDQ", "EAM", "XET") e a
+importação ignorava-a. É a pista **mais fiável** que existe para descobrir o
+símbolo: diz a praça sem se ter de a adivinhar pelo nome do produto — e adivinhar
+mal é acertar no ticker de outra empresa, que devolve um preço plausível todos os
+dias, para sempre, sem ninguém desconfiar.
+
+Passa a ser lida, gravada no bem, mostrada no cartão e **enviada ao modelo** na
+sugestão de símbolo, com a lista de códigos que as corretoras usam. Serve também
+para filtrar a carteira.
+
+## Filtrar a carteira, sem esconder nada em silêncio
+
+Cinquenta produtos importados, muitos já vendidos por inteiro e muitos sem
+símbolo. O que se faz numa lista dessas é **procurar um**. Há agora procura por
+nome ou ticker, filtro por bolsa, filtro "sem símbolo", e as posições fechadas
+ficam arrumadas por omissão.
+
+A contagem está sempre à vista — "Já fechadas (12)", "Sem símbolo (51)" — e há
+"Limpar". Fazer fichas desaparecerem a quem está a contar dinheiro, sem dizer
+quantas nem como as trazer de volta, seria pior do que a lista comprida. E filtrar
+não mexe em número nenhum: uma posição a zero vale zero, esteja à vista ou não.
+
+## Corrigir um movimento passa pelas mesmas regras que criá-lo
+
+Um ficheiro de corretora engana-se: uma data trocada, uma quantidade com um zero
+a mais, uma taxa de câmbio que não é a que foi aplicada. Apagar e reescrever perde
+a linha e obriga a saber tudo de cor outra vez.
+
+A correção usa a **mesma ação** do servidor, com um `tradeId` a mais. As regras
+que impedem gravar dólares como euros, ou um movimento sem valor, valem tanto a
+criar como a corrigir — duas validações separadas divergem ao segundo mês. Numa
+moeda estrangeira o que se edita é o valor **original**, o que está na nota da
+corretora; o euro sai da taxa, como na criação.
+
+O `space_id` filtra a escrita e tem teste de isolamento: um id vindo de um
+formulário não é prova de nada, e tudo corre com a chave de serviço, que ignora o
+RLS.
+
+## A taxa mista estava escondida
+
+O campo "Tipo de taxa" oferecia fixa e variável. A mista existia — é o bloco "A
+taxa muda ao longo do crédito" — mas quem vinha ao campo à procura dela não a
+encontrava. Passa a estar na lista, e escolhê-la **abre o editor de períodos** já
+com as linhas típicas: fixa no princípio, variável com indexante a partir de uma
+data.
+
+Não é um terceiro valor a gravar: um crédito misto são dois períodos, e o tipo
+continua a ser lido deles.

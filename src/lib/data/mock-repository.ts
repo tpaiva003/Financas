@@ -784,6 +784,17 @@ export class MockRepository implements Repository {
     store.assetTrades = store.assetTrades.filter((t) => !(t.id === id && t.spaceId === spaceId));
   }
 
+  async updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void> {
+    const store = getStore();
+    const i = store.assetTrades.findIndex((t) => t.id === id && t.spaceId === spaceId);
+    if (i < 0) return;
+    store.assetTrades[i] = { ...store.assetTrades[i]!, ...patch };
+  }
+
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const all = getStore().quotes[symbol] ?? [];
     return all

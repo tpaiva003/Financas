@@ -211,6 +211,13 @@ export interface Asset {
   worksCents?: number | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
+  /**
+   * A bolsa como a corretora a escreve ("NDQ", "EAM"). Vem do ficheiro.
+   *
+   * É a pista mais fiável para descobrir o símbolo — diz a praça sem se ter de
+   * a adivinhar pelo nome — e serve para filtrar a carteira.
+   */
+  exchange?: string | null;
   updatedAt?: string | null;
 }
 
@@ -674,6 +681,19 @@ export interface Repository {
   listAllAssetSymbols(): Promise<string[]>;
   createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
   deleteAssetTrade(id: string, spaceId: string): Promise<void>;
+  /**
+   * Corrigir um movimento já registado.
+   *
+   * O `spaceId` é obrigatório e filtra a escrita: um id vindo de um formulário
+   * não é prova de nada, e tudo aqui corre com a chave de serviço, que ignora o
+   * RLS. Sem este filtro, quem soubesse um id reescrevia o movimento de outra
+   * pessoa.
+   */
+  updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void>;
 
   // Rendimento.
   listIncome(spaceId: string): Promise<Income[]>;

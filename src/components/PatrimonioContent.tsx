@@ -390,6 +390,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                       // O símbolo vive no ativo gravado, não na vista
                       // calculada — e é dele que sai a cor do emblema.
                       symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
+                      exchange: stored.find((x) => x.id === a.id)?.exchange ?? null,
                       quantity: a.quantity ?? 0,
                       unitCostCents: a.unitCostCents ?? null,
                       unitPriceCents: a.unitPriceCents ?? null,

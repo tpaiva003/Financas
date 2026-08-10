@@ -163,3 +163,51 @@ describe("o histórico do património não atravessa ambientes", () => {
     expect(meu?.assetsCents).toBe(5_000_00);
   });
 });
+
+/**
+ * Corrigir um movimento é escrita, e escrita atravessa ambientes se o
+ * `space_id` não filtrar. Tudo aqui corre com a chave de serviço, que ignora o
+ * RLS: um id vindo de um formulário não é prova de nada.
+ */
+describe("um movimento de investimento não se corrige a partir de outro ambiente", () => {
+  async function comMovimento() {
+    const asset = await repo.createAsset({
+      spaceId: MEU,
+      name: "Ação de teste",
+      kind: "investimento",
+      quantity: null,
+      unitCostCents: null,
+      unitPriceCents: null,
+      valueCents: null,
+      purchasedAt: null,
+      notes: null,
+    });
+    const trade = await repo.createAssetTrade({
+      spaceId: MEU,
+      assetId: asset.id,
+      date: "2026-01-10",
+      kind: "compra",
+      quantity: 10,
+      unitPriceCents: 100_00,
+      amountCents: 1_000_00,
+      notes: null,
+    });
+    return trade.id;
+  }
+
+  it("corrige-se com o ambiente certo", async () => {
+    const id = await comMovimento();
+    await repo.updateAssetTrade(id, MEU, { amountCents: 2_000_00 });
+
+    const t = (await repo.listAssetTrades(MEU)).find((x) => x.id === id);
+    expect(t?.amountCents).toBe(2_000_00);
+  });
+
+  it("não se corrige com o ambiente errado", async () => {
+    const id = await comMovimento();
+    await repo.updateAssetTrade(id, ALHEIO, { amountCents: 99_999_00 });
+
+    const t = (await repo.listAssetTrades(MEU)).find((x) => x.id === id);
+    expect(t?.amountCents).toBe(1_000_00);
+  });
+});

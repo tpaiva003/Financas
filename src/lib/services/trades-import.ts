@@ -50,6 +50,10 @@ export async function commitTradesImport(input: CommitTradesInput): Promise<{
         valueCents: null,
         purchasedAt: null,
         notes: null,
+        // A praça vem do ficheiro. É o que evita adivinhá-la pelo nome do
+        // produto depois — e adivinhar mal é acertar no ticker de outra
+        // empresa, que devolve um preço plausível todos os dias.
+        exchange: g.trades.find((t) => t.exchange)?.exchange ?? null,
         createdBy: input.userId,
       });
       assetId = created.id;

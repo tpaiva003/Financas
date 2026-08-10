@@ -64,7 +64,9 @@ Coisas que enganam:
 - Os nomes vêm truncados, em maiúsculas e sem pontuação: "KNOT OFFSHORE PARTNERS", "ISHARES CORE MSCI WORLD".
 - Um ETF com o mesmo índice tem cotações diferentes conforme a praça e a classe. Se o nome disser a moeda ou a praça, usa-a.
 - Empresas com nomes parecidos em países diferentes são a forma mais fácil de acertar no ticker errado. Se o nome não chegar para desempatar, devolve os dois candidatos em vez de escolher.
-- Se o nome for de uma conta, de um depósito, de um saldo de tesouraria ou de outra coisa que não negoceia em bolsa, devolve lista vazia.`;
+- Se o nome for de uma conta, de um depósito, de um saldo de tesouraria ou de outra coisa que não negoceia em bolsa, devolve lista vazia.
+
+Quando te derem a bolsa, ela vem do ficheiro da corretora e é um FACTO: usa-a para escolher o sufixo, em vez de deduzires a praça do nome. É aí que se erra mais. Os códigos que as corretoras usam incluem NDQ e NSY (Estados Unidos, sufixo .us), EAM (Euronext Amesterdão, .nl), EPA (Euronext Paris, .fr), EBR (Euronext Bruxelas, .be), ELI (Euronext Lisboa, .pt), XET e FRA (Alemanha, .de), LSE (Londres, .uk), MIL e BIT (Itália), MAD e BME (Espanha), SWX (Suíça), TOR (Toronto), ASX (Austrália). Se o código não estiver nesta lista, diz nas notas o que percebeste dele — mas não o ignores.`;
 
 export interface TickerSuggestion {
   /** O símbolo já verificado contra a fonte de cotações. */
@@ -116,13 +118,25 @@ async function verificar(
  * A sugestão é para **confirmação**, nunca para aplicação automática. Ver o
  * cabeçalho: um ticker errado é pior do que nenhum.
  */
-export async function suggestTicker(name: string): Promise<TickerSuggestResult> {
+export async function suggestTicker(
+  name: string,
+  /**
+   * A bolsa como a corretora a escreve ("NDQ", "EAM", "XET").
+   *
+   * Muda tudo quando existe: o modelo deixa de ter de adivinhar a praça a
+   * partir do nome, que é onde ele erra — duas empresas com nomes parecidos em
+   * países diferentes são a forma mais fácil de acertar no ticker errado. Vem
+   * do ficheiro importado, por isso é um facto e não um palpite.
+   */
+  exchange?: string | null,
+): Promise<TickerSuggestResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { suggestion: null, descartados: [], problem: "A sugestão assistida não está configurada." };
   }
   const nome = (name ?? "").trim();
   if (!nome) return { suggestion: null, descartados: [], problem: "Sem nome para procurar." };
+  const bolsa = (exchange ?? "").trim().slice(0, 24);
 
   let candidatos: { simbolo: string; bolsa: string; moeda: string; porque: string }[];
   let notas = "";
@@ -134,7 +148,14 @@ export async function suggestTicker(name: string): Promise<TickerSuggestResult> 
       system: INSTRUCOES,
       // Ligar um nome a um ticker é conhecimento, não raciocínio longo.
       output_config: { effort: "low", format: zodOutputFormat(Resposta) },
-      messages: [{ role: "user", content: `Nome do produto: ${nome}` }],
+      messages: [
+        {
+          role: "user",
+          content: bolsa
+            ? `Nome do produto: ${nome}\nBolsa onde foi negociado, como a corretora a escreve: ${bolsa}`
+            : `Nome do produto: ${nome}`,
+        },
+      ],
     });
     if (resposta.stop_reason === "refusal") {
       return { suggestion: null, descartados: [], problem: "O modelo recusou responder." };

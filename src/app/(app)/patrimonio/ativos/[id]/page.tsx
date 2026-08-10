@@ -8,7 +8,6 @@ import {
   buildPosition,
   buildPositionReturn,
   formatCents,
-  lucroDoMovimento,
   formatForeignCents,
   formatRate,
   type AssetKind,
@@ -16,6 +15,7 @@ import {
   type TradeKind,
 } from "@/lib/domain";
 import { TradeForm } from "@/components/TradeForm";
+import { TradeRow } from "@/components/TradeRow";
 import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
@@ -309,70 +309,22 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             {[...trades]
               .sort((a, b) => (a.date < b.date ? 1 : -1))
               .map((t) => (
-                <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-fg">
-                      {TRADE_KIND_LABELS[t.kind as TradeKind] ?? t.kind}
-                      {t.quantity ? (
-                        <span className="ml-2 font-mono text-xs text-fg-muted">
-                          {t.quantity} un.
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
-                      {fmtDate(t.date)}
-                      {t.currency && t.originalAmountCents && t.fxRate
-                        ? ` · ${(t.originalAmountCents / 100).toFixed(2).replace(".", ",")} ${t.currency} a ${formatRate(t.fxRate)}`
-                        : ""}
-                    </p>
-                    {t.notes ? <p className="mt-1 text-xs text-fg-faint">{t.notes}</p> : null}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-right">
-                      <span
-                        className={`block font-mono text-sm tnum ${
-                          t.kind === "compra" || t.kind === "custo" ? "text-fg" : "text-credit"
-                        }`}
-                      >
-                        {t.kind === "compra" || t.kind === "custo" ? "" : "+"}
-                        {formatCents(t.amountCents)}
-                      </span>
-                      {/*
-                        O que esta entrada valeu a pena até hoje. Não é FIFO nem
-                        mais-valia realizada — a posição desta app é a custo
-                        médio, e misturar as duas contabilidades no mesmo ecrã
-                        seria a de baixo a contradizer a de cima. Responde a
-                        outra pergunta: "comprar a este preço, naquele dia, foi
-                        bom negócio?"
-                      */}
-                      {(() => {
-                        const l = lucroDoMovimento(t, asset.unitPriceCents);
-                        if (!l) return null;
-                        const bom = l.gainCents >= 0;
-                        return (
-                          <span
-                            className={`block font-mono text-[11px] tnum ${bom ? "text-credit" : "text-debt"}`}
-                            title={
-                              l.kind === "compra"
-                                ? `Estas ${t.quantity} un. valem hoje ${formatCents(l.nowCents)}.`
-                                : `Estas ${t.quantity} un. valeriam hoje ${formatCents(l.nowCents)}.`
-                            }
-                          >
-                            {bom ? "+" : ""}
-                            {formatCents(l.gainCents)}
-                            {l.gainPct !== null ? ` (${bom ? "+" : ""}${Math.round(l.gainPct)}%)` : ""}
-                          </span>
-                        );
-                      })()}
-                    </span>
-                    <form action={deleteAssetTradeAction}>
-                      <input type="hidden" name="id" value={t.id} />
-                      <button type="submit" className="btn-ghost px-2 text-xs text-debt hover:text-debt">
-                        Remover
-                      </button>
-                    </form>
-                  </div>
-                </li>
+                <TradeRow
+                  key={t.id}
+                  assetId={asset.id}
+                  unitPriceCents={asset.unitPriceCents}
+                  trade={{
+                    id: t.id,
+                    date: t.date,
+                    kind: t.kind,
+                    quantity: t.quantity ?? null,
+                    amountCents: t.amountCents,
+                    currency: t.currency ?? null,
+                    originalAmountCents: t.originalAmountCents ?? null,
+                    fxRate: t.fxRate ?? null,
+                    notes: t.notes ?? null,
+                  }}
+                />
               ))}
           </ul>
         )}
