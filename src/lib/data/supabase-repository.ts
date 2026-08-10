@@ -1332,7 +1332,11 @@ export class SupabaseRepository implements Repository {
   ): Promise<void> {
     const db = getSupabaseAdmin();
     const row: Record<string, unknown> = {};
-    if (patch.date !== undefined) row.date = patch.date;
+    // `trade_date`, não `date`: a coluna chama-se assim desde a 0016. Escrever
+    // o nome errado aqui fazia o PostgREST recusar a escrita inteira, e o ecrã
+    // dizia só "Não consegui gravar o movimento" — o erro certo, pela razão
+    // errada. O mock não apanha isto, porque guarda objetos e não colunas.
+    if (patch.date !== undefined) row.trade_date = patch.date;
     if (patch.kind !== undefined) row.kind = patch.kind;
     if (patch.quantity !== undefined) row.quantity = patch.quantity;
     if (patch.unitPriceCents !== undefined) row.unit_price_cents = patch.unitPriceCents;
