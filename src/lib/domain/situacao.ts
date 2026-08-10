@@ -48,6 +48,27 @@ export interface SituacaoAcerto {
   cents: number;
 }
 
+/**
+ * Um dos outros ambientes a que a pessoa tem acesso, em resumo.
+ *
+ * **Porque é que vão só em resumo.** A app é multi-ambiente: a mesma pessoa
+ * pode ter a casa, uma empresa e uma viagem. Um chat que só soubesse do
+ * ambiente aberto respondia "não tens dívidas" a quem tem o crédito da casa
+ * noutro separador — uma frase falsa dita com toda a confiança.
+ *
+ * Mandar tudo de todos era o outro extremo: multiplicava o tempo de resposta
+ * pelo número de ambientes e enchia o resumo de detalhe que quase nunca é
+ * preciso. Vai o total, a dívida e o que a pessoa deve ou tem a receber ali —
+ * que chega para responder e para dizer onde é que se vê o resto.
+ */
+export interface SituacaoOutroAmbiente {
+  nome: string;
+  netCents: number;
+  debtsCents: number;
+  /** O saldo desta pessoa naquele ambiente: positivo é ter a receber. */
+  meuSaldoCents: number | null;
+}
+
 export interface SituacaoInput {
   assetsCents: number;
   debtsCents: number;
@@ -57,6 +78,10 @@ export interface SituacaoInput {
   acertos: SituacaoAcerto[];
   /** Em que página é que a pessoa está, para se poder falar do que ela vê. */
   pagina?: string | null;
+  /** Como se chama o ambiente que está aberto. */
+  ambiente?: string | null;
+  /** Os outros ambientes a que ela tem acesso. Ver `SituacaoOutroAmbiente`. */
+  outrosAmbientes?: SituacaoOutroAmbiente[];
   byKind: { label: string; totalCents: number }[];
   dividas: SituacaoDivida[];
   /** Média mensal das despesas registadas. */
@@ -217,6 +242,34 @@ export function situacaoParaTexto(s: Situacao): string {
       `Pagamentos que zerariam tudo: ${s.acertos
         .map((t) => `${t.de} paga ${formatCents(t.cents)} a ${t.para}`)
         .join("; ")}.`,
+    );
+  }
+
+  /**
+   * Os outros ambientes. Vão depois de tudo o resto e claramente separados:
+   * misturá-los com os números de cima daria um total que não existe em lado
+   * nenhum da app — e um total que a app não mostra é um número inventado.
+   */
+  const outros = s.outrosAmbientes ?? [];
+  if (outros.length > 0) {
+    l.push(
+      `Tudo o que está escrito acima é do ambiente "${s.ambiente ?? "atual"}", que é o que a pessoa tem aberto.`,
+    );
+    l.push("A pessoa tem acesso a mais estes ambientes, em resumo:");
+    for (const o of outros) {
+      const partes = [`património líquido ${formatCents(o.netCents)}`];
+      if (o.debtsCents > 0) partes.push(`dívidas ${formatCents(o.debtsCents)}`);
+      if (o.meuSaldoCents !== null && o.meuSaldoCents !== 0) {
+        partes.push(
+          o.meuSaldoCents > 0
+            ? `tem a receber ${formatCents(o.meuSaldoCents)}`
+            : `tem a pagar ${formatCents(-o.meuSaldoCents)}`,
+        );
+      }
+      l.push(`- ${o.nome}: ${partes.join(", ")}.`);
+    }
+    l.push(
+      "Destes só se sabe o que está nesta lista. Para falar do detalhe de um deles, diz à pessoa para o abrir no seletor de ambiente, em cima.",
     );
   }
 

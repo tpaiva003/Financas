@@ -179,3 +179,45 @@ describe("situacaoParaTexto", () => {
     expect(t).toContain("/patrimonio");
   });
 });
+
+/**
+ * A app é multi-ambiente e o chat só via o que estava aberto. Perguntar
+ * "tenho dívidas?" com o crédito da casa noutro separador dava "não" — uma
+ * frase falsa dita com toda a confiança.
+ */
+describe("outros ambientes no resumo", () => {
+  it("aparecem, com o nome e o que se sabe deles", () => {
+    const texto = situacaoParaTexto(
+      buildSituacao(
+        entrada({
+          ambiente: "Casa",
+          outrosAmbientes: [
+            { nome: "Viagem ao Japão", netCents: 120_000, debtsCents: 0, meuSaldoCents: -35_000 },
+          ],
+        }),
+      ),
+    );
+    expect(texto).toContain("Viagem ao Japão");
+    expect(texto).toContain("tem a pagar");
+  });
+
+  it("diz de que ambiente são os números de cima", () => {
+    const texto = situacaoParaTexto(
+      buildSituacao(
+        entrada({
+          ambiente: "Casa",
+          outrosAmbientes: [
+            { nome: "Empresa", netCents: 1_000, debtsCents: 0, meuSaldoCents: null },
+          ],
+        }),
+      ),
+    );
+    // Sem esta frase, os totais de cima leem-se como sendo de tudo.
+    expect(texto).toContain('"Casa"');
+  });
+
+  it("sem outros ambientes não se fala deles", () => {
+    const texto = situacaoParaTexto(buildSituacao(entrada()));
+    expect(texto).not.toContain("mais estes ambientes");
+  });
+});

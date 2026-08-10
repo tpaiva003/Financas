@@ -54,6 +54,7 @@ import {
   type Split,
   checkAnexo,
   validarTicket,
+  type SituacaoOutroAmbiente,
   isTicketStatus,
   estadoDepoisDaResposta,
   TICKET_CORPO_MAX,
@@ -2647,6 +2648,8 @@ async function buildSituacaoDoAmbiente(
   const primeiro = serie.points[0];
   const ultimo = serie.points.at(-1);
 
+  const outrosAmbientes = await resumoDosOutrosAmbientes(ctx);
+
   return buildSituacao({
     assetsCents: net.totalAssetsCents,
     debtsCents: net.totalLiabilitiesCents,
@@ -2660,6 +2663,8 @@ async function buildSituacaoDoAmbiente(
     saldos,
     acertos,
     pagina,
+    ambiente: ctx.space.name,
+    outrosAmbientes,
     historico:
       serie.changeCents !== null && primeiro && ultimo
         ? {
@@ -2670,6 +2675,76 @@ async function buildSituacaoDoAmbiente(
           }
         : null,
   });
+}
+
+/** Quantos outros ambientes entram no resumo. Ver `resumoDosOutrosAmbientes`. */
+const MAX_OUTROS_AMBIENTES = 6;
+
+/**
+ * Os outros ambientes a que a pessoa tem acesso, em resumo.
+ *
+ * **Porque é que isto existe.** A app é multi-ambiente e o chat só via o que
+ * estava aberto. Perguntar "tenho dívidas?" com a casa noutro separador dava
+ * "não" — uma frase falsa dita com toda a confiança, que é o pior modo de falha
+ * que esta app conhece.
+ *
+ * **Porquê só o essencial.** Carregar tudo de todos multiplicava o tempo de
+ * resposta pelo número de ambientes, e a pergunta que atravessa ambientes é
+ * quase sempre de totais: quanto tenho ao todo, onde é que devo, onde é que me
+ * devem. O detalhe vive no ambiente respetivo, e o modelo é instruído a dizer
+ * onde se abre.
+ *
+ * Cada leitura falha para o lado de não dizer nada daquele ambiente. Um resumo
+ * a menos é um resumo a menos; um resumo a zeros por a leitura ter falhado
+ * seria o modelo a afirmar que ali não há nada.
+ */
+async function resumoDosOutrosAmbientes(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+): Promise<SituacaoOutroAmbiente[]> {
+  const outros = ctx.spaces.filter((s) => s.id !== ctx.space.id).slice(0, MAX_OUTROS_AMBIENTES);
+  if (outros.length === 0) return [];
+
+  const repo = getRepository();
+  const resumos = await Promise.all(
+    outros.map(async (espaco) => {
+      try {
+        const [bens, movimentos, membros] = await Promise.all([
+          repo.listAssets(espaco.id),
+          repo.listAssetTrades(espaco.id),
+          repo.listMembers(espaco.id),
+        ]);
+        const porBem = new Map<string, typeof movimentos>();
+        for (const t of movimentos) {
+          porBem.set(t.assetId, [...(porBem.get(t.assetId) ?? []), t]);
+        }
+        const comPosicao = bens.map((a) => {
+          const d = derivePosition(a, porBem.get(a.id) ?? []);
+          return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+        });
+        const n = buildNetWorth(comPosicao);
+
+        // O saldo desta pessoa naquele ambiente, se ela for lá participante.
+        const eu = membros.find((m) => m.linkedUserId === ctx.user.id);
+        const cheios = membros.filter((m) => (m.role ?? "full") !== "submitter");
+        const saldo = eu
+          ? await getSpaceBalance(espaco.id, cheios, eu.id).catch(() => null)
+          : null;
+        const meuSaldoCents = saldo && eu ? Number(saldo.balance.netByUser[eu.id] ?? 0) : null;
+
+        return {
+          nome: espaco.name,
+          netCents: n.netCents,
+          debtsCents: n.totalLiabilitiesCents,
+          meuSaldoCents,
+        };
+      } catch {
+        // Ver o cabeçalho: calar um ambiente é melhor do que o dar a zeros.
+        return null;
+      }
+    }),
+  );
+
+  return resumos.filter((r): r is SituacaoOutroAmbiente => r !== null);
 }
 
 /**

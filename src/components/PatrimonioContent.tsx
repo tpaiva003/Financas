@@ -9,6 +9,8 @@ import {
   annualInterestCents,
   buildLoan,
   buildNetWorth,
+  buildPosition,
+  movimentosImplausiveis,
   buildNetWorthSeries,
   assetTotalValueCents,
   ownershipShare,
@@ -179,6 +181,31 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const semSimboloTodos = net.assets.filter((a) => a.kind === "investimento" && !stored.find((s) => s.id === a.id)?.symbol);
   const semSimbolo = semSimboloTodos.filter((a) => (a.quantity ?? 0) > 0).length;
   const semSimboloFechados = semSimboloTodos.length - semSimbolo;
+  /**
+   * As gralhas dos investimentos, num sítio só.
+   *
+   * **Porque é que isto tem de estar aqui e não só na ficha de cada um.** Uma
+   * carteira importada tem cinquenta produtos. Um movimento com o separador
+   * decimal trocado inflaciona o investido de toda a gente — foi assim que o
+   * chat foi anunciar "1,4 milhões investidos" — e um ativo com mais vendas do
+   * que compras aparece como posição fechada, escondido pelo filtro, sem
+   * ninguém perceber porque é que a NVIDIA desapareceu. Nos dois casos o dono
+   * do problema tinha de o adivinhar e depois abrir cinquenta fichas para o
+   * encontrar.
+   */
+  const gralhas = stored
+    .filter((a) => a.kind === "investimento")
+    .map((a) => {
+      const movs = (tradesByAsset.get(a.id) ?? []) as Trade[];
+      if (movs.length === 0) return null;
+      const posicao = buildPosition(movs);
+      const implausiveis = movimentosImplausiveis(movs, a.unitPriceCents ?? null);
+      if (implausiveis.length === 0 && !posicao.oversold) return null;
+      return { id: a.id, nome: a.name, implausiveis, oversold: posicao.oversold };
+    })
+    .filter((g): g is NonNullable<typeof g> => g !== null);
+  const movimentosMaus = gralhas.reduce((n, g) => n + g.implausiveis.length, 0);
+
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
@@ -257,8 +284,27 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
               {formatCents(net.investmentGainCents)}
             </span>{" "}
             <span className="text-fg-faint">
-              sobre {formatCents(net.investmentCostCents)} investidos
+              sobre {formatCents(net.investmentCostCents)} de custo das posições
+              abertas
             </span>
+          </p>
+        ) : null}
+        {/*
+          Porque é que este número não bate com o "Investido" da página dos
+          ativos, e não é engano de nenhum dos dois.
+
+          Aqui é o CUSTO DO QUE AINDA SE TEM: quantidade vezes custo médio, das
+          posições abertas. Lá é o DINHEIRO QUE JÁ ENTROU, somando todas as
+          compras alguma vez feitas, incluindo as de posições que entretanto se
+          venderam. São perguntas diferentes e as duas fazem falta — o que não
+          se podia era chamar "investido" às duas e deixar quem lê a achar que
+          um dos ecrãs está avariado.
+        */}
+        {net.investmentCostCents > 0 ? (
+          <p className="mt-1 text-xs text-fg-faint">
+            É o custo do que ainda tens. Em Ativos, o &ldquo;investido&rdquo; é
+            outra conta: todo o dinheiro que alguma vez entrou, incluindo o das
+            posições já vendidas.
           </p>
         ) : null}
         {net.investmentsMissingPrice > 0 ? (
@@ -421,6 +467,54 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                     <SuggestMissingSymbols />
                   </div>
                 ) : null}
+                {/* As gralhas, em cima e por nome. Ver `gralhas`. */}
+                {kind === "investimento" && gralhas.length > 0 ? (
+                  <div
+                    role="alert"
+                    className="space-y-2 border-b border-hair2 bg-debt/5 px-5 pb-4 pt-3"
+                  >
+                    <p className="text-sm font-medium text-fg">
+                      {movimentosMaus > 0
+                        ? `${movimentosMaus} ${movimentosMaus === 1 ? "movimento" : "movimentos"} com valores pouco plausíveis`
+                        : "Há investimentos com mais vendas do que compras"}
+                      .
+                    </p>
+                    <p className="text-xs leading-snug text-fg-muted">
+                      Enquanto isto não estiver corrigido, o{" "}
+                      <strong className="font-medium text-fg">investido</strong> e o{" "}
+                      <strong className="font-medium text-fg">ganho</strong> desta página
+                      estão errados — e um ativo com mais vendas do que compras
+                      aparece como posição fechada, escondido pelo filtro de
+                      cima.
+                    </p>
+                    <ul className="space-y-1.5 text-xs">
+                      {gralhas.map((g) => (
+                        <li key={g.id}>
+                          <Link
+                            href={`/patrimonio/ativos/${g.id}`}
+                            className="text-fg underline-offset-4 hover:underline"
+                          >
+                            {g.nome}
+                          </Link>
+                          <span className="text-fg-faint">
+                            {" — "}
+                            {g.oversold ? "mais vendas do que compras" : null}
+                            {g.oversold && g.implausiveis.length > 0 ? "; " : null}
+                            {g.implausiveis.length > 0
+                              ? g.implausiveis
+                                  .map(
+                                    (m) =>
+                                      `${new Date(`${m.date}T00:00:00Z`).toLocaleDateString("pt-PT")}: ${formatCents(m.implicitoCents)}/un., ${Math.round(m.vezes >= 1 ? m.vezes : 1 / m.vezes)}× ${m.vezes >= 1 ? "acima" : "abaixo"} do normal`,
+                                  )
+                                  .join("; ")
+                              : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 {/*
                   Os investimentos em grelha de cartões; o resto continua em
                   linha. A diferença não é estética: numa carteira com uma dúzia
@@ -482,7 +576,9 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       </section>
       ) : null}
 
-      {view === "ativos" ? <PortfolioReturnSection spaceId={ctx.space.id} /> : null}
+      {view === "ativos" ? (
+        <PortfolioReturnSection spaceId={ctx.space.id} contaminado={gralhas.length > 0} />
+      ) : null}
 
       {view === "ativos" || view === "dividas" ? (
         <AssetForm
@@ -507,7 +603,14 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
  * entrado no último mês, e nesse caso os 20% do índice nunca estiveram
  * disponíveis para esse dinheiro.
  */
-async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
+async function PortfolioReturnSection({
+  spaceId,
+  contaminado,
+}: {
+  spaceId: string;
+  /** Há movimentos com valores impossíveis na carteira? Ver em baixo. */
+  contaminado: boolean;
+}) {
   const ret = await buildPortfolioReturn(spaceId).catch(() => null);
   if (!ret) return null;
 
@@ -515,11 +618,53 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
     <section className="card p-6">
       <p className="eyebrow mb-4">Rentabilidade da carteira</p>
 
+      {/*
+        A recusa, e não um aviso ao lado dos números.
+
+        Com um movimento com o separador decimal trocado, esta secção mostrava
+        950 432 € investidos, 270 843 € de valor e uma TIR de +13,3% — três
+        números que se contradizem, e o único que salta à vista é o verde. Uma
+        taxa é a coisa mais fácil de acreditar de toda esta página: não se
+        confere contra nada, e uma pessoa lembra-se dela muito depois de ter
+        esquecido de onde veio.
+
+        A comparação com o índice cai pela mesma razão: aplica ao índice os
+        MESMOS reforços, e se os reforços estão inflacionados o "estás atrás
+        183 293 €" é uma dívida imaginária.
+      */}
+      {contaminado ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-xs leading-snug text-fg-muted"
+        >
+          <p className="text-fg">
+            Não mostro a rentabilidade enquanto houver movimentos com valores
+            impossíveis.
+          </p>
+          <p className="mt-1">
+            Estão listados aqui em baixo, nos investimentos. Um deles chega para
+            inflacionar o investido, e daí sai uma taxa que se contradiz com os
+            números ao lado — mas que ninguém confere, porque uma percentagem
+            não se confere contra nada.
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid gap-5 sm:grid-cols-3">
         <div>
-          <p className="text-xs text-fg-muted">Investido</p>
-          <p className="mt-0.5 font-mono text-lg tnum text-fg">
+          <p className="text-xs text-fg-muted">Dinheiro que entrou</p>
+          <p
+            className={`mt-0.5 font-mono text-lg tnum ${contaminado ? "text-fg-faint line-through" : "text-fg"}`}
+            title={contaminado ? "Inflacionado por movimentos com valores impossíveis." : undefined}
+          >
             {formatCents(ret.investedCents)}
+          </p>
+          {/* Ver a nota no resumo: aqui soma-se TODAS as compras, incluindo as
+              de posições já vendidas. No resumo é o custo do que ainda se tem.
+              Chamar "investido" às duas fazia o resumo e esta página parecerem
+              contradizer-se. */}
+          <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
+            Todas as compras, incluindo as de posições já vendidas.
           </p>
         </div>
         <div>
@@ -535,7 +680,7 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
               ret.annualPct === null ? "text-fg-faint" : ret.annualPct >= 0 ? "text-credit" : "text-debt"
             }`}
           >
-            {ret.annualPct === null
+            {contaminado || ret.annualPct === null
               ? "por calcular"
               : `${ret.annualPct >= 0 ? "+" : ""}${ret.annualPct.toFixed(1).replace(".", ",")}%`}
           </p>
@@ -549,7 +694,11 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
         </p>
       ) : null}
 
-      <div className="mt-6 border-t border-hair pt-5">
+      {/* A comparação com o índice desaparece inteira quando os reforços estão
+          inflacionados: ela aplica ao índice os MESMOS reforços, e "estás atrás
+          183 293 €" a partir de dinheiro que nunca entrou é uma dívida
+          imaginária — pior do que não comparar. */}
+      <div className={`mt-6 border-t border-hair pt-5 ${contaminado ? "hidden" : ""}`}>
         <p className="label mb-1">E se tivesse ido para o índice?</p>
         <p className="mb-4 text-xs text-fg-faint">
           Os mesmos reforços, nas mesmas datas, aplicados a um ETF em euros. É a

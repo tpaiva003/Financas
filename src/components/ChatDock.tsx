@@ -27,10 +27,19 @@ import { conversarAction, type ConversaState } from "@/app/(app)/actions";
 
 const vazio: ConversaState = {};
 
+/**
+ * As primeiras perguntas.
+ *
+ * Escolhidas para mostrar o alcance em três frases: uma que atravessa tudo,
+ * uma de despesa partilhada, uma de dívida contra património. Quem chega a um
+ * campo de texto vazio não sabe o que pode perguntar, e uma caixa vazia numa
+ * app de dinheiro é intimidante.
+ */
 const SUGESTOES = [
-  "O que é que salta à vista nos meus números?",
+  "O que é que salta à vista nas minhas contas?",
   "Quem me deve o quê?",
   "A minha dívida é cara ao pé do que tenho parado?",
+  "Onde é que gasto mais do que penso?",
 ];
 
 function Enviar() {
@@ -97,10 +106,10 @@ export function ChatDock() {
         aria-expanded={aberto}
         aria-controls="chat-dock"
         className="fixed bottom-[10.5rem] right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-hair bg-panel text-fg shadow-glow transition hover:scale-105 active:scale-95 sm:bottom-[7rem]"
-        title="Falar sobre os teus números"
+        title="Perguntar sobre as tuas contas"
       >
-        <span className="sr-only">Falar sobre os teus números</span>
-        {aberto ? <IconFechar /> : <IconChat />}
+        <span className="sr-only">Perguntar sobre as tuas contas</span>
+        {aberto ? <IconFechar /> : <IconIA />}
         {/* Um ponto quando há conversa por ler e o painel está fechado. */}
         {!aberto && mensagens.length > 0 ? (
           <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-credit" aria-hidden />
@@ -111,16 +120,16 @@ export function ChatDock() {
         <div
           id="chat-dock"
           role="dialog"
-          aria-label="Falar sobre os teus números"
+          aria-label="Perguntar sobre as tuas contas"
           className="fixed inset-x-3 bottom-24 z-40 flex max-h-[70dvh] flex-col overflow-hidden rounded-2xl border border-hair bg-panel shadow-glow sm:inset-x-auto sm:right-5 sm:bottom-[7rem] sm:w-[26rem]"
         >
           <div className="flex items-start justify-between gap-3 border-b border-hair px-4 py-3">
             <div className="min-w-0">
-              <p className="eyebrow">Os teus números</p>
+              <p className="eyebrow">Pergunta o que quiseres</p>
               <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
-                Sabe o teu património, as dívidas, a despesa por categoria e o
-                saldo entre vocês. Os números são os da app — não os calcula.
-                A conversa não fica guardada.
+                Vê as tuas contas todas — despesas, saldos, património, dívidas,
+                em todos os ambientes a que tens acesso. Os números são os que a
+                app calculou; aqui só se explicam. A conversa não fica guardada.
               </p>
             </div>
             <button
@@ -209,10 +218,29 @@ export function ChatDock() {
   );
 }
 
-function IconChat() {
+/**
+ * O sinal de que ali está inteligência artificial.
+ *
+ * Era um balão de conversa, que é o sinal de "falar com alguém" — e ao lado do
+ * botão de adicionar despesa lia-se como uma caixa de mensagens. O brilho de
+ * quatro pontas é o que hoje se reconhece como IA sem legenda nenhuma, e as
+ * duas estrelas desiguais são a forma habitual dele.
+ *
+ * Desenhado com o traço fino do resto da app e a herdar `currentColor`, para
+ * funcionar nos dois temas sem saber qual está ativo. As pontas côncavas são
+ * feitas com curvas quadráticas a puxar para o centro: uma estrela de lados
+ * rectos ficaria com ar de emblema, e esta família de ícones é de traço.
+ */
+function IconIA() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-4.2-.9L3 20.5l1.6-4.4A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      {/* A estrela grande, ligeiramente acima do centro. */}
+      <path d="M11 2.2 12.3 7a3.6 3.6 0 0 0 2.5 2.5l4.8 1.3-4.8 1.3A3.6 3.6 0 0 0 12.3 14.6L11 19.4 9.7 14.6a3.6 3.6 0 0 0-2.5-2.5L2.4 10.8l4.8-1.3A3.6 3.6 0 0 0 9.7 7Z" />
+      {/* A pequena, que é o que faz o conjunto ler-se como brilho. */}
+      <path
+        d="M18.4 15.1l.6 2.1a1.7 1.7 0 0 0 1.2 1.2l2.1.6-2.1.6a1.7 1.7 0 0 0-1.2 1.2l-.6 2.1-.6-2.1a1.7 1.7 0 0 0-1.2-1.2l-2.1-.6 2.1-.6a1.7 1.7 0 0 0 1.2-1.2Z"
+        opacity="0.75"
+      />
     </svg>
   );
 }
