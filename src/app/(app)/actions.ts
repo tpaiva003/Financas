@@ -1776,10 +1776,15 @@ export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
  * plausível todos os dias, sem ninguém desconfiar. A última palavra é de quem
  * conhece a carteira.
  */
+export interface SuggestSymbolState extends ActionState {
+  /** A proposta, para o ecrã poder oferecer um botão que a grava. */
+  proposal?: SymbolProposal;
+}
+
 export async function suggestAssetSymbolAction(
-  _prev: ActionState,
+  _prev: SuggestSymbolState,
   formData: FormData,
-): Promise<ActionState> {
+): Promise<SuggestSymbolState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
 
@@ -1799,7 +1804,19 @@ export async function suggestAssetSymbolAction(
   const moeda = s.currencyConfirmada && s.currencyConfirmada !== "EUR" ? ` em ${s.currencyConfirmada}` : "";
   return {
     ok: true,
-    message: `Sugestão: ${s.symbol}${moeda} (${s.bolsa}). ${s.porque} Confere e grava no campo do símbolo se estiver certo.`,
+    message: `${s.symbol}${moeda} (${s.bolsa}). ${s.porque}`,
+    // A proposta desce inteira para o ecrã. Continua a ser preciso confirmar —
+    // ver o cabeçalho — mas confirmar passa a ser carregar num botão que diz o
+    // símbolo, em vez de o copiar à mão para outro ecrã.
+    proposal: {
+      assetId: asset.id,
+      assetName: asset.name,
+      symbol: s.symbol,
+      bolsa: s.bolsa,
+      moeda: s.currencyConfirmada || s.moeda,
+      porque: s.porque,
+      lastDate: s.lastDate,
+    },
   };
 }
 
@@ -1936,6 +1953,10 @@ export async function applySymbolsAction(
     if (!symbol || !validos.has(id)) continue;
     await getRepository().updateAsset(id, ctx.space.id, { symbol });
     await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
+    // A ficha do investimento é outra rota. Sem isto, quem grava o símbolo a
+    // partir de lá fica a olhar para o mesmo "sem cotação" que o levou a pedir
+    // a sugestão — e conclui, com razão, que o botão não fez nada.
+    revalidatePath(`/patrimonio/ativos/${id}`);
     aplicados += 1;
   }
 
