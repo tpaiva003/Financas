@@ -1564,6 +1564,31 @@ function creditTermsFromForm(formData: FormData): CreditTerms | null {
   return { periods, indexanteRates };
 }
 
+/**
+ * Porque é que a escrita falhou, em português e com o que fazer a seguir.
+ *
+ * **O caso que isto resolve.** O código escreve colunas que uma migração ainda
+ * não criou, e o Postgres recusa a linha inteira. A mensagem antiga — "Não
+ * consegui gravar. A tabela do património pode faltar." — mandava procurar uma
+ * tabela que existe, e não dizia a única coisa acionável: falta correr uma
+ * migração, e é esta coluna que não está lá.
+ *
+ * Nunca se deita fora a coluna e se grava o resto: quem escreveu o valor de
+ * compra ficava a pensar que ele tinha sido guardado.
+ */
+function porqueNaoGravou(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  const coluna = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/i);
+  const nome = coluna?.[1] ?? coluna?.[2] ?? null;
+  if (nome) {
+    return `A base de dados ainda não tem a coluna "${nome}". Falta correr a migração que a cria — até lá, não gravo para não perder o que escreveste.`;
+  }
+  if (/relation .* does not exist/i.test(msg)) {
+    return "A base de dados ainda não tem a tabela do património. Falta correr as migrações.";
+  }
+  return "Não consegui gravar.";
+}
+
 export async function saveAssetAction(
   _prev: ActionState,
   formData: FormData,
@@ -1686,8 +1711,8 @@ export async function saveAssetAction(
   try {
     if (id) await getRepository().updateAsset(id, ctx.space.id, patch);
     else await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
-  } catch {
-    return { error: "Não consegui gravar. A tabela do património pode faltar." };
+  } catch (e) {
+    return { error: porqueNaoGravou(e) };
   }
 
   await fotografarDepoisDoMovimento(ctx.space.id);
@@ -2747,12 +2772,18 @@ export async function confirmarAnexoAction(anexoId: string): Promise<ActionState
   const id = String(anexoId ?? "").trim();
   if (!id) return { error: "Anexo inválido." };
 
+  const repo = getRepository();
   try {
-    await getRepository().markAssetAttachmentReady(id, ctx.space.id);
+    await repo.markAssetAttachmentReady(id, ctx.space.id);
   } catch {
     return { error: "Não consegui confirmar o anexo." };
   }
   revalidatePath("/patrimonio");
+  // A página do investimento é outra rota: sem isto, o ficheiro ficava
+  // guardado e o ecrã onde a pessoa acabou de o largar continuava vazio. O id
+  // do bem sai da linha do anexo, não do cliente.
+  const anexo = await repo.getAssetAttachment(id, ctx.space.id).catch(() => null);
+  if (anexo) revalidatePath(`/patrimonio/ativos/${anexo.assetId}`);
   return { ok: true, message: "Anexo guardado." };
 }
 
@@ -2776,4 +2807,5 @@ export async function apagarAnexoAction(formData: FormData): Promise<void> {
   await repo.deleteAssetAttachment(id, ctx.space.id).catch(() => {});
   await removerAnexoDoStorage(anexo.storagePath);
   revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${anexo.assetId}`);
 }

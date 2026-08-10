@@ -40,7 +40,16 @@ export function AssetAttachments({
   anexos,
 }: {
   assetId: string;
-  anexos: AnexoView[];
+  /**
+   * `null` quer dizer "não consegui ler", e não "não há nenhum".
+   *
+   * A diferença não é fineza. Se a migração dos anexos ainda não correu, a
+   * leitura rebenta; mostrar uma lista vazia com o botão de juntar ao lado
+   * dizia a quem tem lá a escritura que ela desapareceu — e depois o envio
+   * falhava na mesma. É o mesmo modo de falha que apagou o património inteiro
+   * do ecrã há dois dias: um erro de esquema com ar de conta vazia.
+   */
+  anexos: AnexoView[] | null;
 }) {
   const campo = useRef<HTMLInputElement>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -87,6 +96,20 @@ export function AssetAttachments({
     } finally {
       setAEnviar(false);
     }
+  }
+
+  if (anexos === null) {
+    return (
+      <section className="card p-5">
+        <p className="eyebrow mb-1">Documentos</p>
+        <p role="alert" className="text-xs leading-snug text-fg-muted">
+          Não consegui ler os documentos deste registo. Falta correr a migração
+          que cria a tabela dos anexos. Não é que não haja nenhum — é que ainda
+          não sei; por isso também não te deixo juntar mais, para não perderes
+          um ficheiro num sítio que não existe.
+        </p>
+      </section>
+    );
   }
 
   return (

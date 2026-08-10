@@ -34,6 +34,7 @@ import {
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
+import { AssetAttachments, type AnexoView } from "@/components/AssetAttachments";
 import {
   deleteAssetAction,
   fetchAssetQuoteAction,
@@ -89,6 +90,31 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   for (const t of trades) {
     tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t as Trade]);
   }
+
+  /**
+   * Os documentos de todos os bens, numa leitura só.
+   *
+   * **A distinção entre "não há" e "não consegui ler" é o ponto todo.** Uma
+   * leitura falhada devolvida como lista vazia diria a quem tem a escritura
+   * anexada que ela desapareceu — o mesmo modo de falha que apagou o património
+   * inteiro do ecrã quando a ordenação foi para o SQL antes da migração. Por
+   * isso o erro vira `null` e desce assim até à linha, que o diz por palavras.
+   *
+   * Só os `pronto`: um anexo que ficou a meio do envio não é um ficheiro.
+   */
+  const anexosTodos = await repo
+    .listAssetAttachments(ctx.space.id)
+    .then((rows) => rows.filter((x) => x.status === "pronto"))
+    .catch(() => null);
+  const anexosPorBem = new Map<string, AnexoView[]>();
+  for (const x of anexosTodos ?? []) {
+    anexosPorBem.set(x.assetId, [
+      ...(anexosPorBem.get(x.assetId) ?? []),
+      { id: x.id, fileName: x.fileName, sizeBytes: x.sizeBytes, createdAt: x.createdAt ?? null },
+    ]);
+  }
+  const anexosDe = (id: string): AnexoView[] | null =>
+    anexosTodos === null ? null : (anexosPorBem.get(id) ?? []);
   /**
    * O valor dos imóveis segue o índice da zona desde a escritura.
    *
@@ -425,6 +451,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                         tradeCount={(tradesByAsset.get(a.id) ?? []).length}
                         members={memberOptions}
                         podeLerContrato={podeLerContrato}
+                        anexos={anexosDe(a.id)}
                       />
                     ))}
                   </ul>
@@ -695,10 +722,13 @@ function AssetRow({
   podeLerContrato,
   primeiro,
   ultimo,
+  anexos,
 }: {
   asset: AssetView;
   stored: Asset | null;
   members: { id: string; name: string }[];
+  /** `null` quer dizer "não consegui ler", nunca "não há nenhum". */
+  anexos: AnexoView[] | null;
   /** Há leitura de contratos configurada? */
   podeLerContrato: boolean;
   /** Para desligar os botões de mover nas pontas da lista. */
@@ -1043,6 +1073,23 @@ function AssetRow({
       ) : null}
 
       {a.notes ? <p className="mt-2 text-xs text-fg-faint">{a.notes}</p> : null}
+
+      {/*
+        Os documentos, fechados por omissão.
+        A escritura de um imóvel e o contrato de um crédito são exatamente os
+        papéis que se procuram uma vez por ano e nunca se sabe onde estão. Ficam
+        aqui, ao lado do registo a que pertencem, mas dobrados: uma lista de
+        bens não é sítio para mostrar ficheiros de todos ao mesmo tempo.
+      */}
+      <details className="mt-2">
+        <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg">
+          Documentos
+          {anexos && anexos.length > 0 ? ` (${anexos.length})` : ""}
+        </summary>
+        <div className="mt-3">
+          <AssetAttachments assetId={a.id} anexos={anexos} />
+        </div>
+      </details>
 
       <details className="mt-2">
         <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg">

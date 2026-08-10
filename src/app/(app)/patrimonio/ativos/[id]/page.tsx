@@ -16,6 +16,7 @@ import {
 } from "@/lib/domain";
 import { TradeForm } from "@/components/TradeForm";
 import { TradeRow } from "@/components/TradeRow";
+import { AssetAttachments } from "@/components/AssetAttachments";
 import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
@@ -56,6 +57,19 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
 
   const trades = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
+
+  /**
+   * Os documentos deste investimento.
+   *
+   * `null` quando a leitura falha, e nunca `[]`: se a migração dos anexos ainda
+   * não correu, uma lista vazia dizia "não tens documentos" a quem tem lá a
+   * nota de liquidação. Só entram os `pronto` — um anexo que ficou a meio do
+   * envio não é um ficheiro, é uma promessa.
+   */
+  const anexos = await repo
+    .listAssetAttachments(ctx.space.id, asset.id)
+    .then((rows) => rows.filter((a) => a.status === "pronto"))
+    .catch(() => null);
 
   const position = buildPosition(trades as Trade[]);
   const hasTrades = trades.length > 0;
@@ -350,6 +364,20 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           </ul>
         )}
       </section>
+
+      <AssetAttachments
+        assetId={asset.id}
+        anexos={
+          anexos === null
+            ? null
+            : anexos.map((a) => ({
+                id: a.id,
+                fileName: a.fileName,
+                sizeBytes: a.sizeBytes,
+                createdAt: a.createdAt ?? null,
+              }))
+        }
+      />
 
       <TradeForm assetId={asset.id} assetName={asset.name} />
     </div>
