@@ -1576,7 +1576,7 @@ function creditTermsFromForm(formData: FormData): CreditTerms | null {
  * Nunca se deita fora a coluna e se grava o resto: quem escreveu o valor de
  * compra ficava a pensar que ele tinha sido guardado.
  */
-function porqueNaoGravou(e: unknown): string {
+function porqueNaoGravou(e: unknown, oQue = "isto"): string {
   const msg = e instanceof Error ? e.message : String(e ?? "");
   const coluna = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/i);
   const nome = coluna?.[1] ?? coluna?.[2] ?? null;
@@ -1584,9 +1584,19 @@ function porqueNaoGravou(e: unknown): string {
     return `A base de dados ainda não tem a coluna "${nome}". Falta correr a migração que a cria — até lá, não gravo para não perder o que escreveste.`;
   }
   if (/relation .* does not exist/i.test(msg)) {
-    return "A base de dados ainda não tem a tabela do património. Falta correr as migrações.";
+    return "A base de dados ainda não tem esta tabela. Falta correr as migrações.";
   }
-  return "Não consegui gravar.";
+  /**
+   * O resto vai com o motivo em cru, e é de propósito.
+   *
+   * "Não consegui gravar" é verdade e não serve para nada: não distingue uma
+   * migração por correr de um número que a coluna não aceita nem de uma falha
+   * de rede, e obriga a adivinhar em rondas. O texto do PostgREST é feio mas
+   * diz qual é a coluna e qual é o valor — e quem está a olhar para este ecrã
+   * é o dono dos dados, não um estranho.
+   */
+  const detalhe = msg.trim().slice(0, 200);
+  return detalhe ? `Não consegui gravar ${oQue}: ${detalhe}` : `Não consegui gravar ${oQue}.`;
 }
 
 export async function saveAssetAction(
@@ -2119,8 +2129,12 @@ export async function addAssetTradeAction(
     } else {
       await getRepository().createAssetTrade(dados);
     }
-  } catch {
-    return { error: "Não consegui gravar o movimento." };
+  } catch (e) {
+    // O motivo por extenso, e não "não consegui". Este ecrã já custou duas
+    // rondas de adivinhação: a mensagem genérica servia tanto para uma coluna
+    // que não existe como para uma migração por correr, e não distinguia
+    // nenhuma das duas de um problema de rede.
+    return { error: porqueNaoGravou(e, "o movimento") };
   }
 
   await fotografarDepoisDoMovimento(ctx.space.id);

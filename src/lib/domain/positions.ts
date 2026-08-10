@@ -504,3 +504,125 @@ export function incoerenciaEntreMovimentosECotacoes(
   }
   return null;
 }
+
+/**
+ * Movimentos cujo preço por unidade não é plausível.
+ *
+ * **De onde veio isto.** Uma importação leu `493.975` como quatrocentos e
+ * noventa e três mil e novecentos e setenta e cinco euros, quando eram 493,98 €:
+ * na mesma coluna havia `500.00` a fingir de milhar e um separador decimal
+ * escolhido linha a linha. O parser está corrigido, mas as linhas que já
+ * entraram continuam lá — e são invisíveis, porque um total errado tem
+ * exactamente o mesmo aspecto de um total certo. Só se descobre pelo absurdo:
+ * "investi 1,4 milhões" numa carteira de meia dúzia de milhares.
+ *
+ * **Não sabe qual dos números está errado, e não finge saber.** Diz que aquele
+ * movimento destoa dos outros do mesmo ativo, por quanto, e deixa a correção a
+ * quem sabe o que comprou. Apagar ou corrigir sozinho seria decidir sobre
+ * dinheiro de outra pessoa a partir de um palpite.
+ *
+ * **Duas referências, ambas do próprio ativo**: a mediana do preço implícito
+ * dos outros movimentos (precisa de três, senão não há maioria) e o preço atual
+ * por unidade, quando existe. Nenhuma delas precisa de série de cotações — os
+ * ativos sem símbolo, que são onde a importação mais erra, também têm de ser
+ * cobertos.
+ *
+ * **O limite é enorme de propósito.** Um erro de separador é 100× ou 1000×; uma
+ * ação que triplica é vulgar. Com 20× não se apanha um preço que subiu muito, e
+ * apanha-se tudo o que veio de um ponto no sítio errado. Falso positivo aqui
+ * custa uma pergunta desnecessária; falso negativo deixa a carteira mentir.
+ */
+export const LIMITE_IMPLAUSIVEL = 20;
+
+export interface MovimentoImplausivel {
+  tradeId: string;
+  date: string;
+  /** O que este movimento diz que custou cada unidade. */
+  implicitoCents: number;
+  /** Com o que se comparou. */
+  referenciaCents: number;
+  /** Quantas vezes acima (>1) ou abaixo (<1) da referência. */
+  vezes: number;
+  porque: string;
+}
+
+/**
+ * A mediana, e num número par a do meio **de baixo** em vez da média das duas.
+ *
+ * A média das duas do meio é a definição normal e aqui seria um erro: com
+ * quatro valores em que um é mil vezes maior, a média das centrais volta a
+ * deixar o disparate entrar na referência. O que se procura é um valor típico
+ * que um único movimento não consiga mexer, e é isso que a de baixo dá.
+ */
+function mediana(valores: number[]): number | null {
+  if (valores.length === 0) return null;
+  const ord = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ord.length / 2);
+  return ord.length % 2 === 1 ? ord[meio]! : ord[meio - 1]!;
+}
+
+export function movimentosImplausiveis(
+  trades: Trade[],
+  unitPriceCents?: number | null,
+): MovimentoImplausivel[] {
+  const comPreco = trades
+    .filter((t) => (t.kind === "compra" || t.kind === "venda") && Math.abs(t.quantity ?? 0) > 0)
+    .map((t) => ({ t, implicito: tradeAmountCents(t) / Math.abs(t.quantity!) }))
+    .filter((x) => x.implicito > 0);
+
+  const out: MovimentoImplausivel[] = [];
+
+  /**
+   * A referência é a mediana de **todos**, incluindo o que está a ser julgado.
+   *
+   * A primeira versão excluía o próprio, para "a referência não ser puxada pelo
+   * erro". Esse raciocínio vale para uma média e é ao contrário numa mediana:
+   * excluir o próprio reduz a amostra, e com três movimentos sobravam dois — e
+   * o ponto médio de dois valores é a média deles, que o disparate desloca à
+   * vontade. O resultado era acusar os dois movimentos certos e ilibar o
+   * errado. Uma mediana sobre três ou mais é justamente o que um único valor
+   * absurdo não consegue mexer.
+   */
+  const todos = comPreco.map((x) => x.implicito);
+  const med = todos.length >= 3 ? mediana(todos) : null;
+
+  for (const { t, implicito } of comPreco) {
+
+    const candidatos: { ref: number; fonte: string }[] = [];
+    if (med !== null && med > 0) candidatos.push({ ref: med, fonte: "os outros movimentos deste ativo" });
+    if (unitPriceCents && unitPriceCents > 0) {
+      candidatos.push({ ref: unitPriceCents, fonte: "o preço atual por unidade" });
+    }
+    if (candidatos.length === 0) continue;
+
+    // A referência mais favorável ao movimento: se por alguma delas ele é
+    // plausível, não se acusa. Acusar por uma e ilibar por outra seria pior do
+    // que não verificar.
+    let pior: { ref: number; fonte: string; razao: number } | null = null;
+    let melhorRazao = Infinity;
+    for (const c of candidatos) {
+      const razao = implicito / c.ref;
+      const desvio = razao >= 1 ? razao : 1 / razao;
+      if (desvio < melhorRazao) {
+        melhorRazao = desvio;
+        pior = { ...c, razao };
+      }
+    }
+    if (!pior || melhorRazao < LIMITE_IMPLAUSIVEL) continue;
+
+    const sentido = pior.razao >= 1 ? "acima" : "abaixo";
+    out.push({
+      tradeId: t.id,
+      date: t.date,
+      implicitoCents: Math.round(implicito),
+      referenciaCents: Math.round(pior.ref),
+      vezes: pior.razao,
+      porque:
+        `Este movimento dá ${(Math.round(implicito) / 100).toFixed(2).replace(".", ",")} € por ` +
+        `unidade, cerca de ${Math.round(melhorRazao)}× ${sentido} de ${pior.fonte}. ` +
+        `Costuma ser um separador decimal trocado numa importação — confere o valor.`,
+    });
+  }
+
+  return out;
+}

@@ -7,6 +7,7 @@ import {
   TRADE_KIND_LABELS,
   buildPosition,
   buildPositionReturn,
+  movimentosImplausiveis,
   formatCents,
   formatForeignCents,
   formatRate,
@@ -96,6 +97,10 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
 
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("pt-PT");
 
+  // Movimentos cujo preço por unidade destoa do resto. Ver o bloco onde são
+  // mostrados: é o rasto que a importação com o separador trocado deixou.
+  const implausiveis = movimentosImplausiveis(trades as Trade[], asset.unitPriceCents);
+
   return (
     <div className="space-y-8">
       <div>
@@ -108,6 +113,38 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           {hasTrades ? ` · ${trades.length} movimento(s)` : ""}
         </p>
       </div>
+
+      {/*
+        Movimentos com um preço por unidade fora de escala.
+        Uma importação leu `493.975` como 493 975,00 € quando eram 493,98 €, e
+        um total errado tem exactamente o mesmo aspecto de um total certo: só
+        se descobre pelo absurdo, lá longe, no "investi 1,4 milhões". Fica aqui,
+        ao lado do movimento, onde se corrige.
+      */}
+      {implausiveis.length > 0 ? (
+        <div
+          role="alert"
+          className="space-y-2 rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm text-fg-muted"
+        >
+          <p className="font-medium text-fg">
+            {implausiveis.length === 1
+              ? "Há um movimento com um valor pouco plausível."
+              : `Há ${implausiveis.length} movimentos com valores pouco plausíveis.`}
+          </p>
+          <ul className="space-y-1 text-xs leading-snug">
+            {implausiveis.map((m) => (
+              <li key={m.tradeId}>
+                <span className="font-mono text-fg">{fmtDate(m.date)}</span> — {m.porque}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-fg-faint">
+            Enquanto estiver assim, o investido, o ganho e a rentabilidade deste
+            investimento estão errados — e arrastam o património todo com eles.
+            Corrige no Editar do movimento, aqui em baixo.
+          </p>
+        </div>
+      ) : null}
 
       {position.oversold ? (
         <p role="alert" className="rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm text-debt">

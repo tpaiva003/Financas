@@ -5,6 +5,7 @@ import {
   derivePosition,
   incoerenciaEntreMovimentosECotacoes,
   lucroDoMovimento,
+  movimentosImplausiveis,
   tradeAmountCents,
   type Trade,
 } from "./positions";
@@ -347,5 +348,78 @@ describe("incoerenciaEntreMovimentosECotacoes", () => {
     ];
 
     expect(incoerenciaEntreMovimentosECotacoes(trades, {})).toBeNull();
+  });
+});
+
+/**
+ * O caso real: uma importação leu `493.975` como 493 975,00 € quando eram
+ * 493,98 €, porque na mesma coluna havia `500.00` a parecer um milhar. O
+ * parser está corrigido; as linhas que já entraram continuam lá, e um total
+ * errado tem exactamente o mesmo aspecto de um total certo.
+ */
+describe("movimentosImplausiveis", () => {
+  const carteira = (): Trade[] => [
+    trade({ id: "a", date: "2024-09-09", kind: "compra", quantity: 6, amountCents: 55_536 }),
+    trade({ id: "b", date: "2025-03-10", kind: "compra", quantity: 5, amountCents: 50_000 }),
+    trade({ id: "mau", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 }),
+  ];
+
+  it("apanha o movimento com o separador decimal trocado", () => {
+    const r = movimentosImplausiveis(carteira());
+    expect(r.map((x) => x.tradeId)).toEqual(["mau"]);
+    // ~98 795 € por unidade contra ~100 €: perto de mil vezes.
+    expect(r[0]!.vezes).toBeGreaterThan(500);
+    expect(r[0]!.porque).toContain("separador decimal");
+  });
+
+  it("não acusa uma carteira sã", () => {
+    const sa = carteira().slice(0, 2);
+    expect(movimentosImplausiveis(sa)).toEqual([]);
+  });
+
+  /**
+   * A referência tem de ser um valor típico que um único movimento não mexa.
+   * Com uma média — ou com o ponto médio de dois — o disparate entra na conta,
+   * e o que acontecia era acusar os dois movimentos certos e ilibar o errado.
+   */
+  it("a referência é típica, não é arrastada pelo disparate", () => {
+    const r = movimentosImplausiveis(carteira());
+    expect(r[0]!.referenciaCents).toBeLessThan(20_000);
+  });
+
+  it("um par de movimentos não chega para acusar nenhum", () => {
+    // Com dois, não há maioria: qualquer um pode ser o errado, e escolher um
+    // seria decidir a moeda ao ar sobre o dinheiro de alguém.
+    const t = [
+      trade({ id: "a", date: "2025-03-10", kind: "compra", quantity: 5, amountCents: 50_000 }),
+      trade({ id: "b", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 }),
+    ];
+    expect(movimentosImplausiveis(t)).toEqual([]);
+  });
+
+  it("uma subida grande de preço não é um erro", () => {
+    // Comprou a 10 €, depois a 30 €: triplicou, e isso acontece.
+    const t = [
+      trade({ id: "a", date: "2024-01-02", kind: "compra", quantity: 10, amountCents: 10_000 }),
+      trade({ id: "b", date: "2024-06-02", kind: "compra", quantity: 10, amountCents: 10_000 }),
+      trade({ id: "c", date: "2025-06-02", kind: "compra", quantity: 10, amountCents: 30_000 }),
+    ];
+    expect(movimentosImplausiveis(t)).toEqual([]);
+  });
+
+  it("com um movimento só, o preço atual serve de referência", () => {
+    const t = [trade({ id: "a", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 })];
+    // Sem preço não há com que comparar, e inventar uma referência seria pior.
+    expect(movimentosImplausiveis(t)).toEqual([]);
+    // Com preço atual de 100 €/un., o disparate fica à vista.
+    expect(movimentosImplausiveis(t, 10_000).map((x) => x.tradeId)).toEqual(["a"]);
+  });
+
+  it("um dividendo não tem preço por unidade e não é julgado", () => {
+    const t = [
+      ...carteira().slice(0, 2),
+      trade({ id: "d", date: "2025-07-01", kind: "dividendo", amountCents: 1_200 }),
+    ];
+    expect(movimentosImplausiveis(t).map((x) => x.tradeId)).toEqual([]);
   });
 });
