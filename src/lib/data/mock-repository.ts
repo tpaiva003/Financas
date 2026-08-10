@@ -32,6 +32,8 @@ import type {
   CreateAssetTradeInput,
   CreateNetWorthSnapshot,
   NetWorthSnapshotRow,
+  AssetAttachment,
+  CreateAssetAttachment,
   Income,
   CreateIncomeInput,
   Membership,
@@ -74,6 +76,7 @@ interface Store {
   assets: Asset[];
   assetTrades: AssetTrade[];
   netWorthSnapshots: NetWorthSnapshotRow[];
+  assetAttachments: AssetAttachment[];
   quotes: Record<string, StoredQuote[]>;
   quoteCurrencies: Record<string, string>;
   income: Income[];
@@ -103,6 +106,7 @@ function getStore(): Store {
       assets: [],
       assetTrades: [],
       netWorthSnapshots: [],
+      assetAttachments: [],
       quotes: {},
       quoteCurrencies: {},
       income: [],
@@ -754,6 +758,34 @@ export class MockRepository implements Repository {
     const row: NetWorthSnapshotRow = { id: i >= 0 ? store.netWorthSnapshots[i]!.id : randomUUID(), ...input };
     if (i >= 0) store.netWorthSnapshots[i] = row;
     else store.netWorthSnapshots.push(row);
+  }
+
+  async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
+    return getStore().assetAttachments.filter(
+      (a) => a.spaceId === spaceId && (!assetId || a.assetId === assetId),
+    );
+  }
+
+  async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
+    // A mesma regra da produção: o ambiente entra na procura, não numa
+    // comparação a seguir.
+    return getStore().assetAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null;
+  }
+
+  async createAssetAttachment(input: CreateAssetAttachment): Promise<void> {
+    getStore().assetAttachments.push({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  async markAssetAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments[i] = { ...store.assetAttachments[i]!, status: "pronto" };
+  }
+
+  async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments.splice(i, 1);
   }
 
   async createAsset(input: CreateAssetInput): Promise<Asset> {

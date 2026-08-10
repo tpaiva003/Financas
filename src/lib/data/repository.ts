@@ -253,6 +253,32 @@ export interface NetWorthSnapshotRow {
 export type CreateNetWorthSnapshot = Omit<NetWorthSnapshotRow, "id">;
 
 /**
+ * Um ficheiro anexado a um bem: escritura, caderneta, contrato, nota de
+ * liquidação.
+ *
+ * `status` existe porque o ficheiro vai **direto para o Storage**, sem passar
+ * pela app — as Server Actions do Next têm tecto de 1 MB e uma função da Vercel
+ * ~4,5 MB, e uma escritura digitalizada passa os dois. A linha nasce em
+ * `a-enviar` e só conta depois de o envio ser confirmado.
+ */
+export interface AssetAttachment {
+  id: string;
+  spaceId: string;
+  assetId: string;
+  /** O nome original, só para a descarga o devolver ao browser. */
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  /** `<space_id>/<asset_id>/<id>.<ext>`. Nunca vem do cliente. */
+  storagePath: string;
+  status: "a-enviar" | "pronto";
+  createdBy?: string | null;
+  createdAt?: string | null;
+}
+
+export type CreateAssetAttachment = Omit<AssetAttachment, "createdAt">;
+
+/**
  * Um movimento datado de um investimento: compra, venda, dividendo ou custo.
  *
  * `amountCents` é sempre em euros, que é o dinheiro que saiu mesmo da conta.
@@ -672,6 +698,19 @@ export interface Repository {
   listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]>;
   /** Grava a fotografia do dia. A última do dia manda. */
   saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void>;
+  /** Os anexos de um bem, ou os do ambiente todo quando não se diz qual. */
+  listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]>;
+  /**
+   * Um anexo, pelo id **e** pelo ambiente.
+   *
+   * Numa consulta só, nunca "ler pelo id e comparar depois": a comparação é o
+   * que as pessoas se esquecem de escrever. Como tudo corre com a chave de
+   * serviço, que ignora o RLS, este `space_id` é a única fronteira que existe.
+   */
+  getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null>;
+  createAssetAttachment(input: CreateAssetAttachment): Promise<void>;
+  markAssetAttachmentReady(id: string, spaceId: string): Promise<void>;
+  deleteAssetAttachment(id: string, spaceId: string): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */

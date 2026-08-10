@@ -20,6 +20,11 @@ import {
 import { readPdfText } from "@/lib/import/read-file";
 import { getInePriceTable } from "@/lib/services/ine-service";
 import {
+  caminhoDoAnexo,
+  removerAnexoDoStorage,
+  signedUploadUrl,
+} from "@/lib/services/attachments-service";
+import {
   conversar,
   conversaAvailable,
   limparHistorico,
@@ -47,6 +52,7 @@ import {
   normalizeSymbol,
   toEurCents,
   type Split,
+  checkAnexo,
   checkLimit,
   type SpacePlan,
   INDEXANTES,
@@ -2656,5 +2662,118 @@ export async function moverAtivoAction(formData: FormData): Promise<void> {
     ),
   );
 
+  revalidatePath("/patrimonio");
+}
+
+export interface AnexoPreparado extends ActionState {
+  /** Para onde o browser envia o ficheiro, sem passar por aqui. */
+  uploadUrl?: string;
+  token?: string;
+  anexoId?: string;
+}
+
+/**
+ * Preparar um anexo: valida, reserva a linha e devolve para onde enviar.
+ *
+ * **Os bytes nunca passam por aqui.** As Server Actions do Next têm tecto de
+ * 1 MB e uma função da Vercel ~4,5 MB; uma escritura digitalizada passa os
+ * dois. O que sobe é o nome, o tipo e o tamanho — e é sobre eles que se decide.
+ *
+ * A linha nasce em `a-enviar` e só passa a `pronto` quando o envio é
+ * confirmado. Um anexo que fique pelo caminho não aparece em lado nenhum.
+ */
+export async function prepararAnexoAction(
+  _prev: AnexoPreparado,
+  formData: FormData,
+): Promise<AnexoPreparado> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
+  const contentType = String(formData.get("contentType") ?? "").trim();
+  const sizeBytes = Number(formData.get("sizeBytes") ?? 0);
+  if (!assetId || !fileName) return { error: "Falta o ficheiro." };
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id vindo do formulário não é
+  // prova de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === assetId);
+  if (!bem) return { error: "Bem inválido." };
+
+  const doAmbiente = await repo.listAssetAttachments(ctx.space.id).catch(() => []);
+  const veredicto = checkAnexo({
+    // Sem plano gravado conta como gratuito: um tecto a mais nunca apaga nada,
+    // e um tecto a menos deixava passar espaço sem limite.
+    plan: ctx.space.plan ?? "free",
+    porBem: doAmbiente.filter((a) => a.assetId === assetId).length,
+    bytesNoAmbiente: doAmbiente.reduce((s, a) => s + a.sizeBytes, 0),
+    bytesDoFicheiro: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+    contentType,
+  });
+  if (!veredicto.allowed) return { error: veredicto.message ?? "Não dá para anexar isto." };
+
+  const anexoId = `anx_${randomUUID()}`;
+  // O caminho é construído aqui e nunca recebido: se viesse do cliente, ele
+  // escolhia a pasta.
+  const storagePath = caminhoDoAnexo(ctx.space.id, assetId, anexoId, contentType);
+
+  const destino = await signedUploadUrl(storagePath);
+  if (!destino) return { error: "Não consegui preparar o envio." };
+
+  try {
+    await repo.createAssetAttachment({
+      id: anexoId,
+      spaceId: ctx.space.id,
+      assetId,
+      fileName,
+      contentType,
+      sizeBytes: Math.max(0, Math.round(sizeBytes)),
+      storagePath,
+      status: "a-enviar",
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar o anexo." };
+  }
+
+  return { ok: true, uploadUrl: destino.url, token: destino.token, anexoId };
+}
+
+/** O envio correu bem: o anexo passa a contar. */
+export async function confirmarAnexoAction(anexoId: string): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  const id = String(anexoId ?? "").trim();
+  if (!id) return { error: "Anexo inválido." };
+
+  try {
+    await getRepository().markAssetAttachmentReady(id, ctx.space.id);
+  } catch {
+    return { error: "Não consegui confirmar o anexo." };
+  }
+  revalidatePath("/patrimonio");
+  return { ok: true, message: "Anexo guardado." };
+}
+
+/**
+ * Apagar um anexo — a linha **e** o ficheiro.
+ *
+ * Os recibos das despesas ficam no Storage para sempre quando um ambiente é
+ * apagado, o que torna falsa a frase "apagamos os teus dados". Com escrituras,
+ * que têm morada e número fiscal, seria bem pior.
+ */
+export async function apagarAnexoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const repo = getRepository();
+  const anexo = await repo.getAssetAttachment(id, ctx.space.id).catch(() => null);
+  if (!anexo) return;
+
+  await repo.deleteAssetAttachment(id, ctx.space.id).catch(() => {});
+  await removerAnexoDoStorage(anexo.storagePath);
   revalidatePath("/patrimonio");
 }

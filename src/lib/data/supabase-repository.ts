@@ -26,6 +26,8 @@ import type {
   CreateAssetTradeInput,
   CreateNetWorthSnapshot,
   NetWorthSnapshotRow,
+  AssetAttachment,
+  CreateAssetAttachment,
   Income,
   CreateIncomeInput,
   Membership,
@@ -1154,12 +1156,34 @@ export class SupabaseRepository implements Repository {
       .from("assets")
       .select("*")
       .eq("space_id", spaceId)
-      // A ordem escolhida à mão primeiro; quem nunca foi mexido fica por data
-      // de criação, que é como sempre esteve.
-      .order("sort_order", { ascending: true, nullsFirst: false })
       .order("created_at");
     if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToAsset);
+
+    /**
+     * A ordem escolhida à mão aplica-se **aqui**, e não no SQL.
+     *
+     * Ordenar por `sort_order` na consulta parecia mais limpo e apagou o
+     * património todo do ecrã: enquanto a migração `0030` não estivesse
+     * aplicada, a coluna não existia, o Postgres recusava a consulta inteira, e
+     * o `.catch(() => [])` de quem chama transformava isso em "não tens bens
+     * nenhuns". Um erro de esquema não pode parecer uma conta vazia.
+     *
+     * Em JavaScript, uma coluna que ainda não existe é um `undefined` — e
+     * `undefined` quer dizer exatamente o que a coluna quer dizer quando é
+     * nula: "nunca foi mexido, manda a data de criação".
+     */
+    const bens = (data ?? []).map(rowToAsset);
+    return bens
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => {
+        const ax = x.a.sortOrder ?? null;
+        const ay = y.a.sortOrder ?? null;
+        if (ax !== null && ay !== null) return ax - ay || x.i - y.i;
+        if (ax !== null) return -1;
+        if (ay !== null) return 1;
+        return x.i - y.i;
+      })
+      .map((x) => x.a);
   }
 
   async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
@@ -1197,6 +1221,64 @@ export class SupabaseRepository implements Repository {
       },
       { onConflict: "space_id,on_date" },
     );
+    if (error) throw new Error(error.message);
+  }
+
+  async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
+    const db = getSupabaseAdmin();
+    let q = db.from("asset_attachments").select("*").eq("space_id", spaceId);
+    if (assetId) q = q.eq("asset_id", assetId);
+    const { data, error } = await q.order("created_at");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToAttachment);
+  }
+
+  async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
+    const db = getSupabaseAdmin();
+    // Numa consulta só: ver o comentário na interface.
+    const { data, error } = await db
+      .from("asset_attachments")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToAttachment(data) : null;
+  }
+
+  async createAssetAttachment(input: CreateAssetAttachment): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("asset_attachments").insert({
+      id: input.id,
+      space_id: input.spaceId,
+      asset_id: input.assetId,
+      file_name: input.fileName,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      storage_path: input.storagePath,
+      status: input.status,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async markAssetAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("asset_attachments")
+      .update({ status: "pronto" })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("asset_attachments")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -1739,6 +1821,21 @@ function rowToAssetTrade(r: any): AssetTrade {
     originalAmountCents: r.original_amount_cents ?? null,
     fxRate: r.fx_rate === null || r.fx_rate === undefined ? null : Number(r.fx_rate),
     notes: r.notes ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToAttachment(r: any): AssetAttachment {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    assetId: r.asset_id,
+    fileName: r.file_name,
+    contentType: r.content_type,
+    sizeBytes: Number(r.size_bytes ?? 0),
+    storagePath: r.storage_path,
+    status: r.status === "pronto" ? "pronto" : "a-enviar",
+    createdBy: r.created_by ?? null,
     createdAt: r.created_at ?? null,
   };
 }
