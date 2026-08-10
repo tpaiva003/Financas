@@ -31,3 +31,4 @@ export * from "./networth-history";
 export * from "./situacao";
 export * from "./plataforma";
 export * from "./tickets";
+export * from "./euribor";

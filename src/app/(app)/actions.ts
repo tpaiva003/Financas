@@ -12,6 +12,7 @@ import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import { buscarEuribor } from "@/lib/services/euribor-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
   creditContractExtractAvailable,
@@ -3060,4 +3061,34 @@ export async function responderPedidoAction(
     ok: true,
     message: interna ? "Nota interna guardada. Só tu a vês." : "Resposta enviada.",
   };
+}
+
+/**
+ * Ir buscar a Euribor do prazo pedido.
+ *
+ * Devolve o valor e de quando ele é; não grava nada. Quem decide se o escreve
+ * no campo é a pessoa — o valor do indexante entra num plano que projeta
+ * prestações até 2055, e não é coisa para se preencher sozinha nas costas de
+ * ninguém.
+ */
+export interface EuriborState extends ActionState {
+  pct?: number | null;
+  nota?: string | null;
+}
+
+export async function buscarEuriborAction(
+  _prev: EuriborState,
+  formData: FormData,
+): Promise<EuriborState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const bruto = String(formData.get("indexante") ?? "");
+  if (!(bruto in INDEXANTES)) return { error: "Indexante desconhecido." };
+
+  const r = await buscarEuribor(bruto as Indexante);
+  if (r.problem || r.pct === null) {
+    return { error: r.problem ?? "Não consegui obter a Euribor." };
+  }
+  return { ok: true, pct: r.pct, nota: r.nota, message: r.nota ?? undefined };
 }

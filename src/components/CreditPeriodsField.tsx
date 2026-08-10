@@ -31,6 +31,7 @@ import {
   type Indexante,
   type PeriodoTipo,
 } from "@/lib/domain";
+import { buscarEuriborAction } from "@/app/(app)/actions";
 
 /** Uma linha na tabela, com os números ainda como texto. */
 interface Linha {
@@ -318,21 +319,31 @@ export function CreditPeriodsField({
           <p className="label mb-1">Valor do indexante hoje</p>
           <p className="mb-2.5 text-xs text-fg-faint">
             A Euribor daqui a uns anos ninguém sabe. Com o valor de hoje sai um
-            cenário, e o plano diz que é um cenário e a que valor foi feito.
+            cenário, e o plano diz que é um cenário e a que valor foi feito. O
+            botão vai buscar a média do mês ao Banco Central Europeu — que é a
+            média que os contratos portugueses usam, e não o valor de um dia.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {usados.map((k) => (
               <div key={k}>
                 <label className="label" htmlFor={`cp-idxrate-${uid}-${k}`}>{INDEXANTES[k]} (%)</label>
-                <input
-                  id={`cp-idxrate-${uid}-${k}`}
-                  name={`indexanteRate-${k}`}
-                  inputMode="decimal"
-                  value={taxas[k] ?? ""}
-                  onChange={(e) => setTaxas((t) => ({ ...t, [k]: e.target.value }))}
-                  placeholder="2,1"
-                  className="input h-9 text-xs"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    id={`cp-idxrate-${uid}-${k}`}
+                    name={`indexanteRate-${k}`}
+                    inputMode="decimal"
+                    value={taxas[k] ?? ""}
+                    onChange={(e) => setTaxas((t) => ({ ...t, [k]: e.target.value }))}
+                    placeholder="2,1"
+                    className="input h-9 flex-1 text-xs"
+                  />
+                  <BuscarEuribor
+                    indexante={k}
+                    aoReceber={(pct) =>
+                      setTaxas((t) => ({ ...t, [k]: String(pct).replace(".", ",") }))
+                    }
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -356,5 +367,67 @@ export function CreditPeriodsField({
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Ir buscar a Euribor ao BCE e pô-la no campo ao lado.
+ *
+ * **Preenche o campo e não grava nada.** O valor do indexante entra num plano
+ * que projeta prestações até 2055; escrevê-lo sozinho nas costas de quem está
+ * a preencher o formulário seria decidir por essa pessoa. Ela vê o número, vê
+ * de que mês ele é, e grava se quiser.
+ *
+ * **Diz sempre de quando é.** A média de um mês é publicada depois de ele
+ * acabar, por isso o normal é o valor ser do mês passado — e uma média de há
+ * três meses apresentada sem data lê-se como a de agora.
+ */
+function BuscarEuribor({
+  indexante,
+  aoReceber,
+}: {
+  indexante: Indexante;
+  aoReceber: (pct: number) => void;
+}) {
+  const [estado, setEstado] = useState<{ nota?: string; erro?: string } | null>(null);
+  const [aPedir, setAPedir] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={aPedir}
+        onClick={async () => {
+          setAPedir(true);
+          setEstado(null);
+          try {
+            const fd = new FormData();
+            fd.set("indexante", indexante);
+            const r = await buscarEuriborAction({}, fd);
+            if (r.error || r.pct === null || r.pct === undefined) {
+              setEstado({ erro: r.error ?? "Não consegui obter a Euribor." });
+              return;
+            }
+            aoReceber(r.pct);
+            setEstado({ nota: r.nota ?? undefined });
+          } catch {
+            setEstado({ erro: "Não consegui obter a Euribor." });
+          } finally {
+            setAPedir(false);
+          }
+        }}
+        className="btn-ghost h-9 shrink-0 px-2 text-xs"
+      >
+        {aPedir ? "A ir buscar…" : "BCE"}
+      </button>
+      {estado?.nota ? (
+        <span className="basis-full text-[11px] leading-snug text-fg-faint">{estado.nota}</span>
+      ) : null}
+      {estado?.erro ? (
+        <span role="alert" className="basis-full text-[11px] leading-snug text-debt">
+          {estado.erro} O campo continua a poder ser escrito à mão.
+        </span>
+      ) : null}
+    </>
   );
 }
