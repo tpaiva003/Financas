@@ -7,8 +7,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { stableUid } from "@/lib/domain";
-import type { Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
+import { stableUid, ticketAberto } from "@/lib/domain";
+import type { Expense, Settlement, ClassificationRule, Split, TicketStatus } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -34,6 +34,10 @@ import type {
   NetWorthSnapshotRow,
   AssetAttachment,
   CreateAssetAttachment,
+  Ticket,
+  TicketMessage,
+  CreateTicketInput,
+  CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
   Membership,
@@ -77,6 +81,8 @@ interface Store {
   assetTrades: AssetTrade[];
   netWorthSnapshots: NetWorthSnapshotRow[];
   assetAttachments: AssetAttachment[];
+  tickets: Ticket[];
+  ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
   quoteCurrencies: Record<string, string>;
   income: Income[];
@@ -107,6 +113,8 @@ function getStore(): Store {
       assetTrades: [],
       netWorthSnapshots: [],
       assetAttachments: [],
+      tickets: [],
+      ticketMessages: [],
       quotes: {},
       quoteCurrencies: {},
       income: [],
@@ -986,6 +994,96 @@ export class MockRepository implements Repository {
       archivedAt: null,
       notes: null,
     });
+  }
+
+  // ---- Pedidos de ajuda -------------------------------------------------
+  //
+  // Duas leituras com nomes diferentes, tal como no Supabase. O mock aplica a
+  // MESMA regra de propósito: um backend mais permissivo do que o outro
+  // esconde exactamente o engano que os testes procuram.
+
+  async createTicket(input: CreateTicketInput): Promise<string> {
+    const store = getStore();
+    const id = `tkt_${randomUUID()}`;
+    const agora = new Date().toISOString();
+    store.tickets.unshift({
+      id,
+      spaceId: input.spaceId,
+      createdBy: input.createdBy,
+      subject: input.subject,
+      status: "novo",
+      createdAt: agora,
+      updatedAt: agora,
+    });
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: id,
+      authorId: input.createdBy,
+      body: input.body,
+      internal: false,
+      createdAt: agora,
+    });
+    return id;
+  }
+
+  async listTicketsDoUtilizador(userId: string): Promise<Ticket[]> {
+    return getStore()
+      .tickets.filter((t) => t.createdBy === userId)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async listTicketsTodos(): Promise<Ticket[]> {
+    return [...getStore().tickets].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id && t.createdBy === userId) ?? null;
+  }
+
+  async getTicket(id: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id) ?? null;
+  }
+
+  async listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId && !m.internal)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async addTicketMessage(input: CreateTicketMessageInput): Promise<void> {
+    const store = getStore();
+    const agora = new Date().toISOString();
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: input.ticketId,
+      authorId: input.authorId,
+      body: input.body,
+      internal: input.internal,
+      createdAt: agora,
+    });
+    // Uma nota interna não mexe no `updatedAt`: mexer denunciava a hora em
+    // que alguém escreveu uma coisa que o utilizador não pode ler.
+    if (!input.internal) {
+      const t = store.tickets.find((x) => x.id === input.ticketId);
+      if (t) t.updatedAt = agora;
+    }
+  }
+
+  async setTicketStatus(id: string, status: TicketStatus): Promise<void> {
+    const t = getStore().tickets.find((x) => x.id === id);
+    if (!t) return;
+    t.status = status;
+    t.updatedAt = new Date().toISOString();
+  }
+
+  async countTicketsAbertos(): Promise<number> {
+    return getStore().tickets.filter((t) => ticketAberto(t.status)).length;
   }
 
   async listContactMessages(): Promise<ContactMessage[]> {

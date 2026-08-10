@@ -53,6 +53,10 @@ import {
   toEurCents,
   type Split,
   checkAnexo,
+  validarTicket,
+  isTicketStatus,
+  estadoDepoisDaResposta,
+  TICKET_CORPO_MAX,
   checkLimit,
   type SpacePlan,
   INDEXANTES,
@@ -2872,4 +2876,113 @@ export async function apagarAnexoAction(formData: FormData): Promise<void> {
   await removerAnexoDoStorage(anexo.storagePath);
   revalidatePath("/patrimonio");
   revalidatePath(`/patrimonio/ativos/${anexo.assetId}`);
+}
+
+// ---- Pedidos de ajuda -------------------------------------------------------
+//
+// A regra que manda em tudo o que está aqui em baixo: **uma nota interna nunca
+// sai**. O ecrã do utilizador só lê por `listTicketMessagesPublicas`, que não
+// as devolve de todo, e só quem é administrador pode escrever uma.
+
+/**
+ * Abrir um pedido de ajuda.
+ *
+ * Não há tecto de plano nenhum sobre isto de propósito. Um limite que impeça
+ * alguém de pedir ajuda transforma um problema de produto num problema de
+ * atendimento — e "um limite nunca apaga nada" vale para o direito de perguntar
+ * tanto como para os dados.
+ */
+export async function abrirPedidoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+
+  const v = validarTicket({
+    assunto: String(formData.get("assunto") ?? ""),
+    corpo: String(formData.get("corpo") ?? ""),
+  });
+  if ("erro" in v) return { error: v.erro };
+
+  try {
+    await getRepository().createTicket({
+      spaceId: ctx.space.id,
+      createdBy: ctx.user.id,
+      subject: v.ok.assunto,
+      body: v.ok.corpo,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o pedido") };
+  }
+
+  revalidatePath("/ajuda");
+  return { ok: true, message: "Pedido enviado. Vais ver aqui a resposta." };
+}
+
+/**
+ * Responder a um pedido: o utilizador no seu, o administrador em qualquer um.
+ *
+ * **A nota interna só é aceite a quem é administrador, e a verificação é
+ * feita aqui.** Um campo escondido num formulário não é prova de nada: sem esta
+ * linha, bastava marcá-lo para uma pessoa escrever uma nota que ela própria
+ * deixava de ver — o que não faz mal a ninguém — mas também para descobrir, pela
+ * ausência, que a camada existe.
+ */
+export async function responderPedidoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const repo = getRepository();
+
+  const ticketId = String(formData.get("ticketId") ?? "").trim();
+  const corpo = String(formData.get("corpo") ?? "").trim().slice(0, TICKET_CORPO_MAX);
+  if (!ticketId) return { error: "Pedido inválido." };
+
+  const admin = isAdmin(user.id);
+  const interna = admin && String(formData.get("interna") ?? "") === "1";
+  const novoEstado = String(formData.get("estado") ?? "").trim();
+
+  // O pedido tem de ser mesmo desta pessoa. Para o administrador, qualquer um.
+  const ticket = admin
+    ? await repo.getTicket(ticketId).catch(() => null)
+    : await repo.getTicketDoUtilizador(ticketId, user.id).catch(() => null);
+  if (!ticket) return { error: "Pedido inválido." };
+
+  // Mudar só o estado, sem escrever nada, é uma operação legítima.
+  if (!corpo && !(admin && isTicketStatus(novoEstado))) {
+    return { error: "Escreve alguma coisa." };
+  }
+
+  try {
+    if (corpo) {
+      await repo.addTicketMessage({
+        ticketId,
+        authorId: user.id,
+        body: corpo,
+        internal: interna,
+      });
+    }
+
+    // O estado escrito à mão ganha ao automático: quem responde sabe melhor do
+    // que uma regra se o assunto ficou resolvido.
+    const estado =
+      admin && isTicketStatus(novoEstado)
+        ? novoEstado
+        : corpo
+          ? estadoDepoisDaResposta(ticket.status, admin ? "equipa" : "utilizador", interna)
+          : ticket.status;
+    if (estado !== ticket.status) await repo.setTicketStatus(ticketId, estado);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a resposta") };
+  }
+
+  revalidatePath("/ajuda");
+  revalidatePath(`/ajuda/${ticketId}`);
+  revalidatePath("/mensagens");
+  revalidatePath(`/mensagens/pedidos/${ticketId}`);
+  return {
+    ok: true,
+    message: interna ? "Nota interna guardada. Só tu a vês." : "Resposta enviada.",
+  };
 }

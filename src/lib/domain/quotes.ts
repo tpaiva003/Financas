@@ -170,6 +170,43 @@ export function looksBlocked(text: string): boolean {
  * (feriados, suspensões) vêm a `null` e saltam-se: um buraco no meio da série
  * não é um preço de zero.
  */
+/**
+ * Bolsas que cotam em subunidade: pence, cêntimos, agorot.
+ *
+ * **Londres cota em pence, e a maiúscula apagava a diferença.** O Yahoo devolve
+ * `GBp` — com o `p` minúsculo — para os instrumentos cotados em pence, e `GBP`
+ * para os cotados em libras. São duas moedas com um fator de cem entre elas, e
+ * a única coisa que as distingue é a caixa de uma letra. O parser fazia
+ * `.toUpperCase()` antes de olhar, o que transformava uma na outra: um ETF a
+ * 9150 pence (91,50 £) passava a 9150 libras, e uma posição de mil e
+ * quinhentos euros aparecia com cento e quarenta e nove mil.
+ *
+ * O que torna isto pior do que um erro de conversão qualquer é que o número
+ * resultante **é plausível na sua ordem de grandeza** para quem não conhece o
+ * produto — e a app mostrava-o com a data do fecho ao lado, que é a marca de
+ * um número em que se confia.
+ *
+ * A comparação é feita sobre o texto **em cru**, e é por isso que ela existe
+ * numa função: uma normalização inocente noutro sítio volta a apagá-la.
+ */
+const SUBUNIDADE: Record<string, { moeda: string; divisor: number }> = {
+  GBp: { moeda: "GBP", divisor: 100 }, // pence, Londres
+  GBX: { moeda: "GBP", divisor: 100 }, // o mesmo, como outras fontes lhe chamam
+  ZAc: { moeda: "ZAR", divisor: 100 }, // cêntimos, Joanesburgo
+  ILA: { moeda: "ILS", divisor: 100 }, // agorot, Telavive
+};
+
+export function moedaDeSubunidade(bruto: string): { moeda: string; divisor: number } | null {
+  const exato = SUBUNIDADE[bruto];
+  if (exato) return exato;
+  // `GBX` e `ILA` aparecem em maiúsculas em fontes diferentes; `GBp` não, e é
+  // exactamente por isso que a procura exata vem primeiro.
+  const alto = bruto.toUpperCase();
+  if (alto === "GBX") return SUBUNIDADE.GBX!;
+  if (alto === "ILA") return SUBUNIDADE.ILA!;
+  return null;
+}
+
 export function parseYahooChart(text: string): QuoteSeriesData {
   let body: any;
   try {
@@ -179,8 +216,11 @@ export function parseYahooChart(text: string): QuoteSeriesData {
   }
 
   const result = body?.chart?.result?.[0];
-  const currency =
-    typeof result?.meta?.currency === "string" ? result.meta.currency.toUpperCase() : "EUR";
+  const bruta = typeof result?.meta?.currency === "string" ? result.meta.currency : "";
+  // Olha-se para o texto ANTES de qualquer maiúscula. Ver `SUBUNIDADE`.
+  const sub = bruta ? moedaDeSubunidade(bruta) : null;
+  const currency = sub ? sub.moeda : bruta ? bruta.toUpperCase() : "EUR";
+  const divisor = sub?.divisor ?? 1;
   const stamps: unknown = result?.timestamp;
   const closes: unknown = result?.indicators?.quote?.[0]?.close;
   if (!Array.isArray(stamps) || !Array.isArray(closes)) return { quotes: [], currency };
@@ -192,7 +232,7 @@ export function parseYahooChart(text: string): QuoteSeriesData {
     if (typeof t !== "number" || typeof c !== "number" || !Number.isFinite(c) || c <= 0) continue;
     quotes.push({
       date: new Date(t * 1000).toISOString().slice(0, 10),
-      closeCents: Math.round(c * 100),
+      closeCents: Math.round((c / divisor) * 100),
     });
   }
   // Um dia pode vir repetido em respostas intradiárias: fica o último.

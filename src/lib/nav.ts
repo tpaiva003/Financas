@@ -70,6 +70,9 @@ export function moreLinks(options: { isAdmin: boolean }): NavItem[] {
   const links: NavItem[] = [
     { href: "/acertos", label: "Acertos" },
     { href: "/ambiente", label: "Ambiente" },
+    // Para toda a gente, e não só para quem paga: pedir ajuda não é uma
+    // funcionalidade, é a forma de dizer que alguma coisa está errada.
+    { href: "/ajuda", label: "Ajuda" },
   ];
   if (options.isAdmin) {
     links.push({ href: "/mensagens", label: "Mensagens" });

@@ -35,10 +35,62 @@ function normalizar(s: string): string {
 
 const TODAS = "__todas__";
 
+/**
+ * Por que ordem se mostram.
+ *
+ * **Por euros e por percentagem, e não é a mesma pergunta.** Mil euros ganhos
+ * numa posição de cem mil é meio por cento e é dinheiro a sério; setenta por
+ * cento numa posição de duzentos euros é uma boa escolha e não muda a vida.
+ * Ordenar por uma delas e chamar-lhe "os melhores" responderia sempre a meia
+ * pergunta, e a metade errada muda conforme o tamanho da carteira.
+ *
+ * **A ordem à mão continua a ser a de omissão.** Quem arrumou as fichas
+ * arrumou-as por alguma razão, e chegar à página com essa ordem desfeita é
+ * perder trabalho de alguém.
+ */
+const ORDENS = [
+  { id: "manual", label: "A minha ordem" },
+  { id: "ganho-eur", label: "Ganho (€)" },
+  { id: "ganho-pct", label: "Ganho (%)" },
+  { id: "valor", label: "Valor" },
+  { id: "nome", label: "Nome" },
+] as const;
+type OrdemId = (typeof ORDENS)[number]["id"];
+
+/**
+ * Ordena sem nunca inventar um lugar para quem não tem número.
+ *
+ * Uma posição sem cotação não tem ganho — não é ganho zero. Tratá-la como zero
+ * punha-a no meio da tabela, entre os que perderam e os que ganharam, como se
+ * isso fosse informação. Vai toda para o fim, e a ordem entre elas é a que
+ * tinham.
+ */
+function ordenar(lista: InvestmentCardData[], ordem: OrdemId): InvestmentCardData[] {
+  if (ordem === "manual") return lista;
+  const chave = (d: InvestmentCardData): number | null => {
+    if (ordem === "ganho-eur") return d.gainCents ?? null;
+    if (ordem === "ganho-pct") return d.gainPct ?? null;
+    if (ordem === "valor") return d.currentValueCents;
+    return null;
+  };
+  const com = lista.map((d, i) => ({ d, i, k: chave(d) }));
+  return com
+    .sort((a, b) => {
+      if (ordem === "nome") return a.d.name.localeCompare(b.d.name, "pt");
+      if (a.k === null && b.k === null) return a.i - b.i;
+      // Sem número vai para o fim, seja qual for o sentido da ordenação.
+      if (a.k === null) return 1;
+      if (b.k === null) return -1;
+      return b.k - a.k || a.i - b.i;
+    })
+    .map((x) => x.d);
+}
+
 export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
   const [mostrarFechadas, setMostrarFechadas] = useState(false);
   const [soSemSimbolo, setSoSemSimbolo] = useState(false);
   const [bolsa, setBolsa] = useState(TODAS);
+  const [ordem, setOrdem] = useState<OrdemId>("manual");
   const [procura, setProcura] = useState("");
 
   const bolsas = useMemo(() => {
@@ -69,7 +121,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
 
   const visiveis = useMemo(() => {
     const q = normalizar(procura);
-    return items.filter((d) => {
+    const filtrados = items.filter((d) => {
       if (!mostrarFechadas && fechada(d)) return false;
       if (soSemSimbolo && d.symbol) return false;
       if (bolsa !== TODAS && (d.exchange ?? "") !== bolsa) return false;
@@ -81,7 +133,8 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
       }
       return true;
     });
-  }, [items, mostrarFechadas, soSemSimbolo, bolsa, procura]);
+    return ordenar(filtrados, ordem);
+  }, [items, mostrarFechadas, soSemSimbolo, bolsa, procura, ordem]);
 
   const filtrado = soSemSimbolo || bolsa !== TODAS || procura.trim() !== "";
 
@@ -98,6 +151,20 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
             placeholder="Procurar por nome ou ticker"
             className="input h-9 min-w-0 flex-1 text-sm sm:max-w-xs"
           />
+
+          <label className="sr-only" htmlFor="inv-ordem">Ordenar por</label>
+          <select
+            id="inv-ordem"
+            value={ordem}
+            onChange={(e) => setOrdem(e.target.value as OrdemId)}
+            className="select h-9 w-auto text-sm"
+          >
+            {ORDENS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.id === "manual" ? o.label : `Ordenar por ${o.label.toLowerCase()}`}
+              </option>
+            ))}
+          </select>
 
           {bolsas.length > 1 ? (
             <>
@@ -211,7 +278,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
                   // Arrumar uma lista filtrada mexia em posições que não se
                   // veem: o que está escondido continua lá e a ordem final
                   // saía diferente do que se viu a fazer.
-                  podeMover: !filtrado && !mostrarFechadas,
+                  podeMover: !filtrado && !mostrarFechadas && ordem === "manual",
                   primeiro: i === 0,
                   ultimo: i === visiveis.length - 1,
                 }}

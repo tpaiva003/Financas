@@ -6,8 +6,8 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { buildCrescimento, normalizeText, stableUid } from "@/lib/domain";
-import type { SpacePlan } from "@/lib/domain";
+import { buildCrescimento, isTicketStatus, normalizeText, stableUid } from "@/lib/domain";
+import type { SpacePlan, TicketStatus } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -28,6 +28,10 @@ import type {
   NetWorthSnapshotRow,
   AssetAttachment,
   CreateAssetAttachment,
+  Ticket,
+  TicketMessage,
+  CreateTicketInput,
+  CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
   Membership,
@@ -1806,6 +1810,149 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  // ---- Pedidos de ajuda -------------------------------------------------
+  //
+  // A separação entre o que o utilizador lê e as notas internas é feita por
+  // DUAS funções com nomes diferentes, e não por uma bandeira. Ver o
+  // comentário na interface: uma bandeira é igual a isto até ao dia em que
+  // alguém a passa ao contrário, e aí a nota já foi lida.
+
+  async createTicket(input: CreateTicketInput): Promise<string> {
+    const db = getSupabaseAdmin();
+    const id = `tkt_${randomUUID()}`;
+    const { error } = await db.from("tickets").insert({
+      id,
+      space_id: input.spaceId,
+      created_by: input.createdBy,
+      subject: input.subject,
+      status: "novo",
+    });
+    if (error) throw new Error(error.message);
+
+    // A primeira mensagem é o corpo do pedido, e é pública por definição: foi
+    // a pessoa que a escreveu.
+    const { error: e2 } = await db.from("ticket_messages").insert({
+      id: `tkm_${randomUUID()}`,
+      ticket_id: id,
+      author_id: input.createdBy,
+      body: input.body,
+      internal: false,
+    });
+    if (e2) throw new Error(e2.message);
+    return id;
+  }
+
+  async listTicketsDoUtilizador(userId: string): Promise<Ticket[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("tickets")
+        .select("*")
+        .eq("created_by", userId)
+        .order("updated_at", { ascending: false })
+        .range(de, ate),
+    );
+    return rows.map(rowToTicket);
+  }
+
+  async listTicketsTodos(): Promise<Ticket[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db.from("tickets").select("*").order("updated_at", { ascending: false }).range(de, ate),
+    );
+    return rows.map(rowToTicket);
+  }
+
+  async getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null> {
+    const db = getSupabaseAdmin();
+    // O autor vai na consulta, não numa comparação em JS depois de ler.
+    const { data, error } = await db
+      .from("tickets")
+      .select("*")
+      .eq("id", id)
+      .eq("created_by", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTicket(data) : null;
+  }
+
+  async getTicket(id: string): Promise<Ticket | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTicket(data) : null;
+  }
+
+  async listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("ticket_messages")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        // O filtro está AQUI, na consulta. As internas nem chegam a sair da
+        // base de dados por este caminho.
+        .eq("internal", false)
+        .order("created_at")
+        .range(de, ate),
+    );
+    return rows.map(rowToTicketMessage);
+  }
+
+  async listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("ticket_messages")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        .order("created_at")
+        .range(de, ate),
+    );
+    return rows.map(rowToTicketMessage);
+  }
+
+  async addTicketMessage(input: CreateTicketMessageInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("ticket_messages").insert({
+      id: `tkm_${randomUUID()}`,
+      ticket_id: input.ticketId,
+      author_id: input.authorId,
+      body: input.body,
+      internal: input.internal,
+    });
+    if (error) throw new Error(error.message);
+
+    // Uma nota interna NÃO mexe no `updated_at`: se mexesse, o fio do
+    // utilizador passava a denunciar a hora a que alguém escreveu uma coisa
+    // que ele não pode ler.
+    if (!input.internal) {
+      await db
+        .from("tickets")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", input.ticketId);
+    }
+  }
+
+  async setTicketStatus(id: string, status: TicketStatus): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("tickets")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async countTicketsAbertos(): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["novo", "a-tratar", "a-aguardar"]);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
   async listContactMessages(): Promise<ContactMessage[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
@@ -1888,6 +2035,32 @@ function rowToAssetTrade(r: any): AssetTrade {
     fxRate: r.fx_rate === null || r.fx_rate === undefined ? null : Number(r.fx_rate),
     notes: r.notes ?? null,
     createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToTicket(r: any): Ticket {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    createdBy: r.created_by,
+    subject: r.subject,
+    status: isTicketStatus(r.status) ? r.status : "novo",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at ?? r.created_at,
+  };
+}
+
+function rowToTicketMessage(r: any): TicketMessage {
+  return {
+    id: r.id,
+    ticketId: r.ticket_id,
+    authorId: r.author_id,
+    body: r.body ?? "",
+    // `=== true` e não `Boolean(...)`: um valor guardado por uma versão antiga
+    // chega como `null`, e o lado seguro de um `null` aqui é "não é interna" —
+    // que é o que a coluna diz por omissão.
+    internal: r.internal === true,
+    createdAt: r.created_at,
   };
 }
 

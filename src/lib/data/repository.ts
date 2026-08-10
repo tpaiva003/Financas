@@ -22,6 +22,7 @@ import type {
   IncomeKind,
   SpacePlan,
   Crescimento,
+  TicketStatus,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -278,6 +279,53 @@ export interface AssetAttachment {
 }
 
 export type CreateAssetAttachment = Omit<AssetAttachment, "createdAt">;
+
+/**
+ * Um pedido de ajuda.
+ *
+ * **Quem vê:** o autor e o administrador, e mais ninguém — nem os outros
+ * participantes do mesmo ambiente. Um pedido leva lá dentro o que a pessoa
+ * quiser escrever, incluindo coisas que ela não diria à frente de quem divide
+ * as despesas com ela.
+ */
+export interface Ticket {
+  id: string;
+  spaceId: string;
+  createdBy: string;
+  subject: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  body: string;
+  /**
+   * Nota interna: escrita para quem trata do assunto e **nunca** mostrada a
+   * quem abriu o pedido. Chega ao ecrã do utilizador por uma função de leitura
+   * que não a devolve de todo — ver `listTicketMessagesPublicas`.
+   */
+  internal: boolean;
+  createdAt: string;
+}
+
+export interface CreateTicketInput {
+  spaceId: string;
+  createdBy: string;
+  subject: string;
+  /** A primeira mensagem do fio. Um pedido sem corpo não é um pedido. */
+  body: string;
+}
+
+export interface CreateTicketMessageInput {
+  ticketId: string;
+  authorId: string;
+  body: string;
+  internal: boolean;
+}
 
 /**
  * Um movimento datado de um investimento: compra, venda, dividendo ou custo.
@@ -765,6 +813,37 @@ export interface Repository {
   listImportBatches(spaceId: string): Promise<ImportBatch[]>;
   /** Anula um lote: elimina (soft-delete) as despesas que criou. */
   undoImportBatch(batchId: string, spaceId: string, userId: string): Promise<number>;
+
+  // Pedidos de ajuda. Ver `Ticket` para a regra das notas internas.
+  createTicket(input: CreateTicketInput): Promise<string>;
+  /** Os pedidos de uma pessoa, do mais recente para o mais antigo. */
+  listTicketsDoUtilizador(userId: string): Promise<Ticket[]>;
+  /** Todos os pedidos. Só para o administrador. */
+  listTicketsTodos(): Promise<Ticket[]>;
+  /**
+   * Um pedido, **pelo id e pelo autor**.
+   *
+   * A verificação vai na consulta e não num `if` depois de ler. É a mesma
+   * razão do `space_id` em todo o resto: aqui tudo corre com a chave de
+   * serviço, que ignora o RLS, e a comparação feita em JS é a que as pessoas
+   * se esquecem de escrever.
+   */
+  getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null>;
+  getTicket(id: string): Promise<Ticket | null>;
+  /**
+   * As mensagens que o utilizador pode ler. **Nunca devolve notas internas.**
+   *
+   * Não tem bandeira nenhuma de propósito: uma `incluirInternas` seria igual a
+   * isto até ao dia em que alguém a passasse ao contrário, e aí a nota já foi
+   * lida e não há como desfazer.
+   */
+  listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]>;
+  /** Tudo, incluindo as notas internas. Só para o administrador. */
+  listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]>;
+  addTicketMessage(input: CreateTicketMessageInput): Promise<void>;
+  setTicketStatus(id: string, status: TicketStatus): Promise<void>;
+  /** Quantos pedidos estão por tratar, para o aviso da consola. */
+  countTicketsAbertos(): Promise<number>;
 
   // Mensagens de contacto da landing.
   createContactMessage(input: CreateContactInput): Promise<void>;
