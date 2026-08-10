@@ -166,7 +166,19 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   // Para se poder dizer quem tem a outra parte de um bem comprado a meias. Só
   // nome e id: o campo não precisa de mais nada de ninguém.
   const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
-  const semSimbolo = stored.filter((a) => a.kind === "investimento" && !a.symbol).length;
+  /**
+   * Investimentos sem símbolo, separados entre os que ainda contam e os que já
+   * não contam.
+   *
+   * Um dizia "11 sem símbolo" e a grelha por baixo mostrava dois, porque nove
+   * eram posições já fechadas que a grelha esconde. Os dois números estavam
+   * certos e juntos mentiam. E a distinção não é só de contagem: pôr o símbolo
+   * numa posição fechada não muda rigorosamente nada — não há unidades para
+   * valorizar — por isso o número que interessa é o das abertas.
+   */
+  const semSimboloTodos = net.assets.filter((a) => a.kind === "investimento" && !stored.find((s) => s.id === a.id)?.symbol);
+  const semSimbolo = semSimboloTodos.filter((a) => (a.quantity ?? 0) > 0).length;
+  const semSimboloFechados = semSimboloTodos.length - semSimbolo;
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
@@ -394,9 +406,17 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   <div className="border-b border-hair2 px-5 pb-4 pt-3">
                     <p className="mb-2 text-xs text-fg-faint">
                       {semSimbolo}{" "}
-                      {semSimbolo === 1 ? "investimento está" : "investimentos estão"} sem
+                      {semSimbolo === 1 ? "investimento aberto está" : "investimentos abertos estão"} sem
                       símbolo de bolsa, e por isso sem cotação, sem ganho e sem
                       rentabilidade.
+                      {semSimboloFechados > 0 ? (
+                        <>
+                          {" "}
+                          Há {semSimboloFechados === 1 ? "mais uma posição já fechada" : `mais ${semSimboloFechados} posições já fechadas`}{" "}
+                          sem símbolo, mas a essas o símbolo não muda nada: não
+                          há unidades para valorizar.
+                        </>
+                      ) : null}
                     </p>
                     <SuggestMissingSymbols />
                   </div>

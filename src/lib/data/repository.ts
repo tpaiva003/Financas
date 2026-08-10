@@ -21,6 +21,7 @@ import type {
   AssetKind,
   IncomeKind,
   SpacePlan,
+  Crescimento,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -428,6 +429,14 @@ export interface PlatformStats {
   templates: { label: string; uses: number }[];
   /** Que partes da app são usadas, e por quantos ambientes. */
   features: FeatureUsage[];
+  /**
+   * Se isto está a aumentar ou parado.
+   *
+   * `null` quando as leituras de que depende falharam. Uma curva a zeros por
+   * não se ter conseguido ler é indistinguível de uma curva a zeros por não
+   * haver uso — e as duas dizem coisas opostas.
+   */
+  crescimento: Crescimento | null;
   /**
    * O que não foi possível ler, em texto. A consola mostra o resto na mesma:
    * um número em falta não pode deitar abaixo a página inteira.

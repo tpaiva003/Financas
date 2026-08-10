@@ -146,7 +146,7 @@ describe("symbolCandidates", () => {
   it("um ticker sem sufixo tenta primeiro as praças explícitas", () => {
     // "MSFT" sem sufixo é ambíguo para a fonte, que indexa várias bolsas. As
     // formas explícitas vão à frente para não vir o instrumento errado.
-    expect(symbolCandidates("MSFT")).toEqual(["msft.us", "msft.de", "msft"]);
+    expect(symbolCandidates("MSFT")).toEqual(["msft.us", "msft.de", "msft.pt", "msft"]);
   });
 
   it("um símbolo com sufixo é usado tal e qual", () => {
@@ -247,8 +247,36 @@ describe("forSource", () => {
     expect(forSource("sxr8.de", "yahoo")).toBe("SXR8.DE");
   });
 
+  /**
+   * O caso que denunciou o buraco: a EDP. Só o `.uk` e o `.us` estavam
+   * traduzidos, e tudo o resto passava em maiúsculas — o que acerta na
+   * Alemanha por acaso e falha em todas as outras praças. `EDP.PT` não existe
+   * no Yahoo, e o ecrã dizia "nenhum dos símbolos sugeridos tem cotações",
+   * que se lê como "o símbolo está errado" quando o símbolo estava certo.
+   */
+  it("sabe onde fica Lisboa, que numa app portuguesa não é opcional", () => {
+    expect(forSource("edp.pt", "yahoo")).toBe("EDP.LS");
+    expect(forSource("edpr.pt", "yahoo")).toBe("EDPR.LS");
+    expect(forSource("galp.pt", "yahoo")).toBe("GALP.LS");
+  });
+
+  it("traduz as outras praças europeias em vez de as deixar passar em maiúsculas", () => {
+    expect(forSource("air.fr", "yahoo")).toBe("AIR.PA");
+    expect(forSource("asml.nl", "yahoo")).toBe("ASML.AS");
+    expect(forSource("san.es", "yahoo")).toBe("SAN.MC");
+    expect(forSource("eni.it", "yahoo")).toBe("ENI.MI");
+    expect(forSource("nesn.ch", "yahoo")).toBe("NESN.SW");
+  });
+
+  it("uma praça que não conhece passa como está, sem inventar", () => {
+    // Melhor falhar de forma visível do que traduzir para um sítio errado, que
+    // devolveria a cotação de outra empresa com ar de estar tudo bem.
+    expect(forSource("xpto.zz", "yahoo")).toBe("XPTO.ZZ");
+  });
+
   it("para a Stooq fica como está, que é a forma nativa", () => {
     expect(forSource("iwda.uk", "stooq")).toBe("iwda.uk");
     expect(forSource("^spx", "stooq")).toBe("^spx");
+    expect(forSource("edp.pt", "stooq")).toBe("edp.pt");
   });
 });

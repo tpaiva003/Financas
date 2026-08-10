@@ -53,6 +53,19 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
 
   const fechadas = items.filter(fechada);
   const semSimbolo = items.filter((d) => !d.symbol);
+  /**
+   * Os que o filtro vai mesmo mostrar, e é essa a contagem que aparece.
+   *
+   * O crachá dizia 11 e a lista mostrava 2: contava todos os sem símbolo, e a
+   * lista escondia as posições já fechadas, que são a maioria deles. Um filtro
+   * que promete onze e entrega dois não é um pormenor de contagem — passa a
+   * ideia de que a lista está a esconder coisas por avaria.
+   *
+   * Os que faltam não desaparecem: são contados à parte e anunciados por
+   * palavras, com o botão para os trazer.
+   */
+  const semSimboloVisiveis = semSimbolo.filter((d) => mostrarFechadas || !fechada(d));
+  const semSimboloFechadas = semSimbolo.length - semSimboloVisiveis.length;
 
   const visiveis = useMemo(() => {
     const q = normalizar(procura);
@@ -118,7 +131,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
                   : "border-hair text-fg-muted hover:border-fg/30 hover:text-fg"
               }`}
             >
-              Sem símbolo ({semSimbolo.length})
+              Sem símbolo ({semSimboloVisiveis.length})
             </button>
           ) : null}
 
@@ -169,6 +182,24 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
           {visiveis.length < items.length ? (
             <p className="mb-2 text-xs text-fg-faint">
               {visiveis.length} de {items.length}.
+              {/* O resto dos sem símbolo, quando estão escondidos por serem
+                  posições fechadas. Sem esta frase, quem procura os onze que a
+                  app anunciou fica a achar que nove se perderam. */}
+              {soSemSimbolo && semSimboloFechadas > 0 ? (
+                <>
+                  {" "}
+                  Há {semSimboloFechadas === 1 ? "mais 1 sem símbolo" : `mais ${semSimboloFechadas} sem símbolo`}{" "}
+                  em posições já fechadas — e a essas o símbolo já não muda nada.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setMostrarFechadas(true)}
+                    className="underline underline-offset-2 hover:text-fg"
+                  >
+                    Mostrar na mesma
+                  </button>
+                  .
+                </>
+              ) : null}
             </p>
           ) : null}
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

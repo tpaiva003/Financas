@@ -236,14 +236,58 @@ export function normalizeSymbol(raw: string): string | null {
  * na outra. E um ticker americano precisa de `.us` na Stooq mas dispensa
  * sufixo no Yahoo. Traduzir aqui evita espalhar essa tabela pelo código.
  */
+/**
+ * Sufixo de praça: o nosso (o da Stooq) para o do Yahoo.
+ *
+ * **Isto faltava quase todo, e num sítio que não dava sinal.** Só o `.uk` e o
+ * `.us` estavam traduzidos; tudo o resto passava em maiúsculas, o que por acaso
+ * acerta na Alemanha (`.DE` nas duas) e falha em todas as outras. A EDP virava
+ * `EDP.PT`, que no Yahoo não existe — e o ecrã dizia "nenhum dos símbolos
+ * sugeridos tem cotações", uma frase que se lê como "o símbolo está errado"
+ * quando o símbolo estava certo e o tradutor é que não sabia Lisboa.
+ *
+ * Numa app portuguesa, ter a Euronext Lisboa por traduzir é a falha mais cara
+ * da lista: são as ações que mais gente daqui tem.
+ */
+const SUFIXO_YAHOO: Record<string, string> = {
+  pt: "LS", // Euronext Lisboa
+  fr: "PA", // Euronext Paris
+  nl: "AS", // Euronext Amesterdão
+  be: "BR", // Euronext Bruxelas
+  ie: "IR", // Euronext Dublin
+  es: "MC", // Madrid
+  it: "MI", // Milão
+  ch: "SW", // Six, Zurique
+  at: "VI", // Viena
+  se: "ST", // Estocolmo
+  dk: "CO", // Copenhaga
+  no: "OL", // Oslo
+  fi: "HE", // Helsínquia
+  pl: "WA", // Varsóvia
+  ca: "TO", // Toronto
+  au: "AX", // Sidney
+  jp: "T", // Tóquio
+  hk: "HK", // Hong Kong
+  uk: "L", // Londres
+  de: "DE", // Xetra — igual nas duas, e escrito à mesma para não ser por acaso
+};
+
 export function forSource(symbol: string, source: QuoteSourceId): string {
   const s = symbol.trim().toLowerCase();
   if (source === "stooq") return s;
 
   // Yahoo.
   if (s === "^spx") return "^GSPC";
-  if (s.endsWith(".uk")) return `${s.slice(0, -3).toUpperCase()}.L`;
+  // Um índice vai como está: os nomes não seguem sufixos de praça nenhuns.
+  if (s.startsWith("^")) return s.toUpperCase();
   if (s.endsWith(".us")) return s.slice(0, -3).toUpperCase();
+
+  const ponto = s.lastIndexOf(".");
+  if (ponto > 0) {
+    const praca = s.slice(ponto + 1);
+    const traduzido = SUFIXO_YAHOO[praca];
+    if (traduzido) return `${s.slice(0, ponto).toUpperCase()}.${traduzido}`;
+  }
   return s.toUpperCase();
 }
 
@@ -265,8 +309,11 @@ export function symbolCandidates(raw: string): string[] {
   if (!s) return [];
   if (s.includes(".") || s.startsWith("^")) return [s];
   // Ticker simples: o mercado americano é de longe o caso mais comum, a seguir
-  // a Xetra para quem compra ETFs europeus.
-  return [`${s}.us`, `${s}.de`, s];
+  // a Xetra para quem compra ETFs europeus, e depois Lisboa — esta app é
+  // portuguesa e quem escreve "EDP" à mão não está a pensar em Nova Iorque.
+  // A forma sem praça fica no fim: é ambígua, e uma fonte que indexa várias
+  // bolsas tanto pode não dar nada como dar o instrumento errado.
+  return [`${s}.us`, `${s}.de`, `${s}.pt`, s];
 }
 
 /**

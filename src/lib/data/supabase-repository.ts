@@ -6,7 +6,7 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { normalizeText, stableUid } from "@/lib/domain";
+import { buildCrescimento, normalizeText, stableUid } from "@/lib/domain";
 import type { SpacePlan } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
@@ -983,18 +983,54 @@ export class SupabaseRepository implements Repository {
       return null;
     }
 
+    /**
+     * O mesmo, mas por páginas.
+     *
+     * **A consola contava até mil e calava-se.** O PostgREST corta em mil
+     * linhas sem avisar, e nenhuma destas leituras pedia páginas: acima disso,
+     * "despesas" ficava em 1000 para sempre e os ambientes que sobrassem
+     * apareciam sem uma única despesa. Um tecto que se apresenta como total é
+     * o modo de falha nº 1 desta app, e a consola era o sítio onde ele estava
+     * mais à vontade — ninguém confere um número de gestão contra nada.
+     */
+    async function readAll<T>(
+      label: string,
+      pagina: (
+        de: number,
+        ate: number,
+      ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+    ): Promise<T[] | null> {
+      try {
+        return await todasAsLinhas<T>(pagina);
+      } catch (e) {
+        warnings.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    }
+
     const [spaceRows, memberRows, expenseRows, accountRows] = await Promise.all([
-      read<{ id: string; name: string; created_at: string }>("ambientes", () =>
-        db.from("spaces").select("id, name, created_at"),
+      readAll<{ id: string; name: string; created_at: string }>("ambientes", (de, ate) =>
+        db.from("spaces").select("id, name, created_at").range(de, ate),
       ),
-      read<{ space_id: string; linked_user_id: string | null }>("participantes", () =>
-        db.from("members").select("space_id, linked_user_id"),
+      readAll<{ space_id: string; linked_user_id: string | null }>("participantes", (de, ate) =>
+        db.from("members").select("space_id, linked_user_id").range(de, ate),
       ),
       // Só o que é preciso para contar e datar: nunca descrições nem valores.
-      read<{ space_id: string; transaction_date: string }>("despesas", () =>
-        db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
+      // O `created_at` é o que diz quando alguém USOU a app; o
+      // `transaction_date` diz quando a compra foi feita, e quem importa dois
+      // anos de extrato numa noite tem duas coisas muito diferentes.
+      readAll<{ space_id: string; transaction_date: string; created_at: string }>(
+        "despesas",
+        (de, ate) =>
+          db
+            .from("expenses")
+            .select("space_id, transaction_date, created_at")
+            .is("deleted_at", null)
+            .range(de, ate),
       ),
-      read<{ id: string }>("contas", () => db.from("app_users").select("id")),
+      readAll<{ id: string; created_at: string }>("contas", (de, ate) =>
+        db.from("app_users").select("id, created_at").range(de, ate),
+      ),
     ]);
 
     /**
@@ -1014,8 +1050,12 @@ export class SupabaseRepository implements Repository {
 
     const featureRows = await Promise.all(
       FEATURES.map(async (f) => {
-        const { data } = await db.from(f.table).select("space_id");
-        return { ...f, rows: (data ?? []) as { space_id: string }[] };
+        // Também por páginas, e também com `created_at`: estas linhas são o
+        // que faz a curva de uso, e não só a contagem de quem usa o quê.
+        const rows = await todasAsLinhas<{ space_id: string; created_at: string }>((de, ate) =>
+          db.from(f.table).select("space_id, created_at").range(de, ate),
+        ).catch(() => [] as { space_id: string; created_at: string }[]);
+        return { ...f, rows };
       }),
     );
 
@@ -1068,8 +1108,34 @@ export class SupabaseRepository implements Repository {
         .filter((id): id is string => Boolean(id)),
     );
 
+    /**
+     * A curva de uso.
+     *
+     * Os eventos são todos os registos que entraram na app — despesas e o que
+     * cada funcionalidade criou — datados por `created_at`. Ver o cabeçalho do
+     * `plataforma.ts` para a razão de não ser `transaction_date`.
+     */
+    const crescimento =
+      spaceRows && accountRows
+        ? buildCrescimento({
+            hoje: new Date().toISOString().slice(0, 10),
+            contas: accountRows.map((a) => a.created_at).filter(Boolean),
+            ambientes: spaceRows.map((s) => ({ id: s.id, createdAt: s.created_at })),
+            eventos: [
+              ...(expenseRows ?? []).map((e) => ({
+                spaceId: e.space_id,
+                createdAt: e.created_at ?? e.transaction_date,
+              })),
+              ...featureRows.flatMap((f) =>
+                f.rows.map((r) => ({ spaceId: r.space_id, createdAt: r.created_at })),
+              ),
+            ].filter((e) => e.spaceId && e.createdAt),
+          })
+        : null;
+
     return {
       accountCount: accountRows ? accountRows.length : null,
+      crescimento,
       spaceCount: spaceRows ? spaces.length : null,
       expenseCount: expenseRows ? expenseRows.length : null,
       activeSpaces:

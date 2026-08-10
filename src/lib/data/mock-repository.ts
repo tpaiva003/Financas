@@ -677,6 +677,9 @@ export class MockRepository implements Repository {
 
     return {
       accountCount: store.appUsers.length,
+      // O mock não guarda `createdAt` em tudo o que serviria de evento, e uma
+      // curva construída sobre metade dos dados seria pior do que não a ter.
+      crescimento: null,
       spaceCount: spaces.length,
       expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
       activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,

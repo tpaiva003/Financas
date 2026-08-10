@@ -22,6 +22,7 @@ import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
   updateAssetPriceAction,
+  updateAssetSymbolAction,
 } from "@/app/(app)/actions";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 import { getAssetTwr } from "@/lib/services/asset-twr";
@@ -214,6 +215,30 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             <button type="submit" className="btn-ghost h-11 px-3 text-xs">Gravar</button>
           </form>
 
+          {/* O campo do símbolo vive AQUI, e não só no formulário completo
+              noutra página. Quem está a olhar para "sem cotação" está no sítio
+              onde o quer resolver, e mandá-lo a outro ecrã era dar uma
+              instrução em vez de uma caixa de texto. */}
+          <form action={updateAssetSymbolAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="id" value={asset.id} />
+            <div>
+              <label className="label" htmlFor="simbolo">Símbolo da bolsa</label>
+              <input
+                key={`s:${asset.id}:${asset.symbol ?? ""}`}
+                id="simbolo"
+                name="symbol"
+                defaultValue={asset.symbol ?? ""}
+                placeholder="edp.pt"
+                autoCapitalize="none"
+                spellCheck={false}
+                className="input w-40 font-mono"
+              />
+            </div>
+            <button type="submit" className="btn-ghost h-11 px-3 text-xs">
+              Gravar e buscar preço
+            </button>
+          </form>
+
           {asset.symbol ? (
             <form action={fetchAssetQuoteAction}>
               <input type="hidden" name="id" value={asset.id} />
@@ -225,12 +250,21 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           ) : null}
         </div>
 
+        <p className="mt-2 text-xs text-fg-faint">
+          O sufixo diz a praça: <span className="font-mono text-fg-muted">.pt</span> Lisboa,{" "}
+          <span className="font-mono text-fg-muted">.us</span> Estados Unidos,{" "}
+          <span className="font-mono text-fg-muted">.de</span> Xetra,{" "}
+          <span className="font-mono text-fg-muted">.uk</span> Londres,{" "}
+          <span className="font-mono text-fg-muted">.fr</span> Paris,{" "}
+          <span className="font-mono text-fg-muted">.nl</span> Amesterdão. Sem
+          sufixo, tenta-se primeiro os Estados Unidos.
+        </p>
+
         {!asset.symbol ? (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-fg-faint">
               Sem símbolo de bolsa, o preço é sempre escrito à mão — e não há
-              cotação, nem ganho, nem rentabilidade. Indica-o em Ativos, no
-              Editar deste investimento.
+              cotação, nem ganho, nem rentabilidade.
             </p>
             {tickerSuggestAvailable() ? <SuggestSymbolButton assetId={asset.id} /> : null}
           </div>

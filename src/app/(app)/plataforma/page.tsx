@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { isAdmin, householdUsers } from "@/lib/users";
 import { getRepository } from "@/lib/data";
 import type { SpaceSummary } from "@/lib/data";
+import type { Crescimento as CrescimentoData } from "@/lib/domain";
 import { InviteUserForm } from "@/components/InviteUserForm";
 import { AccountRow } from "@/components/AccountRow";
 import { QuoteDiagnostic } from "@/components/QuoteDiagnostic";
@@ -72,6 +73,8 @@ export default async function PlataformaPage() {
         <Stat label="Despesas" value={stats.expenseCount} />
         <Stat label="Ativos (30 dias)" value={stats.activeSpaces} />
       </div>
+
+      {stats.crescimento ? <Crescimento c={stats.crescimento} /> : null}
 
       {/* O que não foi possível ler. O resto da consola continua a servir. */}
       {stats.warnings.length > 0 ? (
@@ -200,6 +203,145 @@ const FEATURE_LABELS: Record<string, string> = {
   importacoes: "importações",
   metas: "metas",
 };
+
+/**
+ * Se isto está a aumentar, ou parado.
+ *
+ * **O total sozinho não responde a isso.** Quarenta ambientes é o mesmo número
+ * quer tenham chegado todos no mês passado quer nenhum apareça desde o Natal, e
+ * são situações opostas. Aqui mostra-se o que entrou, quando, e quantos
+ * voltaram.
+ *
+ * **Contagens à frente, percentagens só quando a base as aguenta.** "100% de
+ * retenção" com um ambiente elegível é verdade e não quer dizer nada; "2 de 3"
+ * ninguém confunde com uma tendência.
+ */
+function Crescimento({ c }: { c: CrescimentoData }) {
+  const maximo = Math.max(1, ...c.meses.map((m) => Math.max(m.registosNovos, 1)));
+  const mesLabel = (ym: string) =>
+    new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("pt-PT", { month: "short" });
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="eyebrow">Está a crescer?</h2>
+        <p className="mt-1 text-sm text-fg-muted">
+          Um registo conta no dia em que <strong className="font-medium text-fg">entrou</strong> na
+          app, não na data da compra que representa. Quem importa dois anos de
+          extrato numa noite fez uma noite de uso, não dois anos.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {c.janelas.map((j) => (
+          <div key={j.dias} className="card p-4">
+            <p className="eyebrow">Últimos {j.dias} dias</p>
+            <p className="mt-1.5 font-display text-3xl font-semibold tracking-tight tnum">
+              {j.ambientesAtivos}
+            </p>
+            <p className="text-xs text-fg-muted">
+              {j.ambientesAtivos === 1 ? "ambiente ativo" : "ambientes ativos"}
+            </p>
+            <p className="mt-2 font-mono text-[11px] tnum text-fg-faint">
+              +{j.contasNovas} {j.contasNovas === 1 ? "conta" : "contas"} · +{j.ambientesNovos}{" "}
+              {j.ambientesNovos === 1 ? "ambiente" : "ambientes"} · {j.registosNovos}{" "}
+              {j.registosNovos === 1 ? "registo" : "registos"}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* A série mês a mês, com os meses vazios incluídos: um buraco é
+          informação, e saltá-lo desenha uma linha contínua por cima de dois
+          meses parados. */}
+      <div className="card p-5">
+        <p className="eyebrow mb-3">Registos criados por mês</p>
+        <ul className="flex items-end gap-1.5" style={{ height: "6rem" }}>
+          {c.meses.map((m) => (
+            <li key={m.mes} className="flex flex-1 flex-col justify-end gap-1">
+              <span
+                className={`block rounded-t ${m.registosNovos > 0 ? "bg-fg/70" : "bg-hair"}`}
+                style={{
+                  height: `${Math.max(2, Math.round((m.registosNovos / maximo) * 100))}%`,
+                }}
+                title={`${m.mes}: ${m.registosNovos} registos, ${m.ambientesAtivos} ambientes ativos, +${m.contasNovas} contas`}
+              />
+            </li>
+          ))}
+        </ul>
+        <ul className="mt-1.5 flex gap-1.5">
+          {c.meses.map((m) => (
+            <li
+              key={m.mes}
+              className="flex-1 truncate text-center font-mono text-[10px] text-fg-faint"
+            >
+              {mesLabel(m.mes)}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-fg-faint">
+          Passa por cima de uma barra para ver o mês. Contas novas e ambientes
+          ativos vão no mesmo sítio.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Proporcao
+          label="Voltaram"
+          p={c.retencao}
+          nota="Dos ambientes com mais de 30 dias, quantos registaram alguma coisa nos últimos 30."
+        />
+        <Proporcao
+          label="Arrancaram"
+          p={c.ativacao}
+          nota="Dos ambientes com mais de uma semana, quantos usaram a app nos primeiros sete dias."
+        />
+        <div className="card p-4">
+          <p className="eyebrow">Nunca registaram nada</p>
+          <p className="mt-1.5 font-display text-3xl font-semibold tracking-tight tnum">
+            {c.semQualquerRegisto}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-fg-faint">
+            Ambientes criados que nunca chegaram a ter uma linha. Uma conta que
+            não arranca é um problema de primeiro uso, não de funcionalidade.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Proporcao({
+  label,
+  p,
+  nota,
+}: {
+  label: string;
+  p: { de: number; quantos: number; pct: number | null };
+  nota: string;
+}) {
+  return (
+    <div className="card p-4">
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1.5 font-display text-3xl font-semibold tracking-tight tnum">
+        {p.de === 0 ? (
+          <span className="text-fg-faint">—</span>
+        ) : p.pct !== null ? (
+          `${p.pct}%`
+        ) : (
+          // Base pequena: o número em bruto, que ninguém confunde com uma
+          // tendência. Ver o cabeçalho do domínio.
+          `${p.quantos} de ${p.de}`
+        )}
+      </p>
+      <p className="mt-1 text-xs leading-snug text-fg-faint">
+        {p.de === 0 ? "Ainda não há ambientes com idade para esta pergunta. " : ""}
+        {nota}
+        {p.pct !== null ? ` (${p.quantos} de ${p.de}.)` : ""}
+      </p>
+    </div>
+  );
+}
 
 function Stat({ label, value }: { label: string; value: number | null }) {
   return (

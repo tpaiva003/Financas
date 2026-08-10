@@ -1756,6 +1756,35 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
 }
 
 /**
+ * Só o símbolo de bolsa, a partir da ficha do investimento.
+ *
+ * **Porque é que isto existe.** O campo do símbolo só vivia no formulário
+ * completo do bem, escondido atrás do "Editar" de uma linha noutra página — e a
+ * própria ficha mandava a pessoa lá ("Indica-o em Ativos, no Editar deste
+ * investimento"), o que é uma instrução e não um campo. Quem está a olhar para
+ * "sem cotação" está no sítio onde o quer resolver.
+ *
+ * Grava e vai logo buscar o preço: o símbolo existe para isso, e gravá-lo sem
+ * ir buscar deixava o ecrã exactamente como estava.
+ */
+export async function updateAssetSymbolAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const symbol = normalizeSymbol(String(formData.get("symbol") ?? ""));
+  // Apagar o símbolo é uma escolha legítima: um ticker errado tira-se assim.
+  await getRepository()
+    .updateAsset(id, ctx.space.id, { symbol: symbol ?? null })
+    .catch(() => {});
+  if (symbol) await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
+
+  revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
  * Vai buscar a cotação do símbolo e grava-a como preço atual.
  *
  * Se a fonte não souber o símbolo, ou estiver em baixo, o preço fica como
