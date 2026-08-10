@@ -260,3 +260,49 @@ describe("a coluna da bolsa", () => {
     expect(linhas[0]!.exchange).toBe("NDQ");
   });
 });
+
+/**
+ * O ficheiro que importou uma compra de 493,98 EUR como 493 975,00 EUR.
+ *
+ * O ponto é o decimal em toda a coluna, mas naquela linha tinha TRÊS casas — e
+ * a regra portuguesa lê três dígitos depois de um ponto como milhares. As
+ * linhas ao lado, com duas casas, eram lidas bem: é o que torna isto difícil de
+ * ver, porque a coluna parece certa.
+ */
+describe("um ficheiro com decimais escritos com ponto", () => {
+  const grelha = [
+    ["Data", "Produto", "Quantidade", "Preço", "Valor"],
+    ["02-06-2025", "ETF QUALQUER", "5", "98.795", "493.975"],
+    ["10-03-2025", "ETF QUALQUER", "5", "100.00", "500.00"],
+    ["09-09-2024", "ETF QUALQUER", "6", "92.56", "555.36"],
+  ];
+
+  it("lê 493.975 como 493,98 e não como 493 975", () => {
+    const mapping = detectTradeMapping(grelha);
+    const linhas = rowsToTrades(grelha, mapping!);
+
+    expect(linhas[0]!.amountCents).toBe(49398);
+    expect(linhas[1]!.amountCents).toBe(50000);
+    expect(linhas[2]!.amountCents).toBe(55536);
+  });
+
+  it("o preço por unidade segue a mesma regra", () => {
+    const mapping = detectTradeMapping(grelha);
+    const linhas = rowsToTrades(grelha, mapping!);
+
+    expect(linhas[0]!.unitPriceCents).toBe(9880);
+  });
+
+  it("não estraga um ficheiro à portuguesa", () => {
+    const pt = [
+      ["Data", "Produto", "Quantidade", "Valor"],
+      ["18-07-2022", "ACAO", "20", "2.235,55"],
+      ["26-07-2022", "ACAO", "10", "1.050,00"],
+    ];
+    const mapping = detectTradeMapping(pt);
+    const linhas = rowsToTrades(pt, mapping!);
+
+    expect(linhas[0]!.amountCents).toBe(223555);
+    expect(linhas[1]!.amountCents).toBe(105000);
+  });
+})

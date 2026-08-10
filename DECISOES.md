@@ -1588,3 +1588,35 @@ Os botões desaparecem enquanto houver filtro.
 criação: nenhuma lista já vista muda por causa disto. Só passa a contar depois de
 alguém mexer, e a primeira mexida numera o grupo todo — uma escrita por bem, mas
 só quando se arruma, e deixa a ordem explícita em vez de dependente de empates.
+
+## Um número sozinho é ambíguo; a coluna inteira não é
+
+`"493.975"` tanto pode ser quatrocentos e noventa e três mil como
+quatrocentos e noventa e três vírgula novecentos e setenta e cinco. A regra de
+"três dígitos depois de um ponto são milhares" é a certa em português — e é a
+errada num ficheiro que escreve os decimais com ponto e às vezes usa três casas.
+
+Aconteceu a sério: uma compra de **493,98 €** entrou como **493 975,00 €**, e as
+linhas ao lado do mesmo ficheiro ("500.00", "555.36") foram lidas corretamente.
+É o que torna isto difícil de ver — a coluna parece certa.
+
+**A coluna desfaz a ambiguidade que o número não desfaz.** Um único "500.00" na
+coluna prova que, neste ficheiro, o ponto é decimal — e portanto "493.975" tem de
+ser 493,975. O separador é decidido **uma vez por coluna**, antes de se ler
+qualquer linha, e só quando a coluna não diz nada é que vale a regra de sempre.
+
+## Um mock sem colunas não apanha um nome de coluna errado
+
+O `updateAssetTrade` escrevia `date`; a coluna chama-se `trade_date`. O PostgREST
+recusava a escrita inteira e o ecrã dizia "Não consegui gravar o movimento" — a
+mensagem certa pela razão errada. A edição nunca podia ter funcionado.
+
+Os testes de isolamento não apanharam isto, e não foi descuido: correm contra o
+`MockRepository`, que guarda objetos e não tem colunas nenhumas. A diferença é
+estrutural e não se resolve tornando o mock mais rigoroso.
+
+Por isso há agora um teste que **lê as migrações**, aprende as colunas de cada
+tabela, e confronta com elas os nomes que os `update`s escrevem. Só os `update`s:
+um nome errado num `insert` rebenta na primeira utilização, alto e bom som; num
+`update` só rebenta naquele caminho — que pode ser um botão que ninguém carrega
+durante meses.

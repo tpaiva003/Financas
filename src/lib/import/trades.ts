@@ -14,7 +14,12 @@
  * pode apontar as colunas à mão e ver o resultado antes de gravar.
  */
 
-import { parseAmountCents, parseDate, type Grid } from "./columns";
+import {
+  detectDecimalSeparator,
+  parseAmountCents,
+  parseDate,
+  type Grid,
+} from "./columns";
 
 export interface TradeMapping {
   headerRow: number;
@@ -236,6 +241,30 @@ function currencyOf(cell: string): string | null {
 export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
   const out: TradeRow[] = [];
 
+  /**
+   * Que separador decimal é que este ficheiro usa, coluna a coluna.
+   *
+   * Sozinho, "493.975" é ambíguo — e a regra portuguesa lê-o como 493 975. Num
+   * ficheiro que escreve os decimais com ponto, isso transforma uma compra de
+   * 493,98 € numa de 493 975,00 €, com o "500.00" da linha ao lado a ser lido
+   * bem. Aconteceu. A coluna inteira desfaz a ambiguidade que um número
+   * sozinho não desfaz.
+   */
+  const daColuna = (col: number): string[] => {
+    if (col < 0) return [];
+    const vs: string[] = [];
+    for (let r = mapping.headerRow + 1; r < grid.length; r++) {
+      const c = grid[r]?.[col];
+      if (c) vs.push(String(c));
+    }
+    return vs;
+  };
+  const sepValor = detectDecimalSeparator([
+    ...daColuna(mapping.amountCol),
+    ...daColuna(mapping.priceCol),
+  ]);
+  const sepQtd = detectDecimalSeparator(daColuna(mapping.quantityCol));
+
   for (let r = mapping.headerRow + 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
     const date = parseDate(row[mapping.dateCol] ?? "");
@@ -244,7 +273,7 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
     const name = (row[mapping.nameCol] ?? "").toString().trim();
     if (!name) continue;
 
-    const rawQty = parseAmountCents(row[mapping.quantityCol] ?? "");
+    const rawQty = parseAmountCents(row[mapping.quantityCol] ?? "", sepQtd);
     // A quantidade passa pelo mesmo leitor dos valores (aguenta "1.234,56"),
     // por isso vem em cêntimos e divide-se de volta.
     const quantity = rawQty === null ? 0 : rawQty / 100;
@@ -255,9 +284,9 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
     );
 
     const unitPriceCents =
-      mapping.priceCol >= 0 ? parseAmountCents(row[mapping.priceCol] ?? "") : null;
+      mapping.priceCol >= 0 ? parseAmountCents(row[mapping.priceCol] ?? "", sepValor) : null;
     const amountCents =
-      mapping.amountCol >= 0 ? parseAmountCents(row[mapping.amountCol] ?? "") : null;
+      mapping.amountCol >= 0 ? parseAmountCents(row[mapping.amountCol] ?? "", sepValor) : null;
 
     // Uma linha sem quantidade e sem valor não é movimento nenhum.
     if (quantity === 0 && (amountCents === null || amountCents === 0)) continue;
