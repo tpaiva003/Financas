@@ -189,6 +189,27 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       {ret ? (
         <section className="card p-6">
           <p className="eyebrow mb-4">O que rendeu</p>
+
+          {/*
+            Um desdobramento registado pela corretora como venda + compra no
+            mesmo dia contamina MAIS do que a rentabilidade: a "venda" entra
+            como saída a sério e fabrica uma mais-valia realizada que nunca
+            existiu, e a "compra" entra no investido como dinheiro que nunca
+            saiu do banco. Recusar só a TWR e deixar estes dois números sem
+            aviso seria tapar metade do problema.
+          */}
+          {twr?.problem?.includes("split") ? (
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-xs leading-snug text-fg-muted"
+            >
+              {twr.problem} Enquanto isso não estiver tratado, o{" "}
+              <span className="text-fg">investido</span> e o{" "}
+              <span className="text-fg">já realizado</span> aqui em baixo também
+              estão inflacionados: as duas pernas do desdobramento contam como
+              dinheiro que entrou e saiu, e nenhuma delas saiu do banco.
+            </p>
+          ) : null}
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
               <p className="text-xs text-fg-muted">Investido</p>

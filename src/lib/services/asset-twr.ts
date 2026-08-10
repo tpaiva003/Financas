@@ -16,7 +16,13 @@
  * continua todo em `positions.ts` e `returns.ts`, puro e testado.
  */
 
-import { positionValuePoints, timeWeightedReturn, annualize, type Trade } from "@/lib/domain";
+import {
+  annualize,
+  incoerenciaEntreMovimentosECotacoes,
+  positionValuePoints,
+  timeWeightedReturn,
+  type Trade,
+} from "@/lib/domain";
 import { getQuoteSeries } from "./quotes-service";
 import { fetchReferenceRateSeries } from "./fx-rate";
 
@@ -108,6 +114,19 @@ export async function getAssetTwr(params: {
   } else {
     for (const q of series.quotes) precos[q.date] = q.closeCents;
   }
+
+  /**
+   * Antes de calcular: os movimentos batem certo com as cotações?
+   *
+   * Uma corretora regista um desdobramento como venda + compra no mesmo dia,
+   * pelo mesmo dinheiro. A app leu isso como negócios a sério, e o troço desse
+   * dia passou a valer ×20 exactos — o ecrã mostrou +4969,9% num investimento
+   * que fez +114%. É o modo de falha n.5: um número errado com ar de resposta.
+   *
+   * Recusar é a única saída honesta enquanto não houver suporte a splits.
+   */
+  const incoerencia = incoerenciaEntreMovimentosECotacoes(trades, precos);
+  if (incoerencia) return SEM_RESPOSTA(incoerencia);
 
   const pontos = positionValuePoints(trades, precos, today, currentValueCents);
   if (!pontos) {

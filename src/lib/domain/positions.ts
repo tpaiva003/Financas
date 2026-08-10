@@ -446,3 +446,58 @@ export function lucroDoMovimento(
     kind: t.kind,
   };
 }
+
+/**
+ * Os movimentos batem certo com as cotações?
+ *
+ * **Porque é que isto tem de existir.** Uma corretora regista um desdobramento
+ * (*split*) como uma venda e uma compra no mesmo dia, pelo mesmo dinheiro: sai
+ * 1 unidade, entram 20, e o dinheiro não se mexe. A app leu isso como negócios
+ * a sério. O troço da TWR nesse dia fica `20p / 1p` = **×20 exactos**,
+ * independentemente de qualquer preço, e o ecrã mostrou +4969,9% num
+ * investimento que fez +114%.
+ *
+ * Ao mesmo tempo, a série de cotações do Yahoo vem **ajustada a splits**: as
+ * unidades gravadas são pré-split e os preços são pós-split. É essa
+ * incoerência que se procura aqui — e ela é visível sem se saber nada sobre
+ * splits: o dinheiro por unidade daquele dia não bate certo com o fecho do
+ * mesmo dia.
+ *
+ * **O limite é largo de propósito.** Uma execução longe do fecho e as comissões
+ * embutidas no montante andam nos poucos por cento; um split anda em fatores de
+ * 1,5, 2, 10 ou 20. Com 1,35 apanham-se os splits de 3:2 para cima. Um 5:4
+ * (1,25) passa — e é melhor deixar passar um caso raro do que recusar a
+ * rentabilidade a quem comprou com um limite mal colocado.
+ *
+ * Devolve o problema por extenso, ou `null` quando está tudo coerente.
+ */
+const LIMITE_COERENCIA = 1.35;
+
+export function incoerenciaEntreMovimentosECotacoes(
+  trades: Trade[],
+  prices: Record<string, number>,
+): string | null {
+  for (const t of sortTrades(trades)) {
+    if (t.kind !== "compra" && t.kind !== "venda") continue;
+    const qty = Math.abs(t.quantity ?? 0);
+    if (qty <= 0) continue;
+
+    const doDia = priceOn(prices, t.date);
+    if (doDia === null || doDia <= 0) continue;
+
+    const implicito = Math.abs(tradeAmountCents(t)) / qty;
+    if (implicito <= 0) continue;
+
+    const razao = implicito / doDia;
+    if (razao > LIMITE_COERENCIA || razao < 1 / LIMITE_COERENCIA) {
+      const vezes = razao >= 1 ? razao : 1 / razao;
+      const sentido = razao >= 1 ? "acima" : "abaixo";
+      return (
+        `O movimento de ${t.date} tem um preço por unidade cerca de ${Math.round(vezes)}× ` +
+        `${sentido} da cotação desse dia. Parece um desdobramento (split) por tratar — ` +
+        `sem isso, a rentabilidade deste investimento não é fiável.`
+      );
+    }
+  }
+  return null;
+}

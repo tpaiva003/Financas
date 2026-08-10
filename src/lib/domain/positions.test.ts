@@ -3,6 +3,7 @@ import {
   buildPosition,
   buildPositionReturn,
   derivePosition,
+  incoerenciaEntreMovimentosECotacoes,
   lucroDoMovimento,
   tradeAmountCents,
   type Trade,
@@ -272,5 +273,79 @@ describe("lucroDoMovimento", () => {
 
   it("ignora um movimento sem unidades", () => {
     expect(lucroDoMovimento({ ...compra, quantity: 0 }, 100_00)).toBeNull();
+  });
+});
+
+describe("incoerenciaEntreMovimentosECotacoes", () => {
+  const precos = { "2022-02-09": 141_00, "2022-07-18": 111_00, "2025-04-07": 140_00 };
+
+  it("não se queixa quando os movimentos batem certo com as cotações", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 1_410_00 },
+      { id: "2", date: "2025-04-07", kind: "compra", quantity: 5, amountCents: 700_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  /**
+   * O caso real: 1 unidade pré-split comprada por 2466,55 EUR, com a série já
+   * ajustada ao split e a mostrar 141 EUR nesse dia. É a incoerência que faz o
+   * troço da TWR valer ×20 exactos.
+   */
+  it("apanha uma unidade pré-split contra uma série pós-split", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 1, amountCents: 2_466_55 },
+    ];
+
+    const p = incoerenciaEntreMovimentosECotacoes(trades, precos);
+    expect(p).toContain("2022-02-09");
+    expect(p).toContain("split");
+  });
+
+  it("apanha também o sentido contrário", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 20, amountCents: 141_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toContain("split");
+  });
+
+  /**
+   * Uma execução longe do fecho e as comissões embutidas andam nos poucos por
+   * cento. Recusar a rentabilidade a quem comprou com um limite mal colocado
+   * era pior do que o problema.
+   */
+  it("aguenta uma execução 25% longe do fecho sem se queixar", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 1_762_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  it("apanha um split de 3 para 2", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 2_115_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toContain("split");
+  });
+
+  it("ignora dividendos e custos, que não têm unidades", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "dividendo", quantity: null, amountCents: 50_00 },
+      { id: "2", date: "2022-02-09", kind: "custo", quantity: null, amountCents: 5_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  it("ignora os dias sem cotação, que já são recusados noutro sítio", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2019-01-01", kind: "compra", quantity: 1, amountCents: 9_999_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, {})).toBeNull();
   });
 });

@@ -1620,3 +1620,33 @@ tabela, e confronta com elas os nomes que os `update`s escrevem. Só os `update`
 um nome errado num `insert` rebenta na primeira utilização, alto e bom som; num
 `update` só rebenta naquele caminho — que pode ser um botão que ninguém carrega
 durante meses.
+
+## O split que fez a rentabilidade dizer +4969,9%
+
+Uma corretora regista um desdobramento como **uma venda e uma compra no mesmo
+dia, pelo mesmo dinheiro**: sai 1 unidade, entram 20, e o dinheiro não se mexe. A
+importação leu isso como negócios a sério, porque não tem noção nenhuma de
+operações societárias.
+
+Ao mesmo tempo, a série do Yahoo vem **ajustada a splits**. Ou seja: as unidades
+gravadas são pré-split e os preços são pós-split. O troço da TWR nesse dia fica
+`20p / 1p` = **×20 exactos, independentemente de qualquer preço**.
+
+Reproduzido com o código real e os movimentos reais: investido, já realizado,
+ganho e TIR batem ao cêntimo com o que estava no ecrã, e o fator entre o cenário
+com e sem split é 20,000000. A TWR honesta é ~+153% total (~+23%/ano), não
++4969,9%. **A TIR não é afetada** — as duas pernas partilham a data e anulam-se.
+
+**Recusar, não corrigir.** Enquanto não houver suporte a splits, a única saída
+honesta é não mostrar o número. A guarda compara, em cada movimento, o dinheiro
+por unidade com o fecho desse dia: fora de um fator de 1,35 é incoerência.
+
+O limite é largo de propósito — uma execução longe do fecho e as comissões
+embutidas andam nos poucos por cento, e recusar a rentabilidade a quem comprou
+com um limite mal colocado seria pior do que o problema. Apanha os splits de 3:2
+para cima; **um 5:4 passa**, e fica dito.
+
+**O aviso não fica só na TWR.** A "venda" fabricou uma mais-valia realizada de
+1923,08 € que nunca existiu — com ar de rendimento tributável — e a "compra" pôs
+no investido 2142,56 € que nunca saíram do banco. Recusar só a rentabilidade e
+deixar estes dois números sem aviso seria tapar metade do problema.
