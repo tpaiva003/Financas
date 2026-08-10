@@ -46,7 +46,7 @@ import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
 import {
   captureNetWorthSnapshot,
-  getNetWorthHistory,
+  getNetWorthHistoryCompleto,
 } from "@/lib/services/networth-history-service";
 import { NetWorthChart } from "@/components/NetWorthChart";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
@@ -143,7 +143,10 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const historico = await (async () => {
     if (view !== "resumo") return null;
     const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
-    return { captura, series: buildNetWorthSeries(await getNetWorthHistory(ctx.space.id)) };
+    return {
+      captura,
+      series: buildNetWorthSeries(await getNetWorthHistoryCompleto(ctx.space.id, today)),
+    };
   })();
 
   return (

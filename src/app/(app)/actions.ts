@@ -25,7 +25,10 @@ import {
   limparHistorico,
   type MensagemConversa,
 } from "@/lib/services/conversa-service";
-import { getNetWorthHistory } from "@/lib/services/networth-history-service";
+import {
+  captureNetWorthSnapshot,
+  getNetWorthHistory,
+} from "@/lib/services/networth-history-service";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -1668,6 +1671,7 @@ export async function saveAssetAction(
     return { error: "Não consegui gravar. A tabela do património pode faltar." };
   }
 
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
   return { ok: true, message: id ? "Atualizado." : `${name} adicionado.` };
 }
@@ -1678,6 +1682,7 @@ export async function deleteAssetAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAsset(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
 }
 
@@ -2034,6 +2039,7 @@ export async function addAssetTradeAction(
     return { error: "Não consegui gravar o movimento." };
   }
 
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
   return { ok: true, message: "Movimento registado." };
 }
@@ -2044,6 +2050,7 @@ export async function deleteAssetTradeAction(formData: FormData): Promise<void> 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAssetTrade(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
 }
 
@@ -2500,4 +2507,38 @@ async function buildSituacaoDoAmbiente(
           }
         : null,
   });
+}
+
+/**
+ * Gravar a fotografia do património depois de um movimento.
+ *
+ * **Porquê aqui e não só na visita.** A fotografia é uma por dia. Se só se
+ * gravasse ao abrir o `/patrimonio`, o gráfico tinha a resolução das visitas e
+ * não a dos movimentos: registar uma compra e não abrir a página deixava o dia
+ * de fora, e o salto aparecia depois todo junto no dia em que se abrisse.
+ *
+ * É idempotente — o mesmo dia é sempre a mesma linha — e falha calada: ninguém
+ * fica sem registar um movimento porque a fotografia não deu.
+ */
+async function fotografarDepoisDoMovimento(spaceId: string): Promise<void> {
+  try {
+    const repo = getRepository();
+    const [stored, trades] = await Promise.all([
+      repo.listAssets(spaceId),
+      repo.listAssetTrades(spaceId),
+    ]);
+    const porAtivo = new Map<string, typeof trades>();
+    for (const t of trades) porAtivo.set(t.assetId, [...(porAtivo.get(t.assetId) ?? []), t]);
+    const assets = stored.map((a) => {
+      const d = derivePosition(a, porAtivo.get(a.id) ?? []);
+      return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    });
+    await captureNetWorthSnapshot(
+      spaceId,
+      buildNetWorth(assets),
+      new Date().toISOString().slice(0, 10),
+    );
+  } catch {
+    // Ver o cabeçalho.
+  }
 }

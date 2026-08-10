@@ -91,6 +91,27 @@ export function NetWorthChart({
   const zeroY = y(0);
   const mostraZero = base < 0;
 
+  /**
+   * Onde acaba o reconstruído e começa o medido.
+   *
+   * Os pontos estimados vêm todos antes dos medidos, porque o passado é o que
+   * se reconstrói. A linha parte-se em dois traçados: o de trás a tracejado, o
+   * da frente cheio. Desenhar tudo igual seria dar a uma conta o mesmo aspeto
+   * que a uma medição — que é exatamente o que faz um número errado passar por
+   * facto.
+   */
+  const ultimoEstimado = points.reduce((acc, p, i) => (p.estimado ? i : acc), -1);
+  const temEstimado = ultimoEstimado >= 0;
+  const traco = (de: number, ate: number) =>
+    points
+      .slice(de, ate + 1)
+      .map((p, k) => `${k === 0 ? "M" : "L"}${x(de + k)},${y(p.netCents)}`)
+      .join(" ");
+  // O traçado estimado vai até ao primeiro ponto medido, para a linha não ter
+  // um buraco na costura.
+  const tracoEstimado = temEstimado ? traco(0, Math.min(ultimoEstimado + 1, points.length - 1)) : "";
+  const tracoMedido = ultimoEstimado + 1 <= points.length - 1 ? traco(Math.max(ultimoEstimado, 0), points.length - 1) : "";
+
   const subiu = (series.changeCents ?? 0) >= 0;
 
   return (
@@ -119,15 +140,29 @@ export function NetWorthChart({
         aria-label={`Património líquido de ${points[0]!.label} a ${points.at(-1)!.label}`}
       >
         <path d={area} className={subiu ? "fill-credit/10" : "fill-debt/10"} />
-        <path
-          d={linha}
-          fill="none"
-          className={subiu ? "stroke-credit" : "stroke-debt"}
-          strokeWidth={1.2}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-        />
+        {temEstimado ? (
+          <path
+            d={tracoEstimado}
+            fill="none"
+            className="stroke-fg-faint"
+            strokeWidth={1.2}
+            strokeDasharray="3 2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        {tracoMedido ? (
+          <path
+            d={tracoMedido}
+            fill="none"
+            className={subiu ? "stroke-credit" : "stroke-debt"}
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
 
         {mostraZero ? (
           <line
@@ -143,8 +178,16 @@ export function NetWorthChart({
         ) : null}
 
         {points.map((p, i) => (
-          <circle key={p.onDate} cx={x(i)} cy={y(p.netCents)} r={0.9} className="fill-fg/60">
-            <title>{`${p.label}: ${formatCents(p.netCents)}`}</title>
+          <circle
+            key={p.onDate}
+            cx={x(i)}
+            cy={y(p.netCents)}
+            r={p.estimado ? 0.6 : 0.9}
+            className={p.estimado ? "fill-fg/25" : "fill-fg/60"}
+          >
+            <title>
+              {`${p.label}: ${formatCents(p.netCents)}${p.estimado ? " (reconstruído)" : ""}`}
+            </title>
           </circle>
         ))}
       </svg>
@@ -155,10 +198,21 @@ export function NetWorthChart({
         <span>{points.at(-1)!.label}</span>
       </div>
 
+      {temEstimado ? (
+        <p className="mt-2 text-[11px] leading-snug text-fg-faint">
+          <span className="mr-1 inline-block h-[2px] w-4 border-t-2 border-dashed border-fg-faint align-middle" />
+          A parte a tracejado é <span className="text-fg-muted">reconstruída</span>, não
+          medida: os investimentos saem dos teus movimentos e das cotações, o
+          crédito da própria amortização, mas as contas e os imóveis entram ao
+          valor de hoje — não guardam passado. Daí para a frente é o que foi
+          mesmo registado.
+        </p>
+      ) : null}
+
       {mostraZero ? (
         <p className="mt-2 text-[11px] leading-snug text-fg-faint">
-          O tracejado é o zero: abaixo dele, as dívidas ainda são mais do que os
-          bens.
+          O tracejado horizontal é o zero: abaixo dele, as dívidas ainda são mais
+          do que os bens.
         </p>
       ) : null}
     </div>

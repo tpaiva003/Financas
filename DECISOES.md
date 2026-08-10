@@ -1418,3 +1418,44 @@ falha deixou de contar como "preço atualizado".
 gravação da fotografia engolia o erro por inteiro, e o cartão dizia "o histórico
 está a começar" tanto no primeiro dia como todos os dias em que a escrita
 falhasse. Agora diz qual dos vazios é.
+
+## Reconstruir o passado do património: o que é medido e o que é assumido
+
+O Tiago pediu a evolução a recuar no tempo, depois de eu ter desaconselhado a
+parte estimada. É a decisão dele, e fica feita — mas **marcada**.
+
+**O que é medido a sério.** Os investimentos: há movimentos datados e cotações
+guardadas, por isso quantas unidades havia em Março e a que preço fechavam
+sabe-se. E o crédito: com taxa e prestação, o saldo passado sai da própria
+amortização ao contrário — `saldo = (saldo' + prestação) / (1 + i)`.
+
+**O que é assumido.** As contas bancárias e os imóveis não guardam passado
+nenhum: entram ao valor de **hoje**. A linha do ano passado mostra o saldo
+bancário de hoje. É por isso que a parte reconstruída é desenhada a **tracejado**,
+com pontos mais apagados, e com uma legenda a dizer exactamente isto por baixo do
+gráfico.
+
+**O câmbio fica congelado.** A cotação guardada está na moeda da bolsa e o preço
+em euros só se sabe para hoje. Usa-se a razão entre o fecho da data e o fecho mais
+recente, aplicada ao preço em euros de hoje: a moeda desaparece da conta e não é
+preciso uma taxa por mês. O preço fica certo, o câmbio não se mexe — num período
+em que o euro oscilou muito, a diferença aparece.
+
+**Sem nada reconstruível, não se desenha nada.** Se não houver investimentos com
+movimentos nem dívidas com plano, todos os pontos seriam o valor de hoje repetido
+para trás — uma linha horizontal a afirmar que o património esteve parado meses a
+fio. É a versão mais convincente da mentira que isto já assume ter, e essa não se
+faz.
+
+**O medido ganha sempre.** Um mês que tenha fotografia a sério não é substituído
+por uma estimativa, nem parcialmente. É o único ponto daquele mês em que se pode
+confiar.
+
+## A fotografia grava-se ao movimento, não só à visita
+
+Antes, a fotografia diária só era escrita ao abrir o `/patrimonio` — o gráfico
+tinha a resolução das **visitas** e não a dos **movimentos**. Registar uma compra
+e não abrir a página deixava o dia de fora, e o salto aparecia todo junto mais
+tarde. Agora grava-se também ao gravar um bem, ao apagar um bem e ao registar ou
+apagar um movimento. É idempotente (o dia é sempre a mesma linha) e falha calada:
+ninguém fica sem registar um movimento porque a fotografia não deu.
