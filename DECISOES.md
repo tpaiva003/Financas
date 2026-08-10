@@ -1672,3 +1672,70 @@ estas posições ("Já fechadas").
 Sem tempo não há rentabilidade: um troço de duração zero passa a contar como
 neutro. É exactamente o que o cabeçalho do `positionValuePoints` já dizia que o
 segundo ponto faz — "nunca inventa rentabilidade" — e que não fazia.
+
+---
+
+## Sessão de 2026-08-10/11
+
+### A subunidade das bolsas lê-se antes de qualquer maiúscula
+
+O Yahoo distingue `GBp` (pence) de `GBP` (libras) pela caixa de uma letra, e são
+duas moedas com um fator de cem entre elas. Qualquer normalização feita antes da
+comparação apaga a distinção — foi o que aconteceu. A conversão vive numa função
+própria (`moedaDeSubunidade`) para que uma arrumação inocente noutro sítio não a
+volte a apagar, e há um teste que falha se alguém normalizar primeiro.
+
+Cobrem-se `GBp`/`GBX` (Londres), `ZAc` (Joanesburgo) e `ILA` (Telavive).
+
+### Uma cache de cotações pode ser apagada; nada mais nesta app pode
+
+A migração 0033 apaga linhas. É defensável **só** porque as cotações são uma
+cache derivada de uma fonte pública: nada ali é dado de ninguém e tudo se vai
+buscar outra vez sozinho. É a única tabela de que isso se pode dizer, e o
+raciocínio não se estende a mais nenhuma.
+
+### As notas internas separam-se por função, nunca por bandeira
+
+`listTicketMessagesPublicas` e `listTicketMessagesTodas`, em vez de uma leitura
+com `incluirInternas`. Uma bandeira é igual a duas funções até ao dia em que
+alguém a passa ao contrário — e aí a nota já foi lida e não há como desfazer. A
+função que serve o utilizador não sabe ler a coluna.
+
+Pela mesma razão, uma nota interna não mexe no `updated_at`: se mexesse, o fio
+do utilizador denunciava a hora exacta em que alguém escreveu o que ele não pode
+ler.
+
+### O crescimento mede-se por `created_at`, nunca por `transaction_date`
+
+Quem importa dois anos de extrato numa noite fez **uma noite** de uso. Uma
+curva construída sobre a data da transação desenharia dois anos de atividade a
+partir dessa noite — o gráfico mais bonito e mais falso desta app.
+
+### Percentagens só acima de cinco na base
+
+"100% de retenção" com um ambiente elegível é verdade e não quer dizer nada.
+Abaixo de cinco mostra-se "2 de 3", que ninguém confunde com uma tendência.
+(`MINIMO_PARA_PERCENTAGEM`, em `domain/plataforma.ts`.)
+
+### Uma mediana robusta compara-se com todos, incluindo o próprio
+
+Na primeira versão do detetor de movimentos implausíveis, a mediana excluía o
+movimento que estava a ser julgado, "para a referência não ser puxada pelo
+erro". Esse raciocínio vale para uma média e é ao contrário numa mediana:
+excluir o próprio reduzia a amostra para dois, e o ponto médio de dois é a média
+deles. O resultado era acusar os dois movimentos certos e ilibar o errado.
+
+### A Euribor vem do BCE, e é a média do mês
+
+O dono da Euribor é o EMMI, que a publica com licença e sem API aberta. O BCE
+republica as séries de graça, sem chave, e é oficial. Usa-se a média do período
+(`HSTA`) e não o fixing do dia, porque é a média que os contratos portugueses
+usam para a revisão — o valor de hoje daria um número parecido o suficiente para
+ninguém reparar e diferente o suficiente para a prestação não bater certo.
+
+### Duas contas diferentes não podem ter o mesmo nome
+
+No resumo, "investido" era o custo das posições abertas; em Ativos, todo o
+dinheiro que alguma vez entrou. Ambos corretos, nomes iguais, valores muito
+diferentes — e quem lê conclui que um dos ecrãs está avariado. Passaram a
+chamar-se "custo das posições abertas" e "dinheiro que entrou".

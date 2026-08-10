@@ -3,11 +3,74 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-08 (investimentos e crédito à habitação).
+> Última atualização: 2026-08-11 (pedidos de ajuda, KPIs, cotações erradas).
 
 ---
 
-## 0. O que foi feito na sessão de 2026-08-07
+## 0. O que foi feito na sessão de 2026-08-10/11
+
+**Migrações por correr: 0032 e 0033.** Sem elas, os pedidos de ajuda não
+funcionam e as cotações de Londres continuam cem vezes acima. As 0028–0031 já
+foram corridas.
+
+### Dois erros de dinheiro, dos graves
+
+1. **Londres cotava em pence e a app lia libras.** O Yahoo devolve `GBp` — com
+   o `p` minúsculo — para o que cota em pence, e `GBP` para o que cota em
+   libras. O leitor fazia `.toUpperCase()` **antes** de olhar, o que
+   transformava uma na outra. Um ETF a 9150 pence (91,50 £) ficou gravado como
+   9150 libras; uma posição de 1500 € aparecia com 149 000 €. Era também isto
+   que apagava as correções à mão: gravava-se o preço certo e a atualização
+   automática reescrevia o errado por cima. A **0033** deita fora a cache de
+   `.uk` e põe a nulo os preços que vieram dela.
+2. **Uma importação leu `493.975` como 493 975,00 €** quando eram 493,98 €. O
+   parser está corrigido há duas sessões; as linhas que já entraram continuam
+   lá. Agora há um detetor (`movimentosImplausiveis`) que as encontra pelo preço
+   por unidade destoar 20× da mediana do próprio ativo, e a lista aparece por
+   nome em cima dos investimentos. **A rentabilidade da carteira recusa-se a
+   aparecer enquanto houver alguma**: estava a mostrar 950 432 € investidos,
+   270 843 € de valor e uma TIR de +13,3%, três números que se contradizem.
+
+### O que a Euronext Lisboa tinha a ver com isto
+
+Só o `.uk` e o `.us` estavam traduzidos para o Yahoo. Tudo o resto passava em
+maiúsculas, o que acerta na Alemanha por acaso e falha em todas as outras
+praças: a EDP virava `EDP.PT`, que não existe. Numa app portuguesa era a falha
+mais cara da lista. O campo do símbolo passou também a estar na ficha do
+investimento — vivia só no formulário completo noutra página.
+
+### Funcionalidades novas
+
+- **Pedidos de ajuda** (`/ajuda`, e o separador "Pedidos" em `/mensagens`).
+  Estado, respostas e **notas internas**. A separação não vive num `if` de um
+  ecrã: são duas funções de leitura com nomes diferentes, e a que serve o
+  utilizador não sabe filtrar. Uma nota interna também não mexe no `updated_at`,
+  senão denunciava a hora a que alguém escreveu o que ele não pode ler. Migração
+  **0032**.
+- **KPIs de crescimento** em `/plataforma`: janelas de 7/30/90 dias, série
+  mensal, retenção, ativação. A data que conta é a de **registo** e nunca a da
+  transação — quem importa dois anos de extrato numa noite fez uma noite de uso.
+  De caminho, as leituras da consola passaram a pedir páginas: contavam até mil
+  e calavam-se.
+- **Euribor do BCE**, a média do mês (que é a que os contratos portugueses
+  usam), a preencher o campo sem gravar.
+- **Anexos** ligados aos bens; **ordenar investimentos** por ganho em € e em %.
+- O **chat** ganhou ícone de IA, tom da marca, e passou a ver **todos os
+  ambientes** — perguntar "tenho dívidas?" com o crédito noutro separador dava
+  "não".
+
+### Por fazer
+
+- **Splits a sério.** A app recusa-se a calcular quando deteta um, o que é
+  honesto e não resolve. Precisa de uma tabela de desdobramentos e de converter
+  as unidades antigas.
+- Corrigir os movimentos que a importação estragou. A app diz agora quais são;
+  a correção é à mão, de propósito — não se decide sobre dinheiro de alguém a
+  partir de um palpite.
+
+---
+
+## 0.1. O que foi feito na sessão de 2026-08-07
 
 Uma sessão de revisão, seguida de correções. **Todas as fases abaixo estão
 aplicadas, com testes, e a app compila e passa em tudo** (`test`, `typecheck`,
