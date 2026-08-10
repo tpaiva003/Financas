@@ -39,11 +39,12 @@ import {
   fetchAssetQuoteAction,
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
-import { InvestmentCard } from "./InvestmentCard";
+import { InvestmentGrid } from "@/components/InvestmentGrid";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
+import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
 import {
   captureNetWorthSnapshot,
   getNetWorthHistoryCompleto,
@@ -87,9 +88,25 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   for (const t of trades) {
     tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t as Trade]);
   }
+  /**
+   * O valor dos imóveis segue o índice da zona desde a escritura.
+   *
+   * **Um valor escrito à mão ganha sempre**: quem conhece a casa sabe mais do
+   * que a mediana do concelho. A conta só entra onde o campo ficou vazio — que
+   * é o caso normal, porque num imóvel o valor de hoje é uma coisa que ninguém
+   * tem, ao contrário do que custou.
+   */
+  const hoje0 = new Date().toISOString().slice(0, 10);
+  const valorDeImovel = await estimarValoresDeImoveis(stored, hoje0).catch(() => new Map());
+
   const assets = stored.map((a) => {
     const d = derivePosition(a, tradesByAsset.get(a.id) ?? []);
-    return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    const base = d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    const estimado = valorDeImovel.get(a.id);
+    if (estimado && (a.valueCents ?? null) === null) {
+      return { ...base, valueCents: estimado.valueCents };
+    }
+    return base;
   });
   const net = buildNetWorth(assets);
 
@@ -366,32 +383,27 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   um imóvel não se procuram assim — são poucos e têm nome.
                 */}
                 {kind === "investimento" ? (
-                  <ul className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {(byKind.get(kind) ?? []).map((a) => (
-                      <InvestmentCard
-                        key={a.id}
-                        data={{
-                          id: a.id,
-                          name: a.name,
-                          // O símbolo vive no ativo gravado, não na vista
-                          // calculada — e é dele que sai a cor do emblema.
-                          symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
-                          quantity: a.quantity ?? 0,
-                          unitCostCents: a.unitCostCents ?? null,
-                          unitPriceCents: a.unitPriceCents ?? null,
-                          currentValueCents: a.currentValueCents,
-                          gainCents: a.missingPrice ? null : a.gainCents,
-                          gainPct: a.missingPrice ? null : a.gainPct,
-                          tradeCount: (tradesByAsset.get(a.id) ?? []).length,
-                          quoteDate: quoteDateOf.get(a.id) ?? null,
-                          // Sem isto, o motivo era calculado e deitado fora: o
-                          // bloco que o mostrava vivia no AssetRow, que nunca é
-                          // desenhado para investimentos.
-                          quoteProblem: quoteProblemOf.get(a.id) ?? null,
-                        }}
-                      />
-                    ))}
-                  </ul>
+                  <InvestmentGrid
+                    items={(byKind.get(kind) ?? []).map((a) => ({
+                      id: a.id,
+                      name: a.name,
+                      // O símbolo vive no ativo gravado, não na vista
+                      // calculada — e é dele que sai a cor do emblema.
+                      symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
+                      quantity: a.quantity ?? 0,
+                      unitCostCents: a.unitCostCents ?? null,
+                      unitPriceCents: a.unitPriceCents ?? null,
+                      currentValueCents: a.currentValueCents,
+                      gainCents: a.missingPrice ? null : a.gainCents,
+                      gainPct: a.missingPrice ? null : a.gainPct,
+                      tradeCount: (tradesByAsset.get(a.id) ?? []).length,
+                      quoteDate: quoteDateOf.get(a.id) ?? null,
+                      // Sem isto, o motivo era calculado e deitado fora: o
+                      // bloco que o mostrava vivia no AssetRow, que nunca é
+                      // desenhado para investimentos.
+                      quoteProblem: quoteProblemOf.get(a.id) ?? null,
+                    }))}
+                  />
                 ) : (
                   <ul className="divide-y divide-hair2">
                     {(byKind.get(kind) ?? []).map((a) => (
@@ -873,9 +885,13 @@ function AssetRow({
           {/* A estimativa da zona, com a diferença em percentagem: é a diferença
               que faz alguém ir ver o valor, não o valor absoluto. Fica apagada
               e identificada — é uma referência, não uma avaliação. */}
+          {/* Na mesma base que o número de cima: com quota parcial, aquele é a
+              tua parte, e pôr aqui o valor inteiro da casa ao lado dele fazia
+              parecer que a estimativa era o dobro do que é. A percentagem não
+              muda com a quota — divide-se dos dois lados. */}
           {zonaCents !== null ? (
             <p className="font-mono text-[11px] tnum text-fg-faint">
-              zona: {formatCents(zonaCents)}
+              zona: {formatCents(Math.round(zonaCents * quota))}
               {zona ? ` (${zona.ratio >= 1 ? "+" : ""}${Math.round((zona.ratio - 1) * 100)}%)` : ""}
             </p>
           ) : null}
@@ -1018,6 +1034,9 @@ function AssetRow({
               location: stored?.location ?? null,
               priceRefCents: stored?.priceRefCents ?? null,
               priceRefSource: stored?.priceRefSource ?? null,
+              priceRefGeocod: stored?.priceRefGeocod ?? null,
+              purchasePriceCents: stored?.purchasePriceCents ?? null,
+              worksCents: stored?.worksCents ?? null,
               notes: a.notes,
               interestRatePct: a.interestRatePct,
               monthlyPaymentCents: a.monthlyPaymentCents,

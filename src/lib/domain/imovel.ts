@@ -50,11 +50,27 @@ export interface InePriceRow {
   categoria?: string | null;
 }
 
-/** O que se conseguiu ler do indicador. */
-export interface InePriceTable {
-  /** O período a que os valores dizem respeito, como o INE o identifica. */
+/** Um período do indicador, com as linhas todas desse período. */
+export interface InePeriodo {
   period: string;
   rows: InePriceRow[];
+}
+
+/** O que se conseguiu ler do indicador. */
+export interface InePriceTable {
+  /** O período mais recente, como o INE o identifica. */
+  period: string;
+  /** As linhas do período mais recente. É por aqui que se procura um sítio. */
+  rows: InePriceRow[];
+  /**
+   * **Todos** os períodos, do mais antigo para o mais recente.
+   *
+   * A primeira versão deitava fora tudo menos o último, e com isso deitava fora
+   * a única coisa que permite dizer quanto é que a zona valorizou desde que
+   * alguém comprou a casa. Vem tudo no mesmo pedido: guardá-lo não custa nada e
+   * é o que faz o valor do imóvel acompanhar o índice em vez de ficar parado.
+   */
+  periodos: InePeriodo[];
 }
 
 /**
@@ -150,20 +166,8 @@ export function ordemDoPeriodo(p: string): number {
  * uma tabela vazia lê-se como "o sítio não está lá" e mandaria alguém procurar
  * o erro no sítio errado.
  */
-export function parseInePriceTable(raw: unknown): InePriceTable | null {
-  const primeiro = Array.isArray(raw) ? raw[0] : raw;
-  if (!primeiro || typeof primeiro !== "object") return null;
-
-  const dados = (primeiro as Record<string, unknown>).Dados;
-  if (!dados || typeof dados !== "object" || Array.isArray(dados)) return null;
-
-  const periodos = Object.keys(dados as Record<string, unknown>);
-  if (periodos.length === 0) return null;
-  const period = [...periodos].sort((a, b) => ordemDoPeriodo(a) - ordemDoPeriodo(b))[periodos.length - 1]!;
-
-  const brutas = (dados as Record<string, unknown>)[period];
-  if (!Array.isArray(brutas)) return null;
-
+function linhasDoPeriodo(brutas: unknown): InePriceRow[] {
+  if (!Array.isArray(brutas)) return [];
   /**
    * Um sítio por código. Quando o indicador separa categorias de alojamento, o
    * mesmo sítio vem mais do que uma vez — e mostrar o mesmo nome cinco vezes
@@ -190,10 +194,28 @@ export function parseInePriceTable(raw: unknown): InePriceTable | null {
       categoria: categoria || null,
     });
   }
+  return [...porCodigo.values()];
+}
 
-  const rows = [...porCodigo.values()];
-  if (rows.length === 0) return null;
-  return { period, rows };
+export function parseInePriceTable(raw: unknown): InePriceTable | null {
+  const primeiro = Array.isArray(raw) ? raw[0] : raw;
+  if (!primeiro || typeof primeiro !== "object") return null;
+
+  const dados = (primeiro as Record<string, unknown>).Dados;
+  if (!dados || typeof dados !== "object" || Array.isArray(dados)) return null;
+
+  const chaves = Object.keys(dados as Record<string, unknown>);
+  if (chaves.length === 0) return null;
+
+  const periodos: InePeriodo[] = [];
+  for (const period of [...chaves].sort((a, b) => ordemDoPeriodo(a) - ordemDoPeriodo(b))) {
+    const rows = linhasDoPeriodo((dados as Record<string, unknown>)[period]);
+    if (rows.length > 0) periodos.push({ period, rows });
+  }
+  if (periodos.length === 0) return null;
+
+  const ultimo = periodos[periodos.length - 1]!;
+  return { period: ultimo.period, rows: ultimo.rows, periodos };
 }
 
 /** Um sítio encontrado, com o que faz falta para o distinguir de outro igual. */
@@ -328,6 +350,114 @@ export function procurarLocal(rows: InePriceRow[], query: string): BuscaLocal {
     return { escolhido: melhor, exato: melhor.pontos >= 100, candidatos: [] };
   }
   return { escolhido: null, exato: false, candidatos: marcados.slice(0, MAX_CANDIDATOS) };
+}
+
+/**
+ * A ordem de uma data, na mesma escala dos períodos do INE.
+ *
+ * "2023-02-13" cai no 1.º trimestre de 2023, que dá 20231 — comparável com o
+ * que o `ordemDoPeriodo` devolve.
+ */
+export function ordemDaData(onDate: string): number {
+  const ano = Number(onDate.slice(0, 4));
+  const mes = Number(onDate.slice(5, 7));
+  if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1) return 0;
+  return ano * 10 + Math.ceil(mes / 3);
+}
+
+/**
+ * O preço por m² de um sítio numa data passada.
+ *
+ * Fica-se com o último período **até** à data: em Fevereiro de 2023 o que se
+ * sabia era o do 1.º trimestre de 2023 (ou o anterior, se esse ainda não
+ * existir). Devolve `null` quando a série não recua até lá — e é assim que tem
+ * de ser: sem o índice da altura não há valorização para calcular, e inventar
+ * uma é inventar o valor da casa.
+ */
+export function precoNaData(
+  periodos: readonly InePeriodo[],
+  geocod: string,
+  onDate: string,
+): { cents: number; period: string } | null {
+  const alvo = ordemDaData(onDate);
+  if (!geocod || alvo === 0) return null;
+
+  let melhor: { cents: number; period: string } | null = null;
+  for (const p of periodos) {
+    if (ordemDoPeriodo(p.period) > alvo) continue;
+    const linha = p.rows.find((r) => r.geocod === geocod);
+    if (linha) melhor = { cents: linha.pricePerM2Cents, period: p.period };
+  }
+  return melhor;
+}
+
+/** O que o imóvel custou, somado. */
+export interface CustoImovel {
+  /** O que se pagou na escritura. */
+  purchasePriceCents?: number | null;
+  /** O que se meteu em obras desde então. */
+  worksCents?: number | null;
+}
+
+/** Quanto custou o imóvel ao todo: compra mais obras. */
+export function custoTotalImovel(c: CustoImovel): number | null {
+  const compra = typeof c.purchasePriceCents === "number" ? c.purchasePriceCents : null;
+  if (compra === null || compra <= 0) return null;
+  const obras = typeof c.worksCents === "number" && c.worksCents > 0 ? c.worksCents : 0;
+  return compra + obras;
+}
+
+/** Como é que o valor do imóvel foi parar ao número que se mostra. */
+export interface ValorImovel {
+  valueCents: number;
+  custoCents: number;
+  /** Quanto a zona valorizou desde a compra: 1,2 é mais vinte por cento. */
+  fator: number;
+  /** Os dois índices que deram o fator, para se poder conferir. */
+  indiceCompraCents: number;
+  indiceHojeCents: number;
+  periodoCompra: string;
+  periodoHoje: string;
+}
+
+/**
+ * O valor do imóvel hoje: o que custou, a acompanhar o índice da zona.
+ *
+ * **Porquê assim e não só "área × preço da zona".** A mediana do concelho
+ * aplicada à área diz quanto valeria uma casa *média* daquele tamanho naquela
+ * zona — e uma casa concreta não é a média: pode ser um T2 sem elevador ou um
+ * último andar remodelado, e entre as duas vão 30%. O que se sabe de verdade
+ * sobre esta casa é **o que se pagou por ela** e **o que se meteu em obras**.
+ * Partir daí e aplicar-lhe a valorização da zona respeita as duas coisas: o
+ * ponto de partida é um facto, e só a variação vem da estatística.
+ *
+ * As obras entram no custo mas **não são valorizadas desde a compra** — entram
+ * pelo que custaram. Aplicar-lhes o índice desde a escritura seria dizer que
+ * uma cozinha feita o ano passado valorizou desde 2019.
+ *
+ * Devolve `null` quando falta alguma coisa. Nunca assume um fator de 1: isso
+ * daria o custo com ar de avaliação.
+ */
+export function valorImovelPeloIndice(input: {
+  custoCents: number | null;
+  indiceCompra: { cents: number; period: string } | null;
+  indiceHoje: { cents: number; period: string } | null;
+}): ValorImovel | null {
+  const { custoCents, indiceCompra, indiceHoje } = input;
+  if (custoCents === null || custoCents <= 0) return null;
+  if (!indiceCompra || !indiceHoje) return null;
+  if (indiceCompra.cents <= 0 || indiceHoje.cents <= 0) return null;
+
+  const fator = indiceHoje.cents / indiceCompra.cents;
+  return {
+    valueCents: Math.round(custoCents * fator),
+    custoCents,
+    fator,
+    indiceCompraCents: indiceCompra.cents,
+    indiceHojeCents: indiceHoje.cents,
+    periodoCompra: indiceCompra.period,
+    periodoHoje: indiceHoje.period,
+  };
 }
 
 /** O que um imóvel precisa de ter para se lhe estimar o valor. */

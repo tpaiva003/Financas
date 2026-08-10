@@ -3,6 +3,7 @@ import {
   buildPosition,
   buildPositionReturn,
   derivePosition,
+  lucroDoMovimento,
   tradeAmountCents,
   type Trade,
 } from "./positions";
@@ -220,5 +221,56 @@ describe("buildPositionReturn", () => {
   it("sem movimentos não há taxa", () => {
     const r = buildPositionReturn(buildPosition([]), 12_000, "2026-01-01");
     expect(r.annualPct).toBeNull();
+  });
+});
+
+describe("lucroDoMovimento", () => {
+  const compra = { kind: "compra" as const, quantity: 10, amountCents: 1_000_00 };
+  const venda = { kind: "venda" as const, quantity: 10, amountCents: 1_500_00 };
+
+  it("uma compra ganha quando hoje vale mais do que se pagou", () => {
+    const l = lucroDoMovimento(compra, 150_00);
+
+    expect(l?.nowCents).toBe(1_500_00);
+    expect(l?.gainCents).toBe(500_00);
+    expect(l?.gainPct).toBeCloseTo(50, 5);
+  });
+
+  it("uma compra perde quando hoje vale menos", () => {
+    expect(lucroDoMovimento(compra, 80_00)?.gainCents).toBe(-200_00);
+  });
+
+  /**
+   * Vender antes de uma descida é ganhar, e o sinal tem de dizer isso: recebeu
+   * 1500 por unidades que hoje valeriam 1000.
+   */
+  it("uma venda ganha quando se recebeu mais do que valeria hoje", () => {
+    const l = lucroDoMovimento(venda, 100_00);
+
+    expect(l?.gainCents).toBe(500_00);
+  });
+
+  it("uma venda perde quando se vendeu antes de subir", () => {
+    expect(lucroDoMovimento(venda, 200_00)?.gainCents).toBe(-500_00);
+  });
+
+  /**
+   * Sem preço atual não há lucro nenhum para mostrar. Assumir o preço de compra
+   * dava sempre zero, que se leria como "não subiu nem desceu".
+   */
+  it("não inventa nada sem preço atual", () => {
+    expect(lucroDoMovimento(compra, null)).toBeNull();
+    expect(lucroDoMovimento(compra, 0)).toBeNull();
+  });
+
+  it("ignora os movimentos que não são compra nem venda", () => {
+    expect(
+      lucroDoMovimento({ kind: "dividendo", quantity: 10, amountCents: 50_00 }, 100_00),
+    ).toBeNull();
+    expect(lucroDoMovimento({ kind: "custo", quantity: 0, amountCents: 5_00 }, 100_00)).toBeNull();
+  });
+
+  it("ignora um movimento sem unidades", () => {
+    expect(lucroDoMovimento({ ...compra, quantity: 0 }, 100_00)).toBeNull();
   });
 });

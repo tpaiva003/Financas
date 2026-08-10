@@ -1225,6 +1225,9 @@ export class SupabaseRepository implements Repository {
         location: input.location ?? null,
         price_ref_cents: input.priceRefCents ?? null,
         price_ref_source: input.priceRefSource ?? null,
+        price_ref_geocod: input.priceRefGeocod ?? null,
+        purchase_price_cents: input.purchasePriceCents ?? null,
+        works_cents: input.worksCents ?? null,
         symbol: input.symbol ?? null,
         created_by: input.createdBy ?? null,
       })
@@ -1257,6 +1260,9 @@ export class SupabaseRepository implements Repository {
     if (patch.location !== undefined) row.location = patch.location;
     if (patch.priceRefCents !== undefined) row.price_ref_cents = patch.priceRefCents;
     if (patch.priceRefSource !== undefined) row.price_ref_source = patch.priceRefSource;
+    if (patch.priceRefGeocod !== undefined) row.price_ref_geocod = patch.priceRefGeocod;
+    if (patch.purchasePriceCents !== undefined) row.purchase_price_cents = patch.purchasePriceCents;
+    if (patch.worksCents !== undefined) row.works_cents = patch.worksCents;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -1743,6 +1749,9 @@ function rowToAsset(r: any): Asset {
     location: r.location ?? null,
     priceRefCents: r.price_ref_cents ?? null,
     priceRefSource: r.price_ref_source ?? null,
+    priceRefGeocod: r.price_ref_geocod ?? null,
+    purchasePriceCents: r.purchase_price_cents ?? null,
+    worksCents: r.works_cents ?? null,
     symbol: r.symbol ?? null,
     updatedAt: r.updated_at ?? null,
   };

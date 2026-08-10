@@ -57,6 +57,7 @@ import {
   type RatePeriod,
   type ContratoRevisto,
   procurarLocal,
+  precoNaData,
   buildNetWorth,
   buildNetWorthSeries,
   buildSituacao,
@@ -1579,8 +1580,12 @@ export async function saveAssetAction(
   if (kind === "investimento") {
     if (quantity === null || quantity <= 0) return { error: "Indica quantas unidades tens." };
     if (unitCost === null || unitCost < 0) return { error: "Indica o preço de compra por unidade." };
-  } else if (value === null) {
+  } else if (value === null && kind !== "imovel") {
     return { error: "Indica o valor." };
+  } else if (kind === "imovel" && value === null && parseNumber(formData.get("purchasePrice")) === null) {
+    // Num imóvel, o valor de hoje é estimado a partir do que custou. Um dos
+    // dois tem de existir, senão não há por onde começar.
+    return { error: "Indica quanto custou, ou o valor de hoje." };
   }
 
   // Taxa e plano de amortização. A taxa serve os dois lados: num depósito diz
@@ -1618,6 +1623,8 @@ export async function saveAssetAction(
   const isImovel = kind === "imovel";
   const rawArea = parseNumber(formData.get("areaM2"));
   const rawPrecoM2 = parseNumber(formData.get("priceRefEurM2"));
+  const rawCompra = parseNumber(formData.get("purchasePrice"));
+  const rawObras = parseNumber(formData.get("works"));
 
   const patch = {
     spaceId: ctx.space.id,
@@ -1651,6 +1658,12 @@ export async function saveAssetAction(
     priceRefSource: isImovel
       ? String(formData.get("priceRefSource") ?? "").trim().slice(0, 120) || null
       : null,
+    priceRefGeocod: isImovel
+      ? String(formData.get("priceRefGeocod") ?? "").trim().slice(0, 40) || null
+      : null,
+    purchasePriceCents:
+      isImovel && rawCompra !== null && rawCompra > 0 ? toCents(rawCompra) : null,
+    worksCents: isImovel && rawObras !== null && rawObras > 0 ? toCents(rawObras) : null,
     symbol:
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))
@@ -2246,9 +2259,23 @@ export async function extractCreditContractAction(
   return { ok: true, revisto: r.revisto ?? null, notas: r.notas };
 }
 
+/** Os dois índices que dão a valorização da zona desde a compra. */
+export interface InePriceIndice {
+  naCompra: { cents: number; period: string } | null;
+  hoje: { cents: number; period: string } | null;
+}
+
 export interface InePriceOption {
   geodsg: string;
   pricePerM2Cents: number;
+  /**
+   * O código do sítio no INE. Guarda-se no bem: é o que permite voltar a
+   * buscar o índice de uma data passada. O nome não chega — há nomes repetidos
+   * entre níveis.
+   */
+  geocod: string;
+  /** O índice na data da compra e o de agora, quando se sabe a data. */
+  indice?: InePriceIndice;
   /**
    * Onde é que este sítio está, na hierarquia do INE.
    *
@@ -2284,7 +2311,11 @@ export interface InePriceLookup {
  * Portugal, uma nos Açores e outra no Algarve, com o dobro do preço uma da
  * outra.
  */
-export async function lookupPropertyPriceAction(local: string): Promise<InePriceLookup> {
+export async function lookupPropertyPriceAction(
+  local: string,
+  /** A data da escritura, para se ir buscar o índice da altura. */
+  purchasedAt?: string | null,
+): Promise<InePriceLookup> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
 
@@ -2294,12 +2325,26 @@ export async function lookupPropertyPriceAction(local: string): Promise<InePrice
   const { table, problem } = await getInePriceTable();
   if (!table) return { error: problem ?? "Não consegui obter os preços do INE." };
 
+  const compra = /^\d{4}-\d{2}-\d{2}$/.test(String(purchasedAt ?? "")) ? String(purchasedAt) : null;
+
   const r = procurarLocal(table.rows, query);
-  const opcao = (c: { row: { geodsg: string; pricePerM2Cents: number; categoria?: string | null }; dentroDe: string | null }): InePriceOption => ({
+  const opcao = (c: {
+    row: { geocod: string; geodsg: string; pricePerM2Cents: number; categoria?: string | null };
+    dentroDe: string | null;
+  }): InePriceOption => ({
     geodsg: c.row.geodsg,
     pricePerM2Cents: c.row.pricePerM2Cents,
+    geocod: c.row.geocod,
     dentroDe: c.dentroDe,
     categoria: c.row.categoria ?? null,
+    // Os dois índices do MESMO sítio: o da data da compra e o de agora. É a
+    // razão entre eles que faz o valor do imóvel acompanhar a zona.
+    indice: compra
+      ? {
+          naCompra: precoNaData(table.periodos, c.row.geocod, compra),
+          hoje: precoNaData(table.periodos, c.row.geocod, new Date().toISOString().slice(0, 10)),
+        }
+      : undefined,
   });
 
   if (r.escolhido) {

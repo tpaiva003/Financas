@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   compararComRegistado,
+  custoTotalImovel,
   estimatedPropertyCents,
   normalizarLocal,
+  ordemDaData,
   ordemDoPeriodo,
   parseInePriceTable,
+  precoNaData,
   procurarLocal,
+  valorImovelPeloIndice,
   type InePriceRow,
 } from "./imovel";
 
@@ -308,5 +312,101 @@ describe("compararComRegistado", () => {
     expect(compararComRegistado(180_000_00, null)).toBeNull();
     expect(compararComRegistado(180_000_00, 0)).toBeNull();
     expect(compararComRegistado(null, 150_000_00)).toBeNull();
+  });
+});
+
+describe("ordemDaData", () => {
+  it("põe a data no trimestre certo", () => {
+    expect(ordemDaData("2023-02-13")).toBe(20231);
+    expect(ordemDaData("2023-04-01")).toBe(20232);
+    expect(ordemDaData("2023-12-31")).toBe(20234);
+  });
+});
+
+const PERIODOS = [
+  { period: "1.º Trimestre de 2023", rows: [{ geocod: "P", geodsg: "Paranhos", pricePerM2Cents: 1500_00 }] },
+  { period: "4.º Trimestre de 2024", rows: [{ geocod: "P", geodsg: "Paranhos", pricePerM2Cents: 2200_00 }] },
+  { period: "1.º Trimestre de 2026", rows: [{ geocod: "P", geodsg: "Paranhos", pricePerM2Cents: 3101_00 }] },
+];
+
+describe("precoNaData", () => {
+  it("usa o último período até àquela data, não o mais recente de todos", () => {
+    const r = precoNaData(PERIODOS, "P", "2023-02-13");
+
+    expect(r?.cents).toBe(1500_00);
+    expect(r?.period).toBe("1.º Trimestre de 2023");
+  });
+
+  it("com uma data de hoje usa o período mais recente", () => {
+    expect(precoNaData(PERIODOS, "P", "2026-08-10")?.cents).toBe(3101_00);
+  });
+
+  /**
+   * Sem o índice da altura não há valorização para calcular. Assumir o mais
+   * antigo que existe seria inventar o ponto de partida — e com ele o valor da
+   * casa.
+   */
+  it("devolve null quando a série não recua até à data", () => {
+    expect(precoNaData(PERIODOS, "P", "2019-05-01")).toBeNull();
+  });
+
+  it("devolve null para um sítio que não está na série", () => {
+    expect(precoNaData(PERIODOS, "X", "2026-01-01")).toBeNull();
+  });
+});
+
+describe("custoTotalImovel", () => {
+  it("soma a compra e as obras", () => {
+    expect(custoTotalImovel({ purchasePriceCents: 125_000_00, worksCents: 30_000_00 })).toBe(
+      155_000_00,
+    );
+  });
+
+  it("as obras são opcionais", () => {
+    expect(custoTotalImovel({ purchasePriceCents: 125_000_00 })).toBe(125_000_00);
+  });
+
+  it("sem valor de compra não há custo nenhum", () => {
+    expect(custoTotalImovel({ worksCents: 30_000_00 })).toBeNull();
+    expect(custoTotalImovel({ purchasePriceCents: 0 })).toBeNull();
+  });
+});
+
+describe("valorImovelPeloIndice", () => {
+  const indiceCompra = { cents: 1500_00, period: "1.º Trimestre de 2023" };
+  const indiceHoje = { cents: 3101_00, period: "1.º Trimestre de 2026" };
+
+  it("aplica ao custo a valorização da zona", () => {
+    const v = valorImovelPeloIndice({ custoCents: 125_000_00, indiceCompra, indiceHoje });
+
+    expect(v?.fator).toBeCloseTo(3101 / 1500, 5);
+    expect(v?.valueCents).toBe(Math.round(125_000_00 * (3101 / 1500)));
+  });
+
+  it("as obras entram no custo e valorizam com ele", () => {
+    const semObras = valorImovelPeloIndice({ custoCents: 125_000_00, indiceCompra, indiceHoje });
+    const comObras = valorImovelPeloIndice({ custoCents: 155_000_00, indiceCompra, indiceHoje });
+
+    expect(comObras!.valueCents).toBeGreaterThan(semObras!.valueCents);
+  });
+
+  /**
+   * Sem um dos índices não há fator. Assumir 1 daria o custo de compra com ar
+   * de avaliação de hoje — que é exactamente o número em que ninguém desconfia.
+   */
+  it("recusa-se a estimar sem os dois índices", () => {
+    expect(valorImovelPeloIndice({ custoCents: 125_000_00, indiceCompra: null, indiceHoje })).toBeNull();
+    expect(valorImovelPeloIndice({ custoCents: 125_000_00, indiceCompra, indiceHoje: null })).toBeNull();
+    expect(valorImovelPeloIndice({ custoCents: null, indiceCompra, indiceHoje })).toBeNull();
+  });
+
+  it("recusa-se a estimar com um índice a zero", () => {
+    expect(
+      valorImovelPeloIndice({
+        custoCents: 125_000_00,
+        indiceCompra: { cents: 0, period: "x" },
+        indiceHoje,
+      }),
+    ).toBeNull();
   });
 });

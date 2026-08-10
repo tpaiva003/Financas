@@ -1459,3 +1459,59 @@ e não abrir a página deixava o dia de fora, e o salto aparecia todo junto mais
 tarde. Agora grava-se também ao gravar um bem, ao apagar um bem e ao registar ou
 apagar um movimento. É idempotente (o dia é sempre a mesma linha) e falha calada:
 ninguém fica sem registar um movimento porque a fotografia não deu.
+
+## O imóvel pergunta o que se sabe, não o que se adivinha
+
+O formulário pedia "valor atual" e uma "taxa anual de rendimento" — duas
+perguntas que não fazem sentido numa casa. De um imóvel sabe-se **o que se pagou
+por ele** e **o que se meteu em obras**. O valor de hoje é a única coisa que
+ninguém tem, e era precisamente a que estava a ser pedida.
+
+**A conta:** `valor ≈ (compra + obras) × (índice de hoje / índice na data da
+escritura)`, com o índice a ser o €/m² que o INE publica para aquele sítio. O
+ponto de partida é um facto; só a variação vem da estatística.
+
+**Porquê isto e não "área × preço da zona".** A mediana aplicada à área diz
+quanto valeria uma casa *média* daquele tamanho naquela zona — e uma casa
+concreta não é a média: entre um T2 sem elevador e um último andar remodelado
+vão 30%. As duas contas continuam lado a lado no ecrã, porque **discordarem uma
+da outra é informação**.
+
+**As obras não valorizam desde a compra.** Entram no custo pelo que custaram.
+Aplicar-lhes o índice desde a escritura era dizer que uma cozinha feita o ano
+passado valorizou desde 2019.
+
+**Guarda-se o `geocod`, não só o nome.** Sem o código não há como ir buscar o
+índice de 2023: o nome não chega, porque há nomes repetidos entre níveis. E por
+isso o parser passou a guardar **todos** os períodos do INE, e não só o último —
+vinham no mesmo pedido e eram deitados fora.
+
+**Calcula-se a cada visita e um valor à mão ganha sempre.** Gravar o valor
+deixava-o parado até alguém reabrir o formulário, que é o problema que isto veio
+resolver. E quem conhece a casa sabe mais do que a mediana do concelho: havendo
+valor escrito, é esse que conta.
+
+## O lucro de cada entrada, e porque não é FIFO
+
+Numa ação comprada em sete alturas diferentes, a pergunta natural é *"comprar
+naquele dia foi bom negócio?"*. Cada movimento passa a mostrar o que essa entrada
+valeu a pena ao preço de agora.
+
+**Não é FIFO e não é mais-valia realizada.** A posição desta app é a **custo
+médio** — dizer aqui que uma venda consumiu esta compra e não aquela era pôr duas
+contabilidades no mesmo ecrã, com a de baixo a contradizer a de cima. Conta as
+unidades desse movimento ao preço de hoje, mesmo que já tenham sido vendidas. O
+ecrã diz isto por extenso, incluindo que **não serve para o IRS**, que em Portugal
+é FIFO.
+
+Numa venda a conta é ao contrário: o que se recebeu contra o que essas unidades
+valeriam hoje. Vender antes de uma descida é ganhar, e o sinal tem de o dizer.
+
+## As posições fechadas ficam arrumadas, não desaparecidas
+
+Uma importação de corretora traz tudo o que alguma vez se comprou, incluindo o
+que já foi vendido por inteiro — fichas com zero unidades e zero euros que
+ocupam o mesmo espaço que as posições vivas. Ficam escondidas por omissão, com a
+contagem à vista e a um clique de aparecerem. Esconder sem dizer que se escondeu
+seria fazer desaparecer coisas a quem está a contar dinheiro. Não mexe em número
+nenhum: uma posição a zero vale zero, esteja à vista ou não.

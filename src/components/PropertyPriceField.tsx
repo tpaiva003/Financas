@@ -21,8 +21,17 @@
  */
 
 import { useState, useTransition } from "react";
-import { lookupPropertyPriceAction, type InePriceOption } from "@/app/(app)/actions";
-import { estimatedPropertyCents, formatCents } from "@/lib/domain";
+import {
+  lookupPropertyPriceAction,
+  type InePriceIndice,
+  type InePriceOption,
+} from "@/app/(app)/actions";
+import {
+  custoTotalImovel,
+  estimatedPropertyCents,
+  formatCents,
+  valorImovelPeloIndice,
+} from "@/lib/domain";
 
 function plain(n?: number | null): string {
   if (n === null || n === undefined) return "";
@@ -45,17 +54,30 @@ export function PropertyPriceField({
   location,
   priceRefCents,
   priceRefSource,
+  priceRefGeocod,
+  purchasePriceCents,
+  worksCents,
+  purchasedAt,
 }: {
   uid: string;
   areaM2?: number | null;
   location?: string | null;
   priceRefCents?: number | null;
   priceRefSource?: string | null;
+  priceRefGeocod?: string | null;
+  purchasePriceCents?: number | null;
+  worksCents?: number | null;
+  /** A data da escritura, para se ir buscar o índice da altura. */
+  purchasedAt?: string | null;
 }) {
   const [area, setArea] = useState(plain(areaM2));
   const [local, setLocal] = useState(location ?? "");
   const [preco, setPreco] = useState(decimal(priceRefCents));
   const [fonte, setFonte] = useState(priceRefSource ?? "");
+  const [geocod, setGeocod] = useState(priceRefGeocod ?? "");
+  const [compra, setCompra] = useState(decimal(purchasePriceCents));
+  const [obras, setObras] = useState(decimal(worksCents));
+  const [indice, setIndice] = useState<InePriceIndice | null>(null);
   const [candidatos, setCandidatos] = useState<InePriceOption[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<string | null>(null);
@@ -67,11 +89,33 @@ export function PropertyPriceField({
   })();
   const estimativa = estimatedPropertyCents({ areaM2: parse(area), priceRefCents: precoCents });
 
+  const cents = (v: string) => {
+    const n = parse(v);
+    return n !== null && n > 0 ? Math.round(n * 100) : null;
+  };
+  const custoCents = custoTotalImovel({
+    purchasePriceCents: cents(compra),
+    worksCents: cents(obras),
+  });
+
+  /**
+   * O valor pelo índice: o que custou, a acompanhar a valorização da zona
+   * desde a escritura. É a conta que sabe alguma coisa sobre ESTA casa — a
+   * outra sabe sobre a casa média da zona.
+   */
+  const pelosIndices = valorImovelPeloIndice({
+    custoCents,
+    indiceCompra: indice?.naCompra ?? null,
+    indiceHoje: indice?.hoje ?? null,
+  });
+
   function aplicar(o: InePriceOption, period: string | null) {
     setPreco(decimal(o.pricePerM2Cents));
     // A proveniência leva o sítio E o período: esta série é trimestral e sai
     // com atraso, e sem a data um valor de há dois anos passa por atual.
     setFonte(`INE · ${o.geodsg}${period ? ` · ${period}` : ""}`);
+    setGeocod(o.geocod);
+    setIndice(o.indice ?? null);
     setCandidatos([]);
   }
 
@@ -79,7 +123,7 @@ export function PropertyPriceField({
     setAviso(null);
     setCandidatos([]);
     procurar(async () => {
-      const r = await lookupPropertyPriceAction(local);
+      const r = await lookupPropertyPriceAction(local, purchasedAt ?? null);
       if (r.error) {
         setAviso(r.error);
         return;
@@ -113,6 +157,41 @@ export function PropertyPriceField({
         sozinho. Escreve o concelho — ou a freguesia e o concelho, como numa
         morada: &quot;Paranhos, Porto&quot;.
       </p>
+
+      <div className="mb-4 grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor={`imo-compra-${uid}`}>Quanto custou</label>
+          <input
+            id={`imo-compra-${uid}`}
+            name="purchasePrice"
+            inputMode="decimal"
+            value={compra}
+            onChange={(e) => setCompra(e.target.value)}
+            placeholder="125 000,00"
+            className="input"
+          />
+          <p className="mt-1 text-xs text-fg-faint">
+            O da escritura. É o único número que se sabe de certeza sobre esta
+            casa — o valor de hoje estima-se a partir dele.
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor={`imo-obras-${uid}`}>Obras desde então</label>
+          <input
+            id={`imo-obras-${uid}`}
+            name="works"
+            inputMode="decimal"
+            value={obras}
+            onChange={(e) => setObras(e.target.value)}
+            placeholder="0,00"
+            className="input"
+          />
+          <p className="mt-1 text-xs text-fg-faint">
+            Entram pelo que custaram. Uma cozinha feita o ano passado não
+            valorizou desde a escritura.
+          </p>
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -207,6 +286,41 @@ export function PropertyPriceField({
           {fonte ? <p className="mt-0.5 text-xs text-fg-faint">{fonte}</p> : null}
         </div>
       </div>
+
+      <input type="hidden" name="priceRefGeocod" value={geocod} />
+
+      {/*
+        As duas contas lado a lado, de propósito. A de cima sabe sobre a casa
+        MÉDIA daquela zona com aquele tamanho; esta sabe sobre ESTA casa, porque
+        parte do que se pagou por ela. Discordarem uma da outra é informação —
+        e é por isso que nenhuma delas mexe no valor sozinha.
+      */}
+      <div className="mt-4 rounded-lg border border-hair bg-bg/40 p-3">
+        <p className="label mb-1">O que custou, com a valorização da zona</p>
+        {pelosIndices ? (
+          <>
+            <p className="font-mono text-base tnum text-fg">
+              {formatCents(pelosIndices.valueCents)}
+            </p>
+            <p className="mt-1 text-[11px] leading-snug text-fg-faint">
+              {formatCents(pelosIndices.custoCents)} de custo, e a zona subiu{" "}
+              {Math.round((pelosIndices.fator - 1) * 100)}% de{" "}
+              {pelosIndices.periodoCompra} para {pelosIndices.periodoHoje} (
+              {formatCents(pelosIndices.indiceCompraCents)}/m² para{" "}
+              {formatCents(pelosIndices.indiceHojeCents)}/m²).
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-fg-faint">
+            {custoCents === null
+              ? "Escreve quanto custou para eu poder estimar."
+              : !purchasedAt
+                ? "Falta a data de compra lá em cima: sem ela não sei de quando contar a valorização."
+                : "Carrega em “Ver no INE” para eu ir buscar o índice da altura da compra e o de agora."}
+          </p>
+        )}
+      </div>
+
     </div>
   );
 }

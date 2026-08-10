@@ -389,3 +389,60 @@ export function positionValuePoints(
   // Um ponto só não chega para medir crescimento nenhum.
   return points.length >= 2 ? points : null;
 }
+
+/**
+ * O que uma compra em concreto valeu a pena, até agora.
+ *
+ * **Porque não é FIFO.** A posição desta app é a **custo médio** (ver o
+ * cabeçalho): dizer aqui que uma venda consumiu esta compra e não aquela era
+ * pôr duas contabilidades diferentes no mesmo ecrã, e a de baixo contradizia a
+ * de cima. O que isto responde é outra coisa, e mais útil: *"comprar a este
+ * preço, naquele dia, foi bom negócio?"*
+ *
+ * Por isso conta **as unidades desse movimento ao preço de hoje**, mesmo que
+ * entretanto tenham sido vendidas. Não é a mais-valia realizada e não serve
+ * para o IRS — que em Portugal é FIFO. É a leitura de cada entrada.
+ *
+ * Numa venda, a conta é ao contrário: o que se recebeu contra o que essas
+ * unidades valeriam hoje. Positivo quer dizer que se vendeu acima do preço de
+ * agora.
+ */
+export interface LucroDoMovimento {
+  /** O dinheiro que este movimento moveu. */
+  amountCents: number;
+  /** O que essas unidades valem hoje. */
+  nowCents: number;
+  /** A diferença, no sentido que faz sentido para o tipo de movimento. */
+  gainCents: number;
+  /** A mesma diferença em percentagem. `null` quando não há base. */
+  gainPct: number | null;
+  /** Uma venda lê-se ao contrário de uma compra. */
+  kind: "compra" | "venda";
+}
+
+export function lucroDoMovimento(
+  t: Pick<Trade, "kind" | "quantity" | "amountCents">,
+  currentUnitPriceCents: number | null | undefined,
+): LucroDoMovimento | null {
+  if (t.kind !== "compra" && t.kind !== "venda") return null;
+  const q = typeof t.quantity === "number" ? Math.abs(t.quantity) : 0;
+  if (q <= 0) return null;
+  if (typeof currentUnitPriceCents !== "number" || currentUnitPriceCents <= 0) return null;
+
+  const amountCents = Math.abs(t.amountCents);
+  if (amountCents <= 0) return null;
+  const nowCents = Math.round(q * currentUnitPriceCents);
+
+  // Numa compra ganha-se se hoje vale mais do que se pagou. Numa venda ganha-se
+  // se se recebeu mais do que valeria hoje — vender antes de uma descida é
+  // ganhar, e o sinal tem de dizer isso.
+  const gainCents = t.kind === "compra" ? nowCents - amountCents : amountCents - nowCents;
+
+  return {
+    amountCents,
+    nowCents,
+    gainCents,
+    gainPct: amountCents > 0 ? (gainCents / amountCents) * 100 : null,
+    kind: t.kind,
+  };
+}

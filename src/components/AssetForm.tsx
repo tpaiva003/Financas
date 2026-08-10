@@ -46,6 +46,9 @@ export interface AssetFormValues {
   location?: string | null;
   priceRefCents?: number | null;
   priceRefSource?: string | null;
+  priceRefGeocod?: string | null;
+  purchasePriceCents?: number | null;
+  worksCents?: number | null;
   symbol?: string | null;
 }
 
@@ -112,6 +115,9 @@ export function AssetForm({
    * controlados, que obrigaria a duplicar em estado todos os campos do
    * formulário só por causa de um caminho opcional.
    */
+  /** A data de compra é usada pelo bloco do imóvel, para ir buscar o índice. */
+  const [dataCompra, setDataCompra] = useState(asset?.purchasedAt ?? "");
+
   const [doContrato, setDoContrato] = useState<{ r: ContratoRevisto; n: number } | null>(null);
   const chave = doContrato ? `contrato-${doContrato.n}` : "base";
   const contrato = doContrato?.r ?? null;
@@ -198,7 +204,7 @@ export function AssetForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor={`asset-value-${uid}`}>
-              {isDebt ? "Quanto falta pagar" : "Valor atual"}
+              {isDebt ? "Quanto falta pagar" : isImovel ? "Valor atual (opcional)" : "Valor atual"}
             </label>
             <input
               key={chave}
@@ -220,6 +226,7 @@ export function AssetForm({
               name="purchasedAt"
               type="date"
               defaultValue={contrato?.startDate ?? asset?.purchasedAt ?? ""}
+              onChange={(e) => setDataCompra(e.target.value)}
               className="input"
             />
           </div>
@@ -258,8 +265,11 @@ export function AssetForm({
         </div>
       ) : null}
 
-      {/* Taxa: em investimentos o retorno vem do preço, não de uma taxa. */}
-      {isInvestment ? null : (
+      {/* Taxa: em investimentos o retorno vem do preço, não de uma taxa. E num
+          imóvel também não: uma casa não rende juros, valoriza — e isso vem do
+          índice da zona, no bloco abaixo. Perguntar aqui era pedir um número
+          que ninguém tem. */}
+      {isInvestment || isImovel ? null : (
         <div className="rounded-xl border border-hair bg-panel2/30 p-4">
           <p className="label mb-1">{isDebt ? "Plano de pagamento" : "Rendimento"}</p>
           <p className="mb-3 text-xs text-fg-faint">
@@ -346,6 +356,10 @@ export function AssetForm({
           location={asset?.location}
           priceRefCents={asset?.priceRefCents}
           priceRefSource={asset?.priceRefSource}
+          priceRefGeocod={asset?.priceRefGeocod}
+          purchasePriceCents={asset?.purchasePriceCents}
+          worksCents={asset?.worksCents}
+          purchasedAt={dataCompra}
         />
       ) : null}
 

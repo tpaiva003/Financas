@@ -197,6 +197,18 @@ export interface Asset {
   priceRefCents?: number | null;
   /** De onde veio o preço e de quando é ("INE · Lisboa · 2025"). */
   priceRefSource?: string | null;
+  /**
+   * O código do sítio no INE.
+   *
+   * Sem ele não há como ir buscar o índice da data da compra — e é isso que faz
+   * o valor do imóvel acompanhar a zona. O nome não chega: há nomes repetidos
+   * entre níveis (Odivelas é concelho e é freguesia lá dentro).
+   */
+  priceRefGeocod?: string | null;
+  /** Imóvel: o que se pagou. É o ponto de partida do valor estimado. */
+  purchasePriceCents?: number | null;
+  /** Imóvel: o que se meteu em obras desde a compra. */
+  worksCents?: number | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
   updatedAt?: string | null;

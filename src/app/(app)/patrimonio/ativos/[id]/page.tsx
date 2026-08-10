@@ -8,6 +8,7 @@ import {
   buildPosition,
   buildPositionReturn,
   formatCents,
+  lucroDoMovimento,
   formatForeignCents,
   formatRate,
   type AssetKind,
@@ -282,7 +283,17 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       ) : null}
 
       <section className="space-y-3">
-        <h2 className="eyebrow">Movimentos</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="eyebrow">Movimentos</h2>
+          {asset.unitPriceCents ? (
+            <p className="text-[11px] leading-snug text-fg-faint">
+              O número por baixo de cada linha é o que essa entrada valeu a pena
+              até hoje, ao preço de agora. Não é mais-valia realizada nem serve
+              para o IRS — a posição aqui é a custo médio, e em Portugal a regra
+              fiscal é FIFO.
+            </p>
+          ) : null}
+        </div>
         {trades.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-sm text-fg-muted">
@@ -317,13 +328,42 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
                     {t.notes ? <p className="mt-1 text-xs text-fg-faint">{t.notes}</p> : null}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span
-                      className={`font-mono text-sm tnum ${
-                        t.kind === "compra" || t.kind === "custo" ? "text-fg" : "text-credit"
-                      }`}
-                    >
-                      {t.kind === "compra" || t.kind === "custo" ? "" : "+"}
-                      {formatCents(t.amountCents)}
+                    <span className="text-right">
+                      <span
+                        className={`block font-mono text-sm tnum ${
+                          t.kind === "compra" || t.kind === "custo" ? "text-fg" : "text-credit"
+                        }`}
+                      >
+                        {t.kind === "compra" || t.kind === "custo" ? "" : "+"}
+                        {formatCents(t.amountCents)}
+                      </span>
+                      {/*
+                        O que esta entrada valeu a pena até hoje. Não é FIFO nem
+                        mais-valia realizada — a posição desta app é a custo
+                        médio, e misturar as duas contabilidades no mesmo ecrã
+                        seria a de baixo a contradizer a de cima. Responde a
+                        outra pergunta: "comprar a este preço, naquele dia, foi
+                        bom negócio?"
+                      */}
+                      {(() => {
+                        const l = lucroDoMovimento(t, asset.unitPriceCents);
+                        if (!l) return null;
+                        const bom = l.gainCents >= 0;
+                        return (
+                          <span
+                            className={`block font-mono text-[11px] tnum ${bom ? "text-credit" : "text-debt"}`}
+                            title={
+                              l.kind === "compra"
+                                ? `Estas ${t.quantity} un. valem hoje ${formatCents(l.nowCents)}.`
+                                : `Estas ${t.quantity} un. valeriam hoje ${formatCents(l.nowCents)}.`
+                            }
+                          >
+                            {bom ? "+" : ""}
+                            {formatCents(l.gainCents)}
+                            {l.gainPct !== null ? ` (${bom ? "+" : ""}${Math.round(l.gainPct)}%)` : ""}
+                          </span>
+                        );
+                      })()}
                     </span>
                     <form action={deleteAssetTradeAction}>
                       <input type="hidden" name="id" value={t.id} />
