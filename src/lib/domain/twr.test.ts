@@ -127,3 +127,75 @@ describe("a TWR ignora o timing dos reforços e a TIR não", () => {
     expect(com).toBeLessThan(-40);
   });
 });
+
+/**
+ * Uma posição fechada, vendida a 0,1% do fecho do dia, dava **-100%** num
+ * investimento que quase duplicou. De que lado do fecho caía a execução
+ * decidia entre +100% e -100%.
+ */
+describe("uma posição vendida por inteiro", () => {
+  const precos = { "2022-01-03": 10_00, "2024-01-03": 20_00 };
+
+  function comVenda(precoDeVenda: number) {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-01-03", kind: "compra", quantity: 100, amountCents: 1_000_00 },
+      {
+        id: "2",
+        date: "2024-01-03",
+        kind: "venda",
+        quantity: 100,
+        amountCents: Math.round(100 * precoDeVenda),
+      },
+    ];
+    return positionValuePoints(trades, precos, "2024-01-03", 0);
+  }
+
+  it("não é castigada por ter sido executada um pouco abaixo do fecho", () => {
+    const abaixo = timeWeightedReturn(comVenda(19_98)!);
+    const exato = timeWeightedReturn(comVenda(20_00)!);
+    const acima = timeWeightedReturn(comVenda(20_02)!);
+
+    // Todas devem dizer a mesma coisa: o preço duplicou.
+    expect(abaixo).toBeCloseTo(100, 0);
+    expect(exato).toBeCloseTo(100, 0);
+    expect(acima).toBeCloseTo(100, 0);
+  });
+
+  it("nunca devolve -100% para um investimento que ganhou", () => {
+    for (const p of [19_50, 19_98, 20_00, 20_50]) {
+      expect(timeWeightedReturn(comVenda(p)!)).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * O `positionValuePoints` prometia no cabeçalho recusar-se quando faltasse o
+ * preço de algum dia, e não recusava: o `priceOn` arrastava o último fecho
+ * indefinidamente. Uma série que acaba em 2022 avaliava um movimento de 2025 a
+ * preços de 2022 e devolvia um número com ar de resposta.
+ */
+describe("uma série de cotações que acaba antes dos movimentos", () => {
+  it("recusa-se em vez de arrastar um fecho de anos atrás", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-01-03", kind: "compra", quantity: 10, amountCents: 100_00 },
+      { id: "2", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 50_00 },
+    ];
+
+    expect(positionValuePoints(trades, { "2022-01-03": 10_00 }, "2026-01-01", 200_00)).toBeNull();
+  });
+
+  it("mas aguenta um fim de semana ou um feriado", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-01-03", kind: "compra", quantity: 10, amountCents: 100_00 },
+      { id: "2", date: "2022-01-10", kind: "compra", quantity: 5, amountCents: 55_00 },
+    ];
+
+    const pontos = positionValuePoints(
+      trades,
+      { "2022-01-03": 10_00, "2022-01-07": 11_00 },
+      "2022-01-10",
+      165_00,
+    );
+    expect(pontos).not.toBeNull();
+  });
+});

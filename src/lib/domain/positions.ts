@@ -21,7 +21,7 @@
  */
 
 import type { CashFlow, ValuePoint } from "./returns";
-import { priceOn, xirr } from "./returns";
+import { DIAS_DE_FOLGA, priceOn, xirr } from "./returns";
 
 export type TradeKind = "compra" | "venda" | "dividendo" | "custo";
 
@@ -337,7 +337,10 @@ export function positionValuePoints(
   for (const t of sorted) porDia.set(t.date, [...(porDia.get(t.date) ?? []), t]);
 
   for (const [dia, doDia] of porDia) {
-    const preco = priceOn(prices, dia);
+    // Com folga para fins de semana e feriados, e só com essa: um fecho velho
+    // de meses avaliava um movimento recente a preços antigos e devolvia um
+    // número plausível e errado. É a recusa que o cabeçalho promete.
+    const preco = priceOn(prices, dia, DIAS_DE_FOLGA);
     // Um dia sem cotação não se adivinha. Ver o comentário do cabeçalho.
     if (preco === null || preco <= 0) return null;
 

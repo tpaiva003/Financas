@@ -120,6 +120,20 @@ export function timeWeightedReturn(points: ValuePoint[]): number | null {
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1]!;
     const cur = sorted[i]!;
+    /**
+     * Dois pontos no mesmo dia não são um troço: não passou tempo nenhum, e
+     * sem tempo não há rentabilidade nenhuma para medir.
+     *
+     * É o par que o `positionValuePoints` emite em cada dia de movimento — um
+     * a fechar o troço anterior, outro a aplicar o movimento — e o cabeçalho
+     * dele diz que o segundo "nunca inventa rentabilidade". Só que inventava:
+     * numa venda TOTAL executada 0,1% abaixo do fecho, o valor final é zero e
+     * a base fica esse resto de cêntimos, o que dá **-100%** num investimento
+     * que ganhou. De que lado do fecho caiu a execução decidia entre +100% e
+     * -100%.
+     */
+    if (cur.date === prev.date) continue;
+
     // O valor de partida do troço inclui o dinheiro que entrou no início dele.
     const base = prev.valueCents + cur.flowCents;
     if (base <= 0) continue; // troço sem capital investido: não diz nada
@@ -206,15 +220,44 @@ export function simulateBenchmark(
 }
 
 /**
+ * Quantos dias se aceita arrastar um fecho para trás.
+ *
+ * Um fim de semana são dois dias; um Natal com feriados a calhar mal chega aos
+ * cinco. Dez é folgado para qualquer buraco real de negociação e curto para
+ * qualquer outra coisa.
+ */
+const DIAS_DE_FOLGA = 10;
+
+/**
  * Cotação numa data. Se não houver (fim de semana, feriado), usa a última
  * anterior, que é o que qualquer corretora faz.
+ *
+ * **Mas não indefinidamente.** Sem `maxDias`, uma série que acaba em 2022
+ * avaliava um movimento de 2025 ao preço de 2022 e devolvia uma rentabilidade
+ * com ar de resposta — sem aviso nenhum. O `positionValuePoints` prometia no
+ * cabeçalho recusar-se nesse caso e não recusava: era esta função a arrastar o
+ * último fecho para sempre que tornava a promessa impossível de cumprir.
+ *
+ * Com `maxDias`, um fecho velho de mais deixa de servir e quem chama pode
+ * mesmo recusar.
  */
-export function priceOn(prices: Record<string, number>, date: string): number | null {
+export function priceOn(
+  prices: Record<string, number>,
+  date: string,
+  maxDias?: number,
+): number | null {
   const target = date.slice(0, 10);
   if (prices[target] !== undefined) return prices[target]!;
   const earlier = Object.keys(prices)
     .filter((d) => d <= target)
     .sort();
   const last = earlier.at(-1);
-  return last === undefined ? null : prices[last]!;
+  if (last === undefined) return null;
+  if (typeof maxDias === "number") {
+    const dias = (toTime(target) - toTime(last)) / 86_400_000;
+    if (dias > maxDias) return null;
+  }
+  return prices[last]!;
 }
+
+export { DIAS_DE_FOLGA };

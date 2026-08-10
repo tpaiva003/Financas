@@ -1650,3 +1650,25 @@ para cima; **um 5:4 passa**, e fica dito.
 1923,08 € que nunca existiu — com ar de rendimento tributável — e a "compra" pôs
 no investido 2142,56 € que nunca saíram do banco. Recusar só a rentabilidade e
 deixar estes dois números sem aviso seria tapar metade do problema.
+
+## Duas recusas que o código prometia e não cumpria
+
+**Um fecho velho era arrastado para sempre.** O `positionValuePoints` diz no
+cabeçalho que devolve `null` se faltar o preço de algum dia — "não se estima, não
+se interpola e não se salta o ponto". Só que o `priceOn` arrastava o último fecho
+anterior sem limite: uma série que acabasse em 2022 avaliava um movimento de 2025
+a preços de 2022 e devolvia uma rentabilidade com ar de resposta. A promessa era
+impossível de cumprir, porque quem a devia cumprir nunca via um buraco.
+
+Agora há folga de **dez dias** — que chega para qualquer fim de semana ou Natal
+com feriados a calhar mal, e é curta para qualquer outra coisa.
+
+**Dois pontos no mesmo dia não são um troço.** Numa venda TOTAL executada 0,1%
+abaixo do fecho, o valor final é zero e a base fica esse resto de cêntimos: a TWR
+dava **-100%** num investimento que quase duplicou. De que lado do fecho caía a
+execução decidia entre +100% e -100% — e a app tem uma prateleira inteira para
+estas posições ("Já fechadas").
+
+Sem tempo não há rentabilidade: um troço de duração zero passa a contar como
+neutro. É exactamente o que o cabeçalho do `positionValuePoints` já dizia que o
+segundo ponto faz — "nunca inventa rentabilidade" — e que não fazia.
