@@ -37,6 +37,7 @@ import { AssetForm } from "@/components/AssetForm";
 import {
   deleteAssetAction,
   fetchAssetQuoteAction,
+  moverAtivoAction,
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
 import { InvestmentGrid } from "@/components/InvestmentGrid";
@@ -407,9 +408,11 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   />
                 ) : (
                   <ul className="divide-y divide-hair2">
-                    {(byKind.get(kind) ?? []).map((a) => (
+                    {(byKind.get(kind) ?? []).map((a, i, lista) => (
                       <AssetRow
                         key={a.id}
+                        primeiro={i === 0}
+                        ultimo={i === lista.length - 1}
                         asset={a}
                         // O formulário edita o que está GRAVADO, não a posição
                         // derivada: senão gravar sem tocar em nada reescrevia a
@@ -690,12 +693,17 @@ function AssetRow({
   tradeCount,
   members,
   podeLerContrato,
+  primeiro,
+  ultimo,
 }: {
   asset: AssetView;
   stored: Asset | null;
   members: { id: string; name: string }[];
   /** Há leitura de contratos configurada? */
   podeLerContrato: boolean;
+  /** Para desligar os botões de mover nas pontas da lista. */
+  primeiro: boolean;
+  ultimo: boolean;
   quoteDate: string | null;
   quoteProblem: string | null;
   /** O fecho na moeda da bolsa, quando não é euro. */
@@ -903,6 +911,35 @@ function AssetRow({
               {a.gainPct !== null ? ` (${a.gainPct >= 0 ? "+" : ""}${Math.round(a.gainPct)}%)` : ""}
             </p>
           ) : null}
+        </div>
+
+        {/* Arrumar a lista pela ordem de quem olha para ela. A de criação, numa
+            carteira importada, é a ordem do ficheiro da corretora. */}
+        <div className="flex items-center">
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="dir" value="cima" />
+            <button
+              type="submit"
+              disabled={primeiro}
+              aria-label={`Mover ${a.name} para cima`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              ↑
+            </button>
+          </form>
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="dir" value="baixo" />
+            <button
+              type="submit"
+              disabled={ultimo}
+              aria-label={`Mover ${a.name} para baixo`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              ↓
+            </button>
+          </form>
         </div>
 
         <form action={deleteAssetAction}>

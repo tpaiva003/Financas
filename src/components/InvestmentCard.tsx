@@ -21,6 +21,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatCents, monogramFor } from "@/lib/domain";
+import { moverAtivoAction } from "@/app/(app)/actions";
 import { QuickTradeForm } from "./QuickTradeForm";
 
 export interface InvestmentCardData {
@@ -39,6 +40,10 @@ export interface InvestmentCardData {
   tradeCount: number;
   /** A bolsa como a corretora a escreve. Vem do ficheiro importado. */
   exchange?: string | null;
+  /** Dá para mover este cartão? Só quando a lista não está filtrada. */
+  podeMover?: boolean;
+  primeiro?: boolean;
+  ultimo?: boolean;
   /** A data do fecho, quando há cotação. */
   quoteDate?: string | null;
   /**
@@ -101,6 +106,37 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
           ) : null}
         </div>
       </div>
+
+      {/* Mover só aparece com a lista inteira à vista: arrumar o que está
+          filtrado mexe em posições que não se veem. */}
+      {data.podeMover ? (
+        <div className="mt-2 flex items-center gap-1">
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={data.id} />
+            <input type="hidden" name="dir" value="cima" />
+            <button
+              type="submit"
+              disabled={data.primeiro}
+              aria-label={`Mover ${data.name} para trás`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              ←
+            </button>
+          </form>
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={data.id} />
+            <input type="hidden" name="dir" value="baixo" />
+            <button
+              type="submit"
+              disabled={data.ultimo}
+              aria-label={`Mover ${data.name} para a frente`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              →
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2.5">
         <div>

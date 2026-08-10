@@ -172,8 +172,19 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
             </p>
           ) : null}
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visiveis.map((d) => (
-              <InvestmentCard key={d.id} data={d} />
+            {visiveis.map((d, i) => (
+              <InvestmentCard
+                key={d.id}
+                data={{
+                  ...d,
+                  // Arrumar uma lista filtrada mexia em posições que não se
+                  // veem: o que está escondido continua lá e a ordem final
+                  // saía diferente do que se viu a fazer.
+                  podeMover: !filtrado && !mostrarFechadas,
+                  primeiro: i === 0,
+                  ultimo: i === visiveis.length - 1,
+                }}
+              />
             ))}
           </ul>
         </>

@@ -209,6 +209,13 @@ export interface Asset {
   purchasePriceCents?: number | null;
   /** Imóvel: o que se meteu em obras desde a compra. */
   worksCents?: number | null;
+  /**
+   * Ordem escolhida à mão, dentro do tipo de bem.
+   *
+   * `null` quer dizer "nunca foi mexida", e nesse caso manda a data de criação —
+   * é o que faz esta funcionalidade não mexer em nenhuma lista já vista.
+   */
+  sortOrder?: number | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
   /**

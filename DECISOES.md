@@ -1566,3 +1566,25 @@ data.
 
 Não é um terceiro valor a gravar: um crédito misto são dois períodos, e o tipo
 continua a ser lido deles.
+
+## A ordem dos bens é de quem olha para eles
+
+A lista vinha por data de criação — que numa carteira importada é a ordem do
+ficheiro da corretora, e não quer dizer nada. Ordenar por valor também não serve:
+a ordem por que se olha para as coisas é a de quem olha.
+
+**Setas, não arrastar.** Arrastar precisa de biblioteca, comporta-se mal no
+telemóvel e não funciona com teclado. Duas setas com `aria-label` fazem o mesmo e
+funcionam em todo o lado.
+
+**A ordem é dentro do tipo.** A página agrupa por tipo; trocar um imóvel com uma
+conta não teria efeito visível nenhum.
+
+**Não se arruma o que está filtrado.** Com a lista filtrada, mover mexia em
+posições que não se veem, e a ordem final saía diferente do que se viu a fazer.
+Os botões desaparecem enquanto houver filtro.
+
+**`sort_order` é NULL em tudo o que já existe**, e nesse caso manda a data de
+criação: nenhuma lista já vista muda por causa disto. Só passa a contar depois de
+alguém mexer, e a primeira mexida numera o grupo todo — uma escrita por bem, mas
+só quando se arruma, e deixa a ordem explícita em vez de dependente de empates.

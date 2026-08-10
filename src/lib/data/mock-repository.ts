@@ -722,7 +722,21 @@ export class MockRepository implements Repository {
   }
 
   async listAssets(spaceId: string): Promise<Asset[]> {
-    return getStore().assets.filter((a) => a.spaceId === spaceId);
+    // A mesma regra do Supabase: a ordem escolhida à mão primeiro, e quem nunca
+    // foi mexido fica por ordem de criação. Um mock mais permissivo do que a
+    // produção esconde exatamente os enganos que os testes procuram.
+    const doAmbiente = getStore().assets.filter((a) => a.spaceId === spaceId);
+    return doAmbiente
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => {
+        const ax = x.a.sortOrder ?? null;
+        const ay = y.a.sortOrder ?? null;
+        if (ax !== null && ay !== null) return ax - ay || x.i - y.i;
+        if (ax !== null) return -1;
+        if (ay !== null) return 1;
+        return x.i - y.i;
+      })
+      .map((x) => x.a);
   }
 
   async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {

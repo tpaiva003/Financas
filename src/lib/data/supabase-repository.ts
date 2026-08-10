@@ -1154,6 +1154,9 @@ export class SupabaseRepository implements Repository {
       .from("assets")
       .select("*")
       .eq("space_id", spaceId)
+      // A ordem escolhida à mão primeiro; quem nunca foi mexido fica por data
+      // de criação, que é como sempre esteve.
+      .order("sort_order", { ascending: true, nullsFirst: false })
       .order("created_at");
     if (error) throw new Error(error.message);
     return (data ?? []).map(rowToAsset);
@@ -1230,6 +1233,7 @@ export class SupabaseRepository implements Repository {
         works_cents: input.worksCents ?? null,
         symbol: input.symbol ?? null,
         exchange: input.exchange ?? null,
+        sort_order: input.sortOrder ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1266,6 +1270,7 @@ export class SupabaseRepository implements Repository {
     if (patch.worksCents !== undefined) row.works_cents = patch.worksCents;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     if (patch.exchange !== undefined) row.exchange = patch.exchange;
+    if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1778,6 +1783,7 @@ function rowToAsset(r: any): Asset {
     worksCents: r.works_cents ?? null,
     symbol: r.symbol ?? null,
     exchange: r.exchange ?? null,
+    sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,
   };
 }

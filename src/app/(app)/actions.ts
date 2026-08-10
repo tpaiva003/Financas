@@ -2606,3 +2606,55 @@ async function fotografarDepoisDoMovimento(spaceId: string): Promise<void> {
     // Ver o cabeçalho.
   }
 }
+
+/**
+ * Mudar um bem de posição na lista, dentro do seu tipo.
+ *
+ * **Porquê à mão e não por valor.** A lista vinha por ordem de criação, que numa
+ * carteira importada é a ordem do ficheiro da corretora — não quer dizer nada.
+ * Ordenar por valor também não serve: a ordem por que se olha para as coisas é a
+ * de quem olha, e muda de pessoa para pessoa.
+ *
+ * **A ordem é por tipo.** Trocar um imóvel com uma conta bancária não é uma
+ * ordenação, é uma mistura: a página agrupa por tipo, e mover atravessando
+ * grupos não teria efeito nenhum visível.
+ *
+ * **A primeira mexida numera o grupo todo.** Enquanto ninguém mexer, tudo fica
+ * a `null` e manda a data de criação — que é como sempre esteve, e por isso
+ * nenhuma lista já vista muda por causa desta funcionalidade.
+ */
+export async function moverAtivoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  const dir = String(formData.get("dir") ?? "");
+  if (!id || (dir !== "cima" && dir !== "baixo")) return;
+
+  const repo = getRepository();
+  const todos = await repo.listAssets(ctx.space.id).catch(() => []);
+  const alvo = todos.find((a) => a.id === id);
+  if (!alvo) return;
+
+  // Só o grupo do mesmo tipo, na ordem em que está a ser mostrado.
+  const grupo = todos.filter((a) => a.kind === alvo.kind);
+  const i = grupo.findIndex((a) => a.id === id);
+  const j = dir === "cima" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= grupo.length) return;
+
+  const nova = [...grupo];
+  nova[i] = grupo[j]!;
+  nova[j] = grupo[i]!;
+
+  // Numera o grupo todo: é uma escrita por bem, mas só de cada vez que alguém
+  // arruma a lista, e deixa a ordem explícita em vez de dependente de empates.
+  await Promise.all(
+    nova.map((a, k) =>
+      a.sortOrder === k
+        ? Promise.resolve()
+        : repo.updateAsset(a.id, ctx.space.id, { sortOrder: k }).catch(() => {}),
+    ),
+  );
+
+  revalidatePath("/patrimonio");
+}
