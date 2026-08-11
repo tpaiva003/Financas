@@ -47,6 +47,7 @@ import {
 } from "@/app/(app)/actions";
 import { InvestmentGrid } from "@/components/InvestmentGrid";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
+import { DescobrirMarcas } from "@/components/DescobrirMarcas";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
@@ -240,6 +241,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
     })
     .filter((g): g is NonNullable<typeof g> => g !== null);
 
+  const semMarca = stored.filter((a) => a.kind === "investimento" && !a.logoDomain).length;
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
@@ -477,6 +479,9 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   stored.some((s) => s.kind === "investimento" && s.symbol) ? (
                     <RefreshQuotesButton />
                   ) : null}
+                  {/* Só quando há mesmo algum por resolver: um botão que não
+                      tem nada para fazer é ruído numa página cheia. */}
+                  {kind === "investimento" && semMarca > 0 ? <DescobrirMarcas /> : null}
                 </div>
 
                 {/* Depois de uma importação ficam dezenas de ativos sem símbolo,
@@ -570,6 +575,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                       // calculada — e é dele que sai a cor do emblema.
                       symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
                       exchange: stored.find((x) => x.id === a.id)?.exchange ?? null,
+                      temLogo: Boolean(stored.find((x) => x.id === a.id)?.logoDomain),
                       quantity: a.quantity ?? 0,
                       unitCostCents: a.unitCostCents ?? null,
                       unitPriceCents: a.unitPriceCents ?? null,

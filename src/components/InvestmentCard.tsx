@@ -28,6 +28,8 @@ export interface InvestmentCardData {
   id: string;
   name: string;
   symbol: string | null;
+  /** Há domínio de marca gravado? Sem ele nem se pede o logo. */
+  temLogo?: boolean;
   quantity: number;
   /** Custo médio por unidade. */
   unitCostCents: number | null;
@@ -76,15 +78,41 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
           memória visual à carteira. Ver `domain/monogram.ts` para a razão de
           não irmos buscar logos a um serviço externo.
         */}
+        {/*
+          O logo por cima do monograma, e o monograma sempre por baixo.
+
+          O logo vem da rota `/api/logo/[id]` desta app e nunca do browser: um
+          serviço de logos pedido pelo browser ficaria com a lista exacta das
+          ações de quem usa a app. Ver o cabeçalho dessa rota.
+
+          O monograma fica **debaixo** e não como alternativa condicional: um
+          ícone que falha a carregar deixa o quadrado vazio, e assim o que se vê
+          é sempre alguma coisa. É também o que evita o salto de disposição
+          enquanto a imagem não chega.
+        */}
         <span
           aria-hidden="true"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl font-mono text-sm font-semibold tracking-tight"
+          className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl font-mono text-sm font-semibold tracking-tight"
           style={{
             backgroundColor: `hsl(${hue} 45% 88%)`,
             color: `hsl(${hue} 55% 24%)`,
           }}
         >
           {letters}
+          {data.temLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/logo/${data.id}`}
+              alt=""
+              loading="lazy"
+              onError={(e) => {
+                // Um logo que não veio esconde-se e fica o monograma. Um ícone
+                // partido numa carteira lê-se como avaria da app.
+                e.currentTarget.style.display = "none";
+              }}
+              className="absolute inset-0 h-full w-full bg-white object-contain p-1.5"
+            />
+          ) : null}
         </span>
 
         <div className="min-w-0 flex-1">

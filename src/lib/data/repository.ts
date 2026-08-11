@@ -228,6 +228,15 @@ export interface Asset {
    * a adivinhar pelo nome — e serve para filtrar a carteira.
    */
   exchange?: string | null;
+  /**
+   * Domínio da marca ("apple.com", "ishares.com"), para o logo.
+   *
+   * Guarda-se o domínio e não um URL de imagem: um URL apodrece quando o
+   * fornecedor muda de caminho, e fica um quadrado partido na carteira de
+   * alguém. O logo é servido pela rota `/api/logo/[id]` da própria app, nunca
+   * pedido pelo browser — ver o cabeçalho dessa rota.
+   */
+  logoDomain?: string | null;
   updatedAt?: string | null;
 }
 

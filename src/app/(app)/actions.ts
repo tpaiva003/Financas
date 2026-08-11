@@ -13,6 +13,7 @@ import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
 import { buscarEuribor } from "@/lib/services/euribor-service";
+import { descobrirMarcas } from "@/lib/services/marca-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
   creditContractExtractAvailable,
@@ -3174,4 +3175,53 @@ export async function apagarSplitAction(formData: FormData): Promise<void> {
   await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
   if (assetId) revalidatePath(`/patrimonio/ativos/${assetId}`);
+}
+
+/**
+ * Descobrir e gravar a marca dos investimentos que ainda não a têm.
+ *
+ * **Aplica sem perguntar, ao contrário do símbolo — e a diferença é o que está
+ * em jogo.** Um símbolo errado devolve um preço plausível todos os dias, para
+ * sempre, e ninguém desconfia; um logo errado é um logo errado, vê-se, e
+ * arranja-se apagando o domínio. Pedir confirmação uma a uma para uma coisa
+ * decorativa era fazer trabalho por nada.
+ */
+export async function descobrirMarcasAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
+  const semMarca = bens.filter((a) => a.kind === "investimento" && !a.logoDomain);
+  if (semMarca.length === 0) return { ok: true, message: "Todos já têm marca." };
+
+  const encontradas = await descobrirMarcas(semMarca.map((a) => a.name)).catch(() => []);
+  const porNome = new Map(encontradas.map((m) => [m.nome, m.dominio]));
+
+  let gravadas = 0;
+  for (const bem of semMarca) {
+    const dominio = porNome.get(bem.name);
+    if (!dominio) continue;
+    try {
+      await repo.updateAsset(bem.id, ctx.space.id, { logoDomain: dominio });
+      gravadas += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a marca") };
+    }
+  }
+
+  revalidatePath("/patrimonio");
+  // Diz sempre o que ficou de fora: um resultado que só conta os acertos
+  // lê-se como "está tudo tratado", e não está.
+  const faltam = semMarca.length - gravadas;
+  return {
+    ok: true,
+    message:
+      faltam > 0
+        ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível — esses ficam com as iniciais.`
+        : `${gravadas} com logo.`,
+  };
 }
