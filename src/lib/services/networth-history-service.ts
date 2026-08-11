@@ -24,8 +24,10 @@
 
 import { getRepository } from "@/lib/data";
 import {
+  BENCHMARKS,
   buildCreditoPlano,
   juntarHistorico,
+  priceOn,
   normalizeSnapshots,
   normalizeSymbol,
   ownershipShare,
@@ -36,6 +38,7 @@ import {
   type NetWorth,
   type NetWorthSnapshot,
 } from "@/lib/domain";
+import { getQuoteSeries } from "./quotes-service";
 
 /** O que aconteceu à fotografia de hoje. */
 export type CapturaEstado = "gravada" | "sem-bens" | "falhou";
@@ -221,4 +224,63 @@ export async function getNetWorthHistoryCompleto(
     reconstruirDoPassado(spaceId, hoje).catch(() => []),
   ]);
   return juntarHistorico(estimado, medido);
+}
+
+/**
+ * As linhas dos índices para o gráfico do património.
+ *
+ * **O que isto é, e sobretudo o que não é.** Um índice não recebe reforços e
+ * não tem casa nem crédito lá dentro; o património tem as três coisas. Estas
+ * linhas respondem a "o que teria feito o mercado no mesmo período", partindo
+ * do mesmo ponto — e mais nada. A comparação a sério, com os mesmos reforços
+ * nas mesmas datas, vive na página dos Ativos e é essa que serve para julgar
+ * uma carteira.
+ *
+ * Fica aqui na mesma porque a pergunta "o mercado subiu ou desceu enquanto eu
+ * estava a poupar?" é legítima e não tinha resposta em lado nenhum.
+ *
+ * Normaliza-se ao primeiro ponto **medido**: partir de um reconstruído punha o
+ * índice a espelhar a distância entre a estimativa e a realidade.
+ */
+export interface LinhaDeIndice {
+  id: string;
+  label: string;
+  /** Um valor por cada ponto da série, ou `null` onde não há cotação. */
+  valores: (number | null)[];
+}
+
+export async function linhasDeIndice(
+  pontos: readonly { onDate: string; netCents: number; estimado?: boolean }[],
+): Promise<LinhaDeIndice[]> {
+  const medidos = pontos.filter((p) => !p.estimado);
+  const base = medidos[0];
+  if (!base || pontos.length < 2 || base.netCents <= 0) return [];
+
+  const out: LinhaDeIndice[] = [];
+  for (const b of BENCHMARKS) {
+    let quotes: { date: string; closeCents: number }[] = [];
+    for (const candidato of b.symbols) {
+      const s = await getQuoteSeries(candidato.symbol, { since: base.onDate }).catch(() => null);
+      if (s && s.quotes.length > 0) {
+        quotes = s.quotes;
+        break;
+      }
+    }
+    if (quotes.length === 0) continue;
+
+    const precos: Record<string, number> = {};
+    for (const q of quotes) precos[q.date] = q.closeCents;
+    const inicial = priceOn(precos, base.onDate, 20);
+    if (inicial === null || inicial <= 0) continue;
+
+    const valores = pontos.map((p) => {
+      // Antes do ponto de partida não há linha nenhuma para desenhar.
+      if (p.onDate < base.onDate) return null;
+      const preco = priceOn(precos, p.onDate, 20);
+      if (preco === null || preco <= 0) return null;
+      return Math.round(base.netCents * (preco / inicial));
+    });
+    out.push({ id: b.id, label: b.label, valores });
+  }
+  return out;
 }

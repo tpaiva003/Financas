@@ -56,6 +56,7 @@ import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
 import {
   captureNetWorthSnapshot,
   getNetWorthHistoryCompleto,
+  linhasDeIndice,
 } from "@/lib/services/networth-history-service";
 import { NetWorthChart } from "@/components/NetWorthChart";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
@@ -263,9 +264,13 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const historico = await (async () => {
     if (view !== "resumo") return null;
     const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
+    const completo = await getNetWorthHistoryCompleto(ctx.space.id, today);
     return {
       captura,
-      series: buildNetWorthSeries(await getNetWorthHistoryCompleto(ctx.space.id, today)),
+      series: buildNetWorthSeries(completo),
+      // As linhas dos índices são contexto e nunca podem custar a página: se a
+      // fonte de cotações não responder, o gráfico desenha-se na mesma.
+      indices: await linhasDeIndice(completo).catch(() => []),
     };
   })();
 
@@ -354,7 +359,11 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       </section>
 
       {historico ? (
-        <NetWorthChart series={historico.series} captura={historico.captura} />
+        <NetWorthChart
+          series={historico.series}
+          captura={historico.captura}
+          indices={historico.indices}
+        />
       ) : null}
 
       {net.byKind.length > 0 ? (

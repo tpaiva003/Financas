@@ -16,7 +16,10 @@
 
 import { useState } from "react";
 import { formatCents, type NetWorthSeries } from "@/lib/domain";
-import type { CapturaEstado } from "@/lib/services/networth-history-service";
+import type {
+  CapturaEstado,
+  LinhaDeIndice,
+} from "@/lib/services/networth-history-service";
 
 /** Quantos pontos cabem sem ficar ilegível no telemóvel. */
 const MAX_PONTOS = 24;
@@ -24,10 +27,13 @@ const MAX_PONTOS = 24;
 export function NetWorthChart({
   series,
   captura,
+  indices = [],
 }: {
   series: NetWorthSeries;
   /** O que aconteceu à fotografia de hoje. */
   captura?: CapturaEstado;
+  /** As linhas dos índices, a partir do mesmo ponto. Ver a nota em baixo. */
+  indices?: LinhaDeIndice[];
 }) {
   /**
    * O ponto sob o rato ou sob o dedo.
@@ -85,7 +91,21 @@ export function NetWorthChart({
     );
   }
 
-  const valores = points.map((p) => p.netCents);
+  /**
+   * As linhas dos índices, cortadas ao mesmo número de pontos que a série.
+   *
+   * Entram na escala: sem isso, um índice que subiu mais do que o património
+   * saía por cima do desenho e desaparecia — o que se leria como se ele não
+   * tivesse subido.
+   */
+  const linhasIndice = indices
+    .map((l) => ({ ...l, valores: l.valores.slice(-MAX_PONTOS) }))
+    .filter((l) => l.valores.some((v) => v !== null));
+
+  const valores = [
+    ...points.map((p) => p.netCents),
+    ...linhasIndice.flatMap((l) => l.valores.filter((v): v is number => v !== null)),
+  ];
   const max = Math.max(...valores);
   const min = Math.min(...valores);
   // Uma folga em cima e em baixo, para a linha não encostar às bordas. E o
@@ -180,6 +200,24 @@ export function NetWorthChart({
         Sem ponto escolhido mostra-se o último — assim a linha nunca está vazia
         e não há salto de altura ao passar o rato.
       */}
+      {linhasIndice.length > 0 ? (
+        <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-faint">
+          {linhasIndice.map((l, k) => (
+            <span key={l.id} className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className={`inline-block h-0 w-4 border-t ${k === 0 ? "border-dashed border-fg/40" : "border-dotted border-fg/30"}`}
+              />
+              {l.label}
+            </span>
+          ))}
+          <span>
+            partindo do mesmo valor, e sem os teus reforços — é contexto, não é
+            comparação.
+          </span>
+        </p>
+      ) : null}
+
       {(() => {
         const i = sobre ?? points.length - 1;
         const p = points[i];
@@ -252,6 +290,45 @@ export function NetWorthChart({
             vectorEffect="non-scaling-stroke"
           />
         ) : null}
+
+        {/*
+          Os índices, a tracejado fino e por baixo da linha do património: são
+          contexto, não são a coisa que se veio ver.
+        */}
+        {linhasIndice.map((l, k) => {
+          /**
+           * Um buraco na série parte a linha em vez de a atravessar.
+           *
+           * É a mesma regra da linha do património: ligar dois pontos por cima
+           * de meses sem cotação afirma uma coisa sobre eles. O primeiro
+           * segmento depois de um buraco é um "move", não um "line".
+           */
+          let recomeca = true;
+          const d = l.valores
+            .map((v, i) => {
+              if (v === null) {
+                recomeca = true;
+                return null;
+              }
+              const seg = `${recomeca ? "M" : "L"}${x(i)},${y(v)}`;
+              recomeca = false;
+              return seg;
+            })
+            .filter((seg): seg is string => seg !== null)
+            .join(" ");
+          if (!d) return null;
+          return (
+            <path
+              key={l.id}
+              d={d}
+              fill="none"
+              className={k === 0 ? "stroke-fg/30" : "stroke-fg/20"}
+              strokeWidth={0.8}
+              strokeDasharray={k === 0 ? "2 2" : "1 2"}
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
 
         {/* A guia vertical do ponto escolhido. Ajuda a ler a data em baixo. */}
         {sobre !== null && points[sobre] ? (
