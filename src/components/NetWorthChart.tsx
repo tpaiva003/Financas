@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * A evolução do património ao longo do tempo. SVG puro, como o gráfico mensal:
  * sem dependências e legível nos dois temas.
@@ -12,6 +14,7 @@
  * coisa sobre meses de que não se sabe nada.
  */
 
+import { useState } from "react";
 import { formatCents, type NetWorthSeries } from "@/lib/domain";
 import type { CapturaEstado } from "@/lib/services/networth-history-service";
 
@@ -26,6 +29,18 @@ export function NetWorthChart({
   /** O que aconteceu à fotografia de hoje. */
   captura?: CapturaEstado;
 }) {
+  /**
+   * O ponto sob o rato ou sob o dedo.
+   *
+   * Os `<title>` do SVG davam uma dica nativa e não chegavam: os pontos têm
+   * menos de um ponto de raio no sistema de coordenadas, o desenho é esticado
+   * com `preserveAspectRatio="none"`, e acertar num deles com o rato é uma
+   * questão de sorte. No telemóvel não há sequer *hover*.
+   *
+   * A solução é uma faixa invisível por ponto, do topo ao fundo: acerta-se
+   * sempre, e o mesmo gesto funciona com o dedo.
+   */
+  const [sobre, setSobre] = useState<number | null>(null);
   const points = series.points.slice(-MAX_PONTOS);
 
   // Com um ponto só não há evolução nenhuma para mostrar — e é isso que se diz,
@@ -154,12 +169,51 @@ export function NetWorthChart({
         ) : null}
       </div>
 
+      {/*
+        A leitura do ponto escolhido, num sítio fixo.
+
+        Fica **por cima** do gráfico e não numa caixa flutuante: uma caixa que
+        segue o rato tapa a linha e não existe no telemóvel. Aqui o número
+        aparece sempre no mesmo lugar, o que também o torna comparável enquanto
+        se percorre a série.
+
+        Sem ponto escolhido mostra-se o último — assim a linha nunca está vazia
+        e não há salto de altura ao passar o rato.
+      */}
+      {(() => {
+        const i = sobre ?? points.length - 1;
+        const p = points[i];
+        if (!p) return null;
+        const anterior = i > 0 ? points[i - 1] : null;
+        const delta = anterior ? p.netCents - anterior.netCents : null;
+        return (
+          <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-xs">
+            <span className="font-mono uppercase tracking-[0.04em] text-fg-faint">
+              {p.label}
+            </span>
+            <span className="font-mono tnum text-fg">{formatCents(p.netCents)}</span>
+            {delta !== null ? (
+              <span className={`font-mono tnum ${delta >= 0 ? "text-credit" : "text-debt"}`}>
+                {delta >= 0 ? "+" : ""}
+                {formatCents(delta)} no mês
+              </span>
+            ) : null}
+            {p.estimado ? <span className="text-fg-faint">reconstruído</span> : null}
+            {sobre === null ? (
+              <span className="text-fg-faint">— passa o rato pelo gráfico</span>
+            ) : null}
+          </p>
+        );
+      })()}
+
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         className="h-40 w-full overflow-visible"
         role="img"
         aria-label={`Património líquido de ${points[0]!.label} a ${points.at(-1)!.label}`}
+        onMouseLeave={() => setSobre(null)}
+        onPointerLeave={() => setSobre(null)}
       >
         <path d={area} className={subiu ? "fill-credit/10" : "fill-debt/10"} />
         {temEstimado ? (
@@ -199,19 +253,52 @@ export function NetWorthChart({
           />
         ) : null}
 
+        {/* A guia vertical do ponto escolhido. Ajuda a ler a data em baixo. */}
+        {sobre !== null && points[sobre] ? (
+          <line
+            x1={x(sobre)}
+            x2={x(sobre)}
+            y1={0}
+            y2={H}
+            className="stroke-fg/25"
+            strokeWidth={0.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+
         {points.map((p, i) => (
           <circle
             key={p.onDate}
             cx={x(i)}
             cy={y(p.netCents)}
-            r={p.estimado ? 0.6 : 0.9}
-            className={p.estimado ? "fill-fg/25" : "fill-fg/60"}
-          >
-            <title>
-              {`${p.label}: ${formatCents(p.netCents)}${p.estimado ? " (reconstruído)" : ""}`}
-            </title>
-          </circle>
+            r={sobre === i ? 1.6 : p.estimado ? 0.6 : 0.9}
+            className={
+              sobre === i ? "fill-fg" : p.estimado ? "fill-fg/25" : "fill-fg/60"
+            }
+          />
         ))}
+
+        {/*
+          As faixas de deteção, invisíveis e do topo ao fundo.
+          São a última coisa desenhada para ficarem por cima de tudo, e por isso
+          apanham o ponteiro em qualquer altura da coluna.
+        */}
+        {points.map((p, i) => {
+          const largura = points.length > 1 ? W / (points.length - 1) : W;
+          return (
+            <rect
+              key={`hit-${p.onDate}`}
+              x={Math.max(0, x(i) - largura / 2)}
+              y={0}
+              width={largura}
+              height={H}
+              fill="transparent"
+              onMouseEnter={() => setSobre(i)}
+              onPointerDown={() => setSobre(i)}
+              onPointerMove={() => setSobre(i)}
+            />
+          );
+        })}
       </svg>
 
       <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">
