@@ -36,6 +36,8 @@ import type {
   CreateAssetAttachment,
   Ticket,
   TicketMessage,
+  StoredAssetSplit,
+  CreateAssetSplitInput,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -81,6 +83,7 @@ interface Store {
   assetTrades: AssetTrade[];
   netWorthSnapshots: NetWorthSnapshotRow[];
   assetAttachments: AssetAttachment[];
+  assetSplits: StoredAssetSplit[];
   tickets: Ticket[];
   ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
@@ -113,6 +116,7 @@ function getStore(): Store {
       assetTrades: [],
       netWorthSnapshots: [],
       assetAttachments: [],
+      assetSplits: [],
       tickets: [],
       ticketMessages: [],
       quotes: {},
@@ -994,6 +998,43 @@ export class MockRepository implements Repository {
       archivedAt: null,
       notes: null,
     });
+  }
+
+  // ---- Desdobramentos ---------------------------------------------------
+
+  async listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]> {
+    return getStore()
+      .assetSplits.filter(
+        (s) => s.spaceId === spaceId && (assetId ? s.assetId === assetId : true),
+      )
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async createAssetSplit(input: CreateAssetSplitInput): Promise<void> {
+    const store = getStore();
+    // O mesmo ativo não desdobra duas vezes no mesmo dia — o índice único da
+    // migração diz o mesmo, e o mock aplica a mesma regra para não ser mais
+    // permissivo do que a produção.
+    const jaHa = store.assetSplits.some(
+      (s) => s.assetId === input.assetId && s.date === input.date,
+    );
+    if (jaHa) throw new Error("Já há um desdobramento nesse dia para este ativo.");
+    store.assetSplits.push({
+      id: `spl_${randomUUID()}`,
+      spaceId: input.spaceId,
+      assetId: input.assetId,
+      date: input.date,
+      ratio: input.ratio,
+      notes: input.notes ?? null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteAssetSplit(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.assetSplits = store.assetSplits.filter(
+      (s) => !(s.id === id && s.spaceId === spaceId),
+    );
   }
 
   // ---- Pedidos de ajuda -------------------------------------------------

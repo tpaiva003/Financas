@@ -8,6 +8,9 @@ import {
   buildPosition,
   buildPositionReturn,
   movimentosImplausiveis,
+  aplicarSplits,
+  detetarSplits,
+  ratioPorExtenso,
   formatCents,
   formatForeignCents,
   formatRate,
@@ -18,11 +21,13 @@ import {
 import { TradeForm } from "@/components/TradeForm";
 import { TradeRow } from "@/components/TradeRow";
 import { AssetAttachments } from "@/components/AssetAttachments";
+import { SplitSugerido } from "@/components/SplitSugerido";
 import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
   updateAssetPriceAction,
   updateAssetSymbolAction,
+  apagarSplitAction,
 } from "@/app/(app)/actions";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 import { getAssetTwr } from "@/lib/services/asset-twr";
@@ -57,8 +62,30 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       ? { cents: fresh.quoteCents, currency: fresh.quoteCurrency }
       : null;
 
-  const trades = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
+  const registados = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
+
+  /**
+   * Os desdobramentos, e os movimentos vistos na unidade de hoje.
+   *
+   * Um desdobramento não é um negócio: é uma mudança de unidade de medida. As
+   * quantidades de tudo o que veio antes multiplicam, os preços por unidade
+   * dividem, e **o dinheiro não se mexe**. Ver `domain/splits.ts`.
+   *
+   * `[]` quando a leitura falha, e aqui isso é o comportamento certo por uma
+   * vez: sem desdobramentos as contas ficam como estavam antes desta
+   * funcionalidade existir, que é um estado conhecido e não uma invenção.
+   */
+  const splits = await repo.listAssetSplits(ctx.space.id, asset.id).catch(() => []);
+  const trades = aplicarSplits(registados as Trade[], splits);
+
+  /**
+   * Pares que têm a assinatura de um desdobramento por tratar.
+   *
+   * Procura-se nos movimentos **como foram registados**: depois de aplicados os
+   * fatores, o par já não bate certo e a deteção deixaria de o ver.
+   */
+  const sugeridos = detetarSplits(registados as Trade[]);
 
   /**
    * Os documentos deste investimento.
@@ -145,6 +172,57 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             Corrige no Editar do movimento, aqui em baixo.
           </p>
         </div>
+      ) : null}
+
+      {/*
+        Desdobramentos por confirmar.
+
+        A app reconhece a assinatura — venda e compra no mesmo dia, mesmo
+        dinheiro, quantidades diferentes — mas não a aplica sozinha: a mesma
+        assinatura serve a uma venda e uma recompra a sério feitas ao cêntimo, e
+        transformá-la num desdobramento apagava uma mais-valia que alguém tem de
+        declarar.
+      */}
+      {sugeridos.length > 0 ? (
+        <div className="space-y-3">
+          {sugeridos.map((sg) => (
+            <SplitSugerido
+              key={`${sg.vendaId}:${sg.compraId}`}
+              assetId={asset.id}
+              sugerido={sg}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {/* Os que já estão confirmados, e como se desfazem. */}
+      {splits.length > 0 ? (
+        <section className="card p-5">
+          <p className="eyebrow mb-2">Desdobramentos</p>
+          <ul className="space-y-1.5">
+            {splits.map((sp) => (
+              <li key={sp.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-fg-muted">
+                  <span className="font-mono text-fg">{ratioPorExtenso(sp.ratio)}</span> em{" "}
+                  {fmtDate(sp.date)} — as unidades compradas antes desta data contam
+                  multiplicadas.
+                </span>
+                <form action={apagarSplitAction}>
+                  <input type="hidden" name="id" value={sp.id} />
+                  <input type="hidden" name="assetId" value={asset.id} />
+                  <button type="submit" className="btn-ghost px-2 text-xs text-debt hover:text-debt">
+                    Desfazer
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-fg-faint">
+            O dinheiro investido não muda com isto: o que muda são as unidades e
+            o custo por unidade. Os movimentos aqui em baixo continuam a mostrar
+            o que a corretora registou.
+          </p>
+        </section>
       ) : null}
 
       {position.oversold ? (
@@ -412,7 +490,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           </div>
         ) : (
           <ul className="card divide-y divide-hair2 p-0">
-            {[...trades]
+            {[...registados]
               .sort((a, b) => (a.date < b.date ? 1 : -1))
               .map((t) => (
                 <TradeRow

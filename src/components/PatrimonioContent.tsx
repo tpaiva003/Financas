@@ -11,6 +11,8 @@ import {
   buildNetWorth,
   buildPosition,
   movimentosImplausiveis,
+  aplicarSplits,
+  detetarSplits,
   buildNetWorthSeries,
   assetTotalValueCents,
   ownershipShare,
@@ -88,9 +90,28 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   // Movimentos datados: quando existem, são eles que dizem quantas unidades se
   // tem e quanto custaram. A posição escrita à mão fica intocada por baixo.
   const trades = await repo.listAssetTrades(ctx.space.id).catch(() => []);
+  /**
+   * Os desdobramentos, aplicados antes de qualquer conta.
+   *
+   * Tem de ser aqui e não só na ficha de cada investimento: se a ficha
+   * contasse com o desdobramento e esta lista não, os dois ecrãs mostravam
+   * quantidades diferentes para a mesma posição — e quem visse os dois
+   * concluía, com razão, que um deles está avariado.
+   *
+   * O dinheiro não muda com isto. Só as unidades e o custo por unidade.
+   */
+  const splits = await repo.listAssetSplits(ctx.space.id).catch(() => []);
+  const splitsPorBem = new Map<string, typeof splits>();
+  for (const sp of splits) {
+    splitsPorBem.set(sp.assetId, [...(splitsPorBem.get(sp.assetId) ?? []), sp]);
+  }
   const tradesByAsset = new Map<string, Trade[]>();
   for (const t of trades) {
     tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t as Trade]);
+  }
+  for (const [assetId, lista] of tradesByAsset) {
+    const doBem = splitsPorBem.get(assetId);
+    if (doBem && doBem.length > 0) tradesByAsset.set(assetId, aplicarSplits(lista, doBem));
   }
 
   /**
@@ -193,6 +214,10 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
    * do problema tinha de o adivinhar e depois abrir cinquenta fichas para o
    * encontrar.
    */
+  const tradesRegistados = new Map<string, Trade[]>();
+  for (const t of trades) {
+    tradesRegistados.set(t.assetId, [...(tradesRegistados.get(t.assetId) ?? []), t as Trade]);
+  }
   const gralhas = stored
     .filter((a) => a.kind === "investimento")
     .map((a) => {
@@ -200,11 +225,20 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       if (movs.length === 0) return null;
       const posicao = buildPosition(movs);
       const implausiveis = movimentosImplausiveis(movs, a.unitPriceCents ?? null);
-      if (implausiveis.length === 0 && !posicao.oversold) return null;
-      return { id: a.id, nome: a.name, implausiveis, oversold: posicao.oversold };
+      // Os desdobramentos por confirmar entram na mesma lista: são a outra
+      // razão por que um investimento aparece com números impossíveis, e quem
+      // está a olhar para a carteira quer é a lista do que há para tratar.
+      const porConfirmar = detetarSplits((tradesRegistados.get(a.id) ?? []) as Trade[]);
+      if (implausiveis.length === 0 && !posicao.oversold && porConfirmar.length === 0) return null;
+      return {
+        id: a.id,
+        nome: a.name,
+        implausiveis,
+        oversold: posicao.oversold,
+        porConfirmar: porConfirmar.length,
+      };
     })
     .filter((g): g is NonNullable<typeof g> => g !== null);
-  const movimentosMaus = gralhas.reduce((n, g) => n + g.implausiveis.length, 0);
 
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
@@ -474,18 +508,18 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                     className="space-y-2 border-b border-hair2 bg-debt/5 px-5 pb-4 pt-3"
                   >
                     <p className="text-sm font-medium text-fg">
-                      {movimentosMaus > 0
-                        ? `${movimentosMaus} ${movimentosMaus === 1 ? "movimento" : "movimentos"} com valores pouco plausíveis`
-                        : "Há investimentos com mais vendas do que compras"}
-                      .
+                      {gralhas.length === 1
+                        ? "Há um investimento por tratar."
+                        : `Há ${gralhas.length} investimentos por tratar.`}
                     </p>
                     <p className="text-xs leading-snug text-fg-muted">
-                      Enquanto isto não estiver corrigido, o{" "}
+                      Enquanto isto não estiver tratado, o{" "}
                       <strong className="font-medium text-fg">investido</strong> e o{" "}
                       <strong className="font-medium text-fg">ganho</strong> desta página
                       estão errados — e um ativo com mais vendas do que compras
                       aparece como posição fechada, escondido pelo filtro de
-                      cima.
+                      cima. Foi assim que a Google e a NVIDIA desapareceram de
+                      uma carteira que continuava a tê-las.
                     </p>
                     <ul className="space-y-1.5 text-xs">
                       {gralhas.map((g) => (
@@ -498,6 +532,10 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                           </Link>
                           <span className="text-fg-faint">
                             {" — "}
+                            {g.porConfirmar > 0
+                              ? `${g.porConfirmar === 1 ? "um desdobramento" : `${g.porConfirmar} desdobramentos`} por confirmar`
+                              : null}
+                            {g.porConfirmar > 0 && (g.oversold || g.implausiveis.length > 0) ? "; " : null}
                             {g.oversold ? "mais vendas do que compras" : null}
                             {g.oversold && g.implausiveis.length > 0 ? "; " : null}
                             {g.implausiveis.length > 0

@@ -30,6 +30,8 @@ import type {
   CreateAssetAttachment,
   Ticket,
   TicketMessage,
+  StoredAssetSplit,
+  CreateAssetSplitInput,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -1810,6 +1812,43 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  // ---- Desdobramentos ---------------------------------------------------
+
+  async listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("asset_splits").select("*").eq("space_id", spaceId);
+      if (assetId) q = q.eq("asset_id", assetId);
+      return q.order("split_date").range(de, ate);
+    });
+    return rows.map(rowToSplit);
+  }
+
+  async createAssetSplit(input: CreateAssetSplitInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("asset_splits").insert({
+      id: `spl_${randomUUID()}`,
+      space_id: input.spaceId,
+      asset_id: input.assetId,
+      split_date: input.date,
+      ratio: input.ratio,
+      notes: input.notes ?? null,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAssetSplit(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    // O ambiente filtra a escrita: um id vindo do formulário não é prova de nada.
+    const { error } = await db
+      .from("asset_splits")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   // ---- Pedidos de ajuda -------------------------------------------------
   //
   // A separação entre o que o utilizador lê e as notas internas é feita por
@@ -2033,6 +2072,20 @@ function rowToAssetTrade(r: any): AssetTrade {
     currency: r.currency ?? null,
     originalAmountCents: r.original_amount_cents ?? null,
     fxRate: r.fx_rate === null || r.fx_rate === undefined ? null : Number(r.fx_rate),
+    notes: r.notes ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToSplit(r: any): StoredAssetSplit {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    assetId: r.asset_id,
+    date: String(r.split_date).slice(0, 10),
+    // `numeric` chega como texto do PostgREST: sem o Number, o fator entrava
+    // nas contas como string e "5" * "20" dava NaN em metade dos sítios.
+    ratio: Number(r.ratio),
     notes: r.notes ?? null,
     createdAt: r.created_at ?? null,
   };

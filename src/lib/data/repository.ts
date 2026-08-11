@@ -23,6 +23,7 @@ import type {
   SpacePlan,
   Crescimento,
   TicketStatus,
+  AssetSplit,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -310,6 +311,28 @@ export interface TicketMessage {
    */
   internal: boolean;
   createdAt: string;
+}
+
+/**
+ * Um desdobramento gravado, com o ambiente a que pertence.
+ *
+ * O domínio (`AssetSplit`) não precisa do `space_id` — as contas são as mesmas
+ * seja qual for o ambiente. Aqui precisa, porque é o `space_id` passado a cada
+ * consulta que faz o isolamento nesta app.
+ */
+export interface StoredAssetSplit extends AssetSplit {
+  spaceId: string;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export interface CreateAssetSplitInput {
+  spaceId: string;
+  assetId: string;
+  date: string;
+  ratio: number;
+  notes?: string | null;
+  createdBy?: string | null;
 }
 
 export interface CreateTicketInput {
@@ -813,6 +836,12 @@ export interface Repository {
   listImportBatches(spaceId: string): Promise<ImportBatch[]>;
   /** Anula um lote: elimina (soft-delete) as despesas que criou. */
   undoImportBatch(batchId: string, spaceId: string, userId: string): Promise<number>;
+
+  // Desdobramentos. Ver `splits.ts` no domínio para o porquê de existirem.
+  /** Os desdobramentos do ambiente, ou os de um bem quando se diz qual. */
+  listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]>;
+  createAssetSplit(input: CreateAssetSplitInput): Promise<void>;
+  deleteAssetSplit(id: string, spaceId: string): Promise<void>;
 
   // Pedidos de ajuda. Ver `Ticket` para a regra das notas internas.
   createTicket(input: CreateTicketInput): Promise<string>;

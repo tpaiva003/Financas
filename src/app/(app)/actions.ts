@@ -55,6 +55,8 @@ import {
   type Split,
   checkAnexo,
   validarTicket,
+  ratioValido,
+  ratioPorExtenso,
   type SituacaoOutroAmbiente,
   isTicketStatus,
   estadoDepoisDaResposta,
@@ -3091,4 +3093,85 @@ export async function buscarEuriborAction(
     return { error: r.problem ?? "Não consegui obter a Euribor." };
   }
   return { ok: true, pct: r.pct, nota: r.nota, message: r.nota ?? undefined };
+}
+
+// ---- Desdobramentos ---------------------------------------------------------
+
+/**
+ * Confirmar um desdobramento que a app detetou, ou registar um à mão.
+ *
+ * **Confirmar, e não aplicar sozinho.** A app sabe reconhecer a assinatura — uma
+ * venda e uma compra no mesmo dia, pelo mesmo dinheiro, com quantidades
+ * diferentes — mas essa assinatura também serve a uma venda e uma recompra a
+ * sério feitas ao cêntimo. Transformá-la num desdobramento sem perguntar
+ * apagava uma mais-valia real que alguém tem de declarar.
+ *
+ * **As duas pernas do par são apagadas.** Não são negócios: não saiu nem entrou
+ * dinheiro nenhum da conta naquele dia. Deixá-las lá era manter a mais-valia
+ * inventada e o investido inflacionado, que é o problema todo. O que se perde é
+ * o registo de duas linhas que a corretora escreveu para descrever uma operação
+ * que agora está descrita melhor — e o desdobramento fica gravado com a data e
+ * o fator, por isso a operação continua no historial.
+ */
+export async function confirmarSplitAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+  const ratio = parseNumber(formData.get("ratio"));
+  if (!assetId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Desdobramento inválido." };
+  if (ratio === null || !ratioValido(ratio)) {
+    return { error: "O fator não faz sentido. Num 20:1 escreve-se 20; num 1:10, 0,1." };
+  }
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id de um formulário não é prova
+  // de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === assetId);
+  if (!bem) return { error: "Investimento inválido." };
+
+  // As duas pernas, quando isto veio de uma deteção. Confrontadas com os
+  // movimentos deste ativo antes de se apagar seja o que for.
+  const idsParaApagar = [String(formData.get("vendaId") ?? ""), String(formData.get("compraId") ?? "")]
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const movimentos = await repo.listAssetTrades(ctx.space.id, assetId).catch(() => []);
+  const validos = new Set(movimentos.map((t) => t.id));
+
+  try {
+    await repo.createAssetSplit({
+      spaceId: ctx.space.id,
+      assetId,
+      date,
+      ratio,
+      createdBy: ctx.user.id,
+    });
+    for (const id of idsParaApagar) {
+      if (validos.has(id)) await repo.deleteAssetTrade(id, ctx.space.id);
+    }
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o desdobramento") };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${assetId}`);
+  return { ok: true, message: `Desdobramento de ${ratioPorExtenso(ratio)} registado.` };
+}
+
+/** Desfazer um desdobramento. As unidades voltam ao que estavam registadas. */
+export async function apagarSplitAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "").trim();
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  if (!id) return;
+  await getRepository().deleteAssetSplit(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  if (assetId) revalidatePath(`/patrimonio/ativos/${assetId}`);
 }
