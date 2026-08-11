@@ -1172,3 +1172,40 @@ pode aparecer por baixo de dados que já lá estavam.
 
 Editar nunca é travado, só criar. Um bem que já existe tem de se poder corrigir
 mesmo com o ambiente cheio — caso contrário o limite passava de tecto a armadilha.
+
+## Avaliação de empresas (DCF) — 2026-08-11
+
+- **Página nova em `/patrimonio/avaliacao`.** A página do screenshot não existia
+  em nenhuma branch do repositório, pelo que foi construída de raiz seguindo o
+  desenho mostrado e a folha de Excel fornecida.
+- **Motor de cálculo puro em `src/lib/domain/valuation.ts`**, sem I/O, com
+  testes que fixam os números **contra a folha original** (FCF 5,564 mM,
+  0,283 mM de ações: valor por ação 405,69 / 492,17 / 674,60, ponderado 361,31).
+  Se a folha e a app divergirem, o teste falha — é a app que está errada.
+- **Fonte de dados: Yahoo Finance via `yahoo-finance2`.** Escolhida por não
+  exigir chave nem subscrição, para a app funcionar imediatamente.
+  Alternativas consideradas: Financial Modeling Prep (única com estimativas de
+  analistas e médias de setor numa só fonte, mas o histórico completo é pago) e
+  Alpha Vantage (25 pedidos por dia, insuficiente para navegar entre empresas).
+  *Como reverter:* `src/lib/market/index.ts` tem uma única linha a escolher o
+  fornecedor; trocar implica escrever um novo ficheiro que cumpra
+  `MarketDataProvider` e mudar essa linha.
+- **Campo que a fonte não dá fica `null` e é listado ao utilizador**, nunca
+  preenchido por estimativa: um número inventado aqui propaga-se para o valor
+  por ação e para a decisão de compra.
+- **O endpoint `/api/market/[symbol]` fica atrás da sessão**, como o resto da
+  app — aberto seria um proxy gratuito para a API externa.
+- **A ponderação usa os preços com margem de segurança**, não o valor
+  intrínseco, porque é esse o preço a que faz sentido comprar (é também o que a
+  folha faz).
+- **Probabilidades que não somam 100% são normalizadas** em vez de distorcerem
+  o resultado, com aviso visível.
+- **Nada é gravado na base de dados.** A página é uma folha de rascunho, como
+  diz o próprio texto. Persistir avaliações implicaria decidir modelo de dados e
+  RLS — fica para quando o Tiago disser que quer histórico de avaliações.
+
+### Por verificar
+- A recolha de dados **não foi testada contra a API real**: o ambiente de
+  desenvolvimento bloqueia o acesso à rede externa. O código trata todos os
+  campos como opcionais, mas a primeira execução com rede aberta pode revelar
+  nomes de campos diferentes do esperado.
