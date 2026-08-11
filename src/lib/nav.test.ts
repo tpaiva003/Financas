@@ -50,6 +50,7 @@ describe("Património", () => {
       "Resumo",
       "Ativos",
       "Dívidas",
+      "Avaliação",
       "FIRE",
       "Importar",
     ]);

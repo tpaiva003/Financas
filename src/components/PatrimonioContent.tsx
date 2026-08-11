@@ -265,12 +265,23 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
     if (view !== "resumo") return null;
     const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
     const completo = await getNetWorthHistoryCompleto(ctx.space.id, today);
+    const series = buildNetWorthSeries(completo);
     return {
       captura,
-      series: buildNetWorthSeries(completo),
-      // As linhas dos índices são contexto e nunca podem custar a página: se a
-      // fonte de cotações não responder, o gráfico desenha-se na mesma.
-      indices: await linhasDeIndice(completo).catch(() => []),
+      series,
+      /**
+       * Os índices são calculados sobre os PONTOS DA SÉRIE, não sobre os
+       * snapshots em bruto.
+       *
+       * A série agrupa por mês; os snapshots são um por dia. Passar os
+       * snapshots dava uma lista de outro comprimento, e o gráfico desenha
+       * cada valor pela sua posição — as linhas saíam alinhadas com meses que
+       * não são os delas, ou não saíam de todo.
+       *
+       * São contexto e nunca podem custar a página: se a fonte de cotações não
+       * responder, o gráfico desenha-se na mesma.
+       */
+      indices: await linhasDeIndice(series.points).catch(() => []),
     };
   })();
 
