@@ -16,7 +16,7 @@
 
 import { getRepository } from "@/lib/data";
 import type { TradeRow } from "@/lib/import/trades";
-import { isForeign, toEurCents } from "@/lib/domain";
+import { isForeign, movimentosNovos, toEurCents } from "@/lib/domain";
 
 export interface CommitTradesInput {
   spaceId: string;
@@ -28,11 +28,14 @@ export async function commitTradesImport(input: CommitTradesInput): Promise<{
   assetsCreated: number;
   tradesImported: number;
   skippedNoFx: number;
+  /** Linhas do ficheiro que já estavam registadas e não voltaram a entrar. */
+  jaRegistados: number;
 }> {
   const repo = getRepository();
   let assetsCreated = 0;
   let tradesImported = 0;
   let skippedNoFx = 0;
+  let jaRegistados = 0;
 
   for (const g of input.groups) {
     if (g.trades.length === 0) continue;
@@ -60,14 +63,25 @@ export async function commitTradesImport(input: CommitTradesInput): Promise<{
       assetsCreated += 1;
     }
 
+    /**
+     * O que deste grupo ainda não está registado.
+     *
+     * **A comparação é feita depois da conversão para euros**, e tem de ser: o
+     * que está gravado está em euros, e comparar dólares com euros não
+     * reconhecia nada — reimportar duplicava tudo na mesma, que é o problema
+     * que isto existe para resolver.
+     *
+     * Um ativo acabado de criar não tem movimentos, e a lista vem vazia. Uma
+     * leitura falhada conta como "não sei o que lá está", e nesse caso não se
+     * importa nada deste grupo: duplicar a carteira de alguém é muito pior do
+     * que pedir para tentar outra vez.
+     */
+    const convertidos: { t: (typeof g.trades)[number]; amountCents: number; raw: number }[] = [];
     for (const t of g.trades) {
       const raw = t.amountCents ?? Math.round(t.quantity * (t.unitPriceCents ?? 0));
       if (raw <= 0) continue;
-
       let amountCents = raw;
       if (isForeign(t.currency)) {
-        // Sem câmbio não se converte: gravar dólares como se fossem euros
-        // estragava a posição e o valor, e toda a gente acreditava neles.
         if (!t.fxRate) {
           skippedNoFx += 1;
           continue;
@@ -79,7 +93,37 @@ export async function commitTradesImport(input: CommitTradesInput): Promise<{
         }
         amountCents = eur;
       }
+      convertidos.push({ t, amountCents, raw });
+    }
 
+    let existentes: { date: string; kind: string; quantity?: number | null; amountCents: number }[];
+    try {
+      existentes = g.existingAssetId
+        ? (await repo.listAssetTrades(input.spaceId, assetId)).map((x) => ({
+            date: x.date,
+            kind: x.kind,
+            quantity: x.quantity ?? null,
+            amountCents: x.amountCents,
+          }))
+        : [];
+    } catch {
+      // Ver o comentário acima: sem saber o que lá está, não se grava.
+      continue;
+    }
+
+    const { novos, repetidos } = movimentosNovos(
+      existentes,
+      convertidos.map((c) => ({
+        ...c,
+        date: c.t.date,
+        kind: c.t.kind,
+        quantity: c.t.kind === "compra" || c.t.kind === "venda" ? c.t.quantity : null,
+        amountCents: c.amountCents,
+      })),
+    );
+    jaRegistados += repetidos;
+
+    for (const { t, amountCents, raw } of novos) {
       await repo.createAssetTrade({
         spaceId: input.spaceId,
         assetId,
@@ -101,5 +145,5 @@ export async function commitTradesImport(input: CommitTradesInput): Promise<{
     }
   }
 
-  return { assetsCreated, tradesImported, skippedNoFx };
+  return { assetsCreated, tradesImported, skippedNoFx, jaRegistados };
 }

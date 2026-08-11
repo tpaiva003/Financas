@@ -59,6 +59,14 @@ export interface PortfolioReturn {
   firstDate: string | null;
   /** Investimentos sem preço atual: o valor de hoje está incompleto. */
   missingPrice: number;
+  /**
+   * Quais são, com nome e id.
+   *
+   * A contagem sozinha era um beco: "8 investimentos sem preço atual" e nenhuma
+   * forma de saber quais, numa carteira de cinquenta. Quem lê isto quer
+   * resolvê-lo, e para isso precisa de lá chegar.
+   */
+  semPreco: { id: string; name: string }[];
   benchmarks: BenchmarkResult[];
 }
 
@@ -88,6 +96,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   let investedCents = 0;
   let currentValueCents = 0;
   let missingPrice = 0;
+  const semPreco: { id: string; name: string }[] = [];
   let firstDate: string | null = null;
 
   for (const a of investments) {
@@ -103,6 +112,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     investedCents += position.investedCents;
     if (a.unitPriceCents === null || a.unitPriceCents === undefined) {
       missingPrice++;
+      semPreco.push({ id: a.id, name: a.name });
       currentValueCents += position.costCents;
     } else {
       currentValueCents += Math.round(position.quantity * a.unitPriceCents);
@@ -191,6 +201,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     annualPct: xirr(flows, currentValueCents, today),
     firstDate,
     missingPrice,
+    semPreco,
     benchmarks,
   };
 }

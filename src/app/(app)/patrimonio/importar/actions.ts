@@ -170,6 +170,21 @@ export async function commitBrokerAction(
       });
       partes.push(`${r.tradesImported} movimento(s)`);
       if (r.assetsCreated > 0) partes.push(`${r.assetsCreated} investimento(s) criado(s)`);
+      /**
+       * O que já lá estava, dito por palavras.
+       *
+       * Sem esta frase, reimportar o ficheiro da corretora respondia "0
+       * movimentos" e lia-se como avaria — quando é exactamente o que devia
+       * acontecer. É a mesma razão por que a importação de despesas conta os
+       * duplicados em vez de os engolir.
+       */
+      if (r.jaRegistados > 0) {
+        partes.push(
+          r.jaRegistados === 1
+            ? "1 já estava registado"
+            : `${r.jaRegistados} já estavam registados`,
+        );
+      }
       if (r.skippedNoFx > 0) {
         partes.push(`${r.skippedNoFx} deixado(s) de fora por falta de câmbio`);
       }

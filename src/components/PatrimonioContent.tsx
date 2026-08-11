@@ -738,10 +738,30 @@ async function PortfolioReturnSection({
       </div>
 
       {ret.missingPrice > 0 ? (
-        <p className="mt-3 text-xs text-fg-faint">
-          {ret.missingPrice} investimento(s) sem preço atual: contam pelo que
-          custaram, por isso o valor de hoje está por baixo do real.
-        </p>
+        <div className="mt-3 text-xs text-fg-faint">
+          <p>
+            {ret.missingPrice === 1
+              ? "Um investimento sem preço atual: conta"
+              : `${ret.missingPrice} investimentos sem preço atual: contam`}{" "}
+            pelo que custaram, por isso o valor de hoje está por baixo do real.
+          </p>
+          {/* Quais são, com link. A contagem sozinha era um beco: numa carteira
+              de cinquenta, "8 sem preço" não diz por onde começar. */}
+          <p className="mt-1">
+            {ret.semPreco.map((a, i) => (
+              <span key={a.id}>
+                {i > 0 ? ", " : ""}
+                <Link
+                  href={`/patrimonio/ativos/${a.id}`}
+                  className="text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+                >
+                  {a.name}
+                </Link>
+              </span>
+            ))}
+            .
+          </p>
+        </div>
       ) : null}
 
       {/* A comparação com o índice desaparece inteira quando os reforços estão
