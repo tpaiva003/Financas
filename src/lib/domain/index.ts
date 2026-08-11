@@ -39,4 +39,5 @@ export * from "./analise-patrimonio";
 export * from "./dcf";
 export * from "./dcf-cenarios";
 export * from "./fundamentais";
+export * from "./avaliacoes";
 export * from "./imovel-liquido";

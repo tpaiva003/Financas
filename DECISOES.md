@@ -1739,3 +1739,61 @@ No resumo, "investido" era o custo das posições abertas; em Ativos, todo o
 dinheiro que alguma vez entrou. Ambos corretos, nomes iguais, valores muito
 diferentes — e quem lê conclui que um dos ecrãs está avariado. Passaram a
 chamar-se "custo das posições abertas" e "dinheiro que entrou".
+
+### A margem de segurança aplica-se antes de comparar com o preço
+
+É a diferença entre "vale 492 e custa 410, está barata" e "só compro abaixo de
+344, e custa 410, logo não". A margem não é um ajuste cosmético no fim: é o
+preço a que se está disposto a comprar, e é esse que entra na média pesada e no
+veredicto. Aplicá-la depois transformava-a num número decorativo ao lado de uma
+decisão que já tinha sido tomada sem ela.
+
+### As probabilidades dos cenários têm de somar cem, e não se normalizam
+
+Com 25/50/20 a média pesada sai 5% abaixo da verdadeira e nada no ecrã denuncia
+que faltavam cinco pontos. Normalizar sozinho resolvia a aritmética e devolvia
+um número que ninguém pediu — com o engano de quem escreveu escondido lá dentro.
+Recusa-se, e diz-se quanto somam.
+
+### Um DCF projeta em duas fases, não numa
+
+Uma empresa que cresce 15% ao ano não cresce 15% durante dez anos: a
+concorrência chega, a base fica grande, o mercado satura. Projetar a taxa dos
+primeiros anos até ao fim inflaciona o valor terminal — que já é a maior parte
+do resultado — e o exagero entra onde menos se vê. Por omissão a segunda fase
+começa a meio da projeção.
+
+### Um estudo de avaliação guarda o resultado, e não só os pressupostos
+
+Recalcular na leitura parecia mais limpo: menos colunas, nenhuma hipótese de o
+número guardado divergir da fórmula. Tinha uma consequência séria — no dia em
+que a fórmula mudasse, um valor que já serviu de base a uma compra mudava de
+opinião retroactivamente. Uma decisão tomada com 344 tem de continuar a poder
+ser lida com 344. Guardam-se os dois, e reavaliar cria uma linha nova em vez de
+reescrever a antiga: ver "valia 344 em fevereiro e 410 em agosto" é metade do
+valor de um funil.
+
+### Sem denominador positivo não há rácio
+
+Uma empresa com capital próprio negativo tem um ROE que, calculado à letra, sai
+positivo e enorme — e é exactamente ao contrário do que significa. A empresa
+mais endividada da lista apareceria com o melhor retorno. Onde o denominador não
+é positivo devolve-se `null`, e o ecrã escreve "—". É o mesmo princípio de "sem
+taxa de câmbio não se grava preço nenhum".
+
+### Os cenários partem do historial da empresa, e dizem-no
+
+Nascer em 6/9/15% era a app a ter uma opinião sobre uma empresa que não conhece.
+Agora partem do crescimento composto do fluxo livre dos exercícios que a fonte
+trouxe, travado nos 20% — acima disso é quase sempre uma base pequena a crescer,
+não um regime — com a segunda fase sempre mais lenta do que a primeira, que é a
+única coisa de que se tem a certeza. O ecrã diz de onde veio o número e os
+campos continuam todos editáveis: um pressuposto sem origem visível é uma
+opinião da app com ar de conta.
+
+### Uma página do App Router não exporta mais nada
+
+O `EstadoChip` estava exportado de `ajuda/page.tsx` e a página do detalhe
+importava-o de lá. Passava no `tsc`, passava no `lint`, e só rebentava no
+`next build` — com "not a valid Page export field", numa página que ninguém
+tinha tocado. Componentes partilhados vivem em `components/`.

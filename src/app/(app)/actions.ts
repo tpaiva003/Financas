@@ -80,8 +80,13 @@ import {
   buildCreditoPlano,
   parseCreditTerms,
   derivePosition,
+  avaliarCenarios,
+  lerCenarios,
+  etapaValida,
+  etapaSugerida,
+  ETAPA_LABEL,
 } from "@/lib/domain";
-import type { Fundamentais } from "@/lib/domain";
+import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -3289,4 +3294,136 @@ export async function buscarFundamentaisAction(
       ? `Preenchi o que veio. Faltou ${r.dados.emFalta.join(", ")} — escreve à mão.`
       : "Preenchido com os dados do Yahoo Finance. Confere antes de decidir.",
   };
+}
+
+// ---- Avaliações -------------------------------------------------------------
+
+/**
+ * Guardar um estudo de avaliação no funil.
+ *
+ * **O servidor refaz a conta.** O formulário manda os pressupostos e não o
+ * resultado: aceitar o número que o browser calculou permitia gravar um preço
+ * ponderado que não sai dos pressupostos ao lado dele, e o estudo passava a
+ * mentir sobre si próprio para sempre — sem nada, nem no ecrã nem na base de
+ * dados, a denunciá-lo.
+ *
+ * **Guarda o resultado, e não só os pressupostos.** Recalcular na leitura
+ * parecia mais limpo e tinha uma consequência séria: no dia em que a fórmula
+ * mudasse, um valor que já serviu de base a uma compra mudava de opinião
+ * retroactivamente. Ver a migração 0037.
+ */
+export async function guardarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (!nome) return { error: "Escreve o nome da empresa antes de guardar." };
+  const simboloBruto = String(formData.get("symbol") ?? "").trim();
+
+  const n = (k: string) => parseNumber(formData.get(k));
+  const fcfCents = n("fcfCents");
+  const shares = n("shares");
+  const netDebtCents = n("netDebtCents");
+  const discountPct = n("discountPct");
+  const perpetualPct = n("perpetualPct");
+  const years = n("years");
+  const marginPct = n("marginPct");
+  const priceCents = n("priceCents");
+
+  if (
+    fcfCents === null ||
+    shares === null ||
+    netDebtCents === null ||
+    discountPct === null ||
+    perpetualPct === null ||
+    years === null ||
+    marginPct === null
+  ) {
+    return { error: "Faltam pressupostos para guardar este estudo." };
+  }
+
+  // Os cenários vêm em JSON e são validados campo a campo — não convertidos.
+  let cenarios: CenarioDcf[] | null = null;
+  try {
+    cenarios = lerCenarios(JSON.parse(String(formData.get("scenarios") ?? "null")));
+  } catch {
+    cenarios = null;
+  }
+  if (!cenarios) return { error: "Os cenários não vieram inteiros. Recarrega a página." };
+
+  const avaliacao = avaliarCenarios({
+    base: {
+      fcfCents: Math.round(fcfCents),
+      crescimentoPerpetuoPct: perpetualPct,
+      descontoPct: discountPct,
+      anos: Math.round(years),
+      anosPrimeiraFase: Math.ceil(years / 2),
+      dividaLiquidaCents: Math.round(netDebtCents),
+      acoes: shares,
+      precoAtualCents: priceCents === null ? null : Math.round(priceCents),
+    },
+    cenarios,
+    margemPct: marginPct,
+  });
+  if ("erro" in avaliacao) return { error: avaliacao.erro };
+
+  const etapaBruta = String(formData.get("stage") ?? "");
+  const etapa = etapaValida(etapaBruta) ? etapaBruta : etapaSugerida(avaliacao.ok.atrativo);
+
+  try {
+    await getRepository().createValuation({
+      spaceId: ctx.space.id,
+      symbol: simboloBruto ? simboloBruto.toLowerCase() : null,
+      name: nome,
+      stage: etapa,
+      studyDate: new Date().toISOString().slice(0, 10),
+      fcfCents: Math.round(fcfCents),
+      shares,
+      netDebtCents: Math.round(netDebtCents),
+      discountPct,
+      perpetualPct,
+      years: Math.round(years),
+      marginPct,
+      scenarios: cenarios,
+      weightedPriceCents: avaliacao.ok.precoPonderadoCents,
+      priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
+      upsidePct: avaliacao.ok.upsidePonderadoPct,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      createdBy: ctx.user.id,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a avaliação") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return {
+    ok: true,
+    message: `Estudo guardado em "${ETAPA_LABEL[etapa]}". Fica com os pressupostos de hoje — reavaliar cria um novo.`,
+  };
+}
+
+export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  const etapa = String(formData.get("stage") ?? "");
+  if (!id || !etapaValida(etapa)) return;
+
+  // O ambiente vai na escrita: um id vindo do formulário não é prova de nada.
+  await getRepository().updateValuationStage(id, ctx.space.id, etapa).catch(() => {});
+  revalidatePath("/patrimonio/avaliacoes");
+}
+
+export async function apagarAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  await getRepository().deleteValuation(id, ctx.space.id).catch(() => {});
+  revalidatePath("/patrimonio/avaliacoes");
 }

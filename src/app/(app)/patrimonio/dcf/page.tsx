@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { DcfCalculadora } from "@/components/DcfCalculadora";
@@ -21,8 +22,12 @@ export default async function Page() {
         <p className="eyebrow">Património</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Avaliação</h1>
         <p className="mt-1 max-w-prose text-sm text-fg-muted">
-          Quanto vale uma empresa pelos fluxos de caixa que gera. Os números não
-          ficam guardados — é uma folha de rascunho.
+          Quanto vale uma empresa pelos fluxos de caixa que gera. Enquanto mexes,
+          nada sai do teu browser; no fim podes guardar o estudo no{" "}
+          <Link href="/patrimonio/avaliacoes" className="underline underline-offset-2 hover:text-fg">
+            funil
+          </Link>
+          , com os pressupostos que o produziram.
         </p>
       </div>
 

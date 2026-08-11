@@ -5,7 +5,7 @@ import { getRepository } from "@/lib/data";
 import { TICKET_STATUS_LABELS, TICKET_STATUS_NOTES } from "@/lib/domain";
 import { AtualizaSozinho } from "@/components/AtualizaSozinho";
 import { PedidoResposta } from "@/components/PedidoResposta";
-import { EstadoChip } from "@/app/(app)/ajuda/page";
+import { EstadoChip } from "@/components/EstadoChip";
 
 export const metadata = { title: "Pedido · Rachar" };
 export const dynamic = "force-dynamic";

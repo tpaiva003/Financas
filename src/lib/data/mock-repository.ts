@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { stableUid, ticketAberto } from "@/lib/domain";
-import type { Expense, Settlement, ClassificationRule, Split, TicketStatus } from "@/lib/domain";
+import type { Expense, Settlement, ClassificationRule, Split, TicketStatus, EtapaAvaliacao } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -38,6 +38,8 @@ import type {
   TicketMessage,
   StoredAssetSplit,
   CreateAssetSplitInput,
+  StoredValuation,
+  CreateValuationInput,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -84,6 +86,7 @@ interface Store {
   netWorthSnapshots: NetWorthSnapshotRow[];
   assetAttachments: AssetAttachment[];
   assetSplits: StoredAssetSplit[];
+  valuations: StoredValuation[];
   tickets: Ticket[];
   ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
@@ -117,6 +120,7 @@ function getStore(): Store {
       netWorthSnapshots: [],
       assetAttachments: [],
       assetSplits: [],
+      valuations: [],
       tickets: [],
       ticketMessages: [],
       quotes: {},
@@ -1035,6 +1039,50 @@ export class MockRepository implements Repository {
     store.assetSplits = store.assetSplits.filter(
       (s) => !(s.id === id && s.spaceId === spaceId),
     );
+  }
+
+  // ---- Avaliações -------------------------------------------------------
+
+  async listValuations(spaceId: string): Promise<StoredValuation[]> {
+    return getStore()
+      .valuations.filter((v) => v.spaceId === spaceId)
+      .sort((a, b) => (a.studyDate < b.studyDate ? 1 : a.studyDate > b.studyDate ? -1 : 0));
+  }
+
+  async createValuation(input: CreateValuationInput): Promise<void> {
+    getStore().valuations.push({
+      id: `val_${randomUUID()}`,
+      spaceId: input.spaceId,
+      symbol: input.symbol,
+      name: input.name,
+      stage: input.stage,
+      studyDate: input.studyDate,
+      fcfCents: input.fcfCents,
+      shares: input.shares,
+      netDebtCents: input.netDebtCents,
+      discountPct: input.discountPct,
+      perpetualPct: input.perpetualPct,
+      years: input.years,
+      marginPct: input.marginPct,
+      scenarios: input.scenarios,
+      weightedPriceCents: input.weightedPriceCents,
+      priceAtStudyCents: input.priceAtStudyCents,
+      upsidePct: input.upsidePct,
+      notes: input.notes,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void> {
+    // Filtra pelo ambiente tal como o Supabase. Um mock mais permissivo do que
+    // a produção esconde exactamente o engano que os testes procuram.
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (v) v.stage = stage;
+  }
+
+  async deleteValuation(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuations = store.valuations.filter((v) => !(v.id === id && v.spaceId === spaceId));
   }
 
   // ---- Pedidos de ajuda -------------------------------------------------

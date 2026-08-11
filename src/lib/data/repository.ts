@@ -24,6 +24,8 @@ import type {
   Crescimento,
   TicketStatus,
   AssetSplit,
+  CenarioDcf,
+  EtapaAvaliacao,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -350,6 +352,67 @@ export interface CreateAssetSplitInput {
   date: string;
   ratio: number;
   notes?: string | null;
+  createdBy?: string | null;
+}
+
+/**
+ * Um estudo de avaliação guardado, com os pressupostos **e** o resultado.
+ *
+ * O resultado vem congelado de propósito: recalculá-lo na leitura fazia com que
+ * uma mudança de fórmula reescrevesse a conclusão de uma decisão já tomada. Ver
+ * a migração 0037 e `avaliacoes.ts` no domínio.
+ */
+export interface StoredValuation {
+  id: string;
+  spaceId: string;
+  symbol: string | null;
+  name: string;
+  stage: EtapaAvaliacao;
+  /** O dia do estudo, "AAAA-MM-DD". */
+  studyDate: string;
+
+  fcfCents: number;
+  shares: number;
+  netDebtCents: number;
+  discountPct: number;
+  perpetualPct: number;
+  years: number;
+  marginPct: number;
+  /**
+   * `null` quando o que estava guardado não passou na validação.
+   *
+   * Ver `lerCenarios`: um cenário a que falte a probabilidade entraria na média
+   * pesada como zero. Sem cenários mostra-se o estudo sem eles, em vez de o
+   * mostrar com cenários errados.
+   */
+  scenarios: CenarioDcf[] | null;
+
+  weightedPriceCents: number;
+  priceAtStudyCents: number | null;
+  upsidePct: number | null;
+
+  notes: string | null;
+  createdAt: string | null;
+}
+
+export interface CreateValuationInput {
+  spaceId: string;
+  symbol: string | null;
+  name: string;
+  stage: EtapaAvaliacao;
+  studyDate: string;
+  fcfCents: number;
+  shares: number;
+  netDebtCents: number;
+  discountPct: number;
+  perpetualPct: number;
+  years: number;
+  marginPct: number;
+  scenarios: CenarioDcf[];
+  weightedPriceCents: number;
+  priceAtStudyCents: number | null;
+  upsidePct: number | null;
+  notes: string | null;
   createdBy?: string | null;
 }
 
@@ -860,6 +923,14 @@ export interface Repository {
   listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]>;
   createAssetSplit(input: CreateAssetSplitInput): Promise<void>;
   deleteAssetSplit(id: string, spaceId: string): Promise<void>;
+
+  // Avaliações de empresas. Ver `avaliacoes.ts` no domínio para as etapas.
+  /** Os estudos do ambiente, do mais recente para o mais antigo. */
+  listValuations(spaceId: string): Promise<StoredValuation[]>;
+  createValuation(input: CreateValuationInput): Promise<void>;
+  /** Muda a etapa do funil. O ambiente filtra a escrita. */
+  updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void>;
+  deleteValuation(id: string, spaceId: string): Promise<void>;
 
   // Pedidos de ajuda. Ver `Ticket` para a regra das notas internas.
   createTicket(input: CreateTicketInput): Promise<string>;

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { TICKET_STATUS_LABELS, ticketAberto, type TicketStatus } from "@/lib/domain";
+import { ticketAberto, type TicketStatus } from "@/lib/domain";
+import { EstadoChip } from "@/components/EstadoChip";
 import { AtualizaSozinho } from "@/components/AtualizaSozinho";
 import { NovoPedido } from "@/components/NovoPedido";
 
@@ -101,16 +102,4 @@ function Lista({
       )}
     </section>
   );
-}
-
-export function EstadoChip({ status }: { status: TicketStatus }) {
-  const cor =
-    status === "resolvido"
-      ? "border-credit/40 text-credit"
-      : status === "a-aguardar"
-        ? "border-warn/50 text-warn"
-        : status === "fechado"
-          ? "border-hair text-fg-faint"
-          : "border-hair text-fg-muted";
-  return <span className={`chip shrink-0 ${cor}`}>{TICKET_STATUS_LABELS[status]}</span>;
 }

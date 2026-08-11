@@ -3,15 +3,79 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-11 (pedidos de ajuda, KPIs, cotações erradas).
+> Última atualização: 2026-08-11 (avaliação de empresas: DCF, contas do
+> Yahoo, funil).
 
 ---
 
-## 0. O que foi feito na sessão de 2026-08-10/11
+## 0. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
-**Migrações por correr: 0032 e 0033.** Sem elas, os pedidos de ajuda não
-funcionam e as cotações de Londres continuam cem vezes acima. As 0028–0031 já
-foram corridas.
+**Migração por correr: 0037.** Sem ela o funil (`/patrimonio/avaliacoes`) fica
+vazio e guardar um estudo dá erro; o resto da avaliação funciona na mesma. As
+0028–0036 já foram corridas.
+
+### O que passou a existir
+
+- **Calculadora de avaliação** (`/patrimonio/dcf`) com o desenho da folha de
+  cálculo do Tiago: dados da empresa, parâmetros, **três cenários com duas fases
+  de crescimento** (anos 1-5 e seguintes) e probabilidades, margem de segurança,
+  preço ponderado e veredicto. Os números batem ao cêntimo com a folha —
+  `dcf-cenarios.test.ts` confere-os contra ela.
+- **Botão que vai buscar as contas** ao Yahoo Finance pelo símbolo: fluxo livre,
+  ações, dívida, caixa e preço, mais o **historial** (ROCE, margens, ROE,
+  dívida/capital, liquidez corrente, fluxo livre e a sua margem, ano a ano e com
+  médias), as estimativas dos analistas e as datas dos próximos resultados e
+  dividendo.
+- Os **três cenários passam a partir do crescimento composto do fluxo livre** da
+  própria empresa, com o ecrã a dizer de onde veio o número. Continuam editáveis.
+- **Funil** (`/patrimonio/avaliacoes`): cada estudo fica guardado com os
+  pressupostos **e** o resultado, numa etapa (em radar, em estudo, à espera de
+  preço, comprada, arquivada). Diz quanto o preço tem de descer para o estudo
+  fazer sentido, marca como substituído o estudo antigo da mesma empresa e avisa
+  quando os pressupostos passam de meio ano.
+
+### Três armadilhas que isto evita, e valem a pena saber
+
+1. **`GBp` outra vez.** A cotação vem em pence e o preço tinha de ser dividido
+   por cem — o mesmo cem-vezes das cotações, agora no denominador de um DCF.
+2. **O capex vem negativo** na resposta do Yahoo. Subtraí-lo em vez de o somar
+   dá quase o dobro do fluxo livre, e o dobro do valor por ação no fim.
+3. **Relatar numa moeda e cotar noutra** (qualquer ADR) dá um veredicto errado
+   pela diferença cambial, com os dois números do tamanho certo e a conta a
+   correr sem erro nenhum. O ecrã avisa.
+
+E uma regra que atravessa o módulo todo: **sem denominador positivo não há
+rácio**. Com capital próprio negativo o ROE sai positivo e enorme, e lê-se ao
+contrário do que significa. Onde está "—" não há dado — não é zero.
+
+### Notas de implementação
+
+- O `quoteSummary` do Yahoo (contas) **não é** o `chart` (cotações): pede um
+  `crumb` de uma sessão anónima. O serviço tenta sem ele primeiro e só faz as
+  duas voltas quando leva 401. **Não foi possível verificá-lo daqui** — o proxy
+  desta caixa bloqueia o Yahoo — por isso degrada com honestidade: se a fonte
+  recusar, diz-se porquê e todos os campos continuam a escrever-se à mão.
+- O servidor **refaz a conta** ao guardar: o formulário manda os pressupostos e
+  não o resultado. Aceitar o número do browser deixava gravar um preço que não
+  sai dos pressupostos ao lado dele.
+- O `EstadoChip` estava exportado de `ajuda/page.tsx`. Uma página do App Router
+  só pode exportar o que o Next reconhece; passava no `tsc` e no `lint` e só
+  rebentava no `build`. Mudou-se para `components/EstadoChip.tsx`.
+
+### Por fazer nesta frente
+
+- **Notificações das datas importantes** (resultados, dividendo). As datas já
+  vêm da fonte e aparecem no ecrã; falta o lembrete.
+- **Comparação com o setor** — a última coluna da folha do Tiago que ainda não
+  tem equivalente.
+- Reabrir um estudo guardado na calculadora (hoje relê-se, não se reedita).
+
+---
+
+## 0a. O que foi feito na sessão de 2026-08-10/11
+
+**Migrações 0032 e 0033 já corridas** (e as 0034–0036 também). O que está
+escrito abaixo como "por correr" ficou resolvido; fica o relato do que era.
 
 ### Dois erros de dinheiro, dos graves
 

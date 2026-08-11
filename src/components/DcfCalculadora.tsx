@@ -27,6 +27,7 @@ import {
   type Fundamentais,
 } from "@/lib/domain";
 import { PreencherAtivoDoDcf } from "./PreencherAtivoDoDcf";
+import { GuardarAvaliacao } from "./GuardarAvaliacao";
 import { BuscarFundamentais } from "./BuscarFundamentais";
 
 /** Em milhares de milhões, que é como estes números vêm num relatório. */
@@ -407,10 +408,26 @@ export function DcfCalculadora() {
               className="input min-h-[4.5rem] resize-y"
             />
             <p className="mt-1 text-xs text-fg-faint">
-              Ainda não ficam guardadas — é uma folha de rascunho. Copia-as para
-              a nota do investimento se quiseres mantê-las.
+              Vão com o estudo quando o guardares. São elas que respondem, daqui
+              a seis meses, à pergunta de porque é que este número era este.
             </p>
           </section>
+
+          <GuardarAvaliacao
+            nome={nome}
+            simbolo={simbolo}
+            fcfCents={bilioesParaCents(fcf)}
+            acoes={num(acoes) * 1_000_000_000}
+            dividaLiquidaCents={dividaLiquidaCents}
+            descontoPct={num(desconto)}
+            perpetuoPct={num(perpetuo)}
+            anos={num(anos)}
+            margemPct={num(margem)}
+            precoCents={preco.trim() ? Math.round(num(preco) * 100) : null}
+            cenarios={cenarios}
+            notas={notas}
+            atrativo={ok.atrativo}
+          />
 
           <PreencherAtivoDoDcf
             nome={nome}

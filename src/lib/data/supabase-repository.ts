@@ -6,8 +6,8 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { buildCrescimento, isTicketStatus, normalizeText, stableUid } from "@/lib/domain";
-import type { SpacePlan, TicketStatus } from "@/lib/domain";
+import { buildCrescimento, isTicketStatus, lerCenarios, normalizeText, stableUid } from "@/lib/domain";
+import type { EtapaAvaliacao, SpacePlan, TicketStatus } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -32,6 +32,8 @@ import type {
   TicketMessage,
   StoredAssetSplit,
   CreateAssetSplitInput,
+  StoredValuation,
+  CreateValuationInput,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -1853,6 +1855,66 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  // ---- Avaliações -------------------------------------------------------
+
+  async listValuations(spaceId: string): Promise<StoredValuation[]> {
+    const db = getSupabaseAdmin();
+    // Paginado como tudo o que pode crescer: o PostgREST corta nas 1000 linhas
+    // sem avisar, e uma lista cortada em silêncio lê-se como uma lista completa.
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("valuations")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("study_date", { ascending: false })
+        .range(de, ate),
+    );
+    return rows.map(rowToValuation);
+  }
+
+  async createValuation(input: CreateValuationInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("valuations").insert({
+      id: `val_${randomUUID()}`,
+      space_id: input.spaceId,
+      symbol: input.symbol,
+      name: input.name,
+      stage: input.stage,
+      study_date: input.studyDate,
+      fcf_cents: input.fcfCents,
+      shares: input.shares,
+      net_debt_cents: input.netDebtCents,
+      discount_pct: input.discountPct,
+      perpetual_pct: input.perpetualPct,
+      years: input.years,
+      margin_pct: input.marginPct,
+      scenarios: input.scenarios,
+      weighted_price_cents: input.weightedPriceCents,
+      price_at_study_cents: input.priceAtStudyCents,
+      upside_pct: input.upsidePct,
+      notes: input.notes,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void> {
+    const db = getSupabaseAdmin();
+    // O ambiente filtra a escrita: um id vindo do formulário não é prova de nada.
+    const { error } = await db
+      .from("valuations")
+      .update({ stage, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteValuation(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("valuations").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   // ---- Pedidos de ajuda -------------------------------------------------
   //
   // A separação entre o que o utilizador lê e as notas internas é feita por
@@ -2090,6 +2152,35 @@ function rowToSplit(r: any): StoredAssetSplit {
     // `numeric` chega como texto do PostgREST: sem o Number, o fator entrava
     // nas contas como string e "5" * "20" dava NaN em metade dos sítios.
     ratio: Number(r.ratio),
+    notes: r.notes ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToValuation(r: any): StoredValuation {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    symbol: r.symbol ?? null,
+    name: r.name,
+    stage: r.stage as EtapaAvaliacao,
+    studyDate: String(r.study_date).slice(0, 10),
+    // `numeric` e `bigint` chegam como texto do PostgREST. Sem o `Number`, uma
+    // taxa de desconto entrava nas contas como string e o DCF devolvia NaN.
+    fcfCents: Number(r.fcf_cents),
+    shares: Number(r.shares),
+    netDebtCents: Number(r.net_debt_cents),
+    discountPct: Number(r.discount_pct),
+    perpetualPct: Number(r.perpetual_pct),
+    years: Number(r.years),
+    marginPct: Number(r.margin_pct),
+    // Validado campo a campo. Ver `lerCenarios`.
+    scenarios: lerCenarios(r.scenarios),
+    weightedPriceCents: Number(r.weighted_price_cents),
+    priceAtStudyCents: r.price_at_study_cents === null || r.price_at_study_cents === undefined
+      ? null
+      : Number(r.price_at_study_cents),
+    upsidePct: r.upside_pct === null || r.upside_pct === undefined ? null : Number(r.upside_pct),
     notes: r.notes ?? null,
     createdAt: r.created_at ?? null,
   };
