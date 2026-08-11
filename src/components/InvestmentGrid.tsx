@@ -87,7 +87,18 @@ function ordenar(lista: InvestmentCardData[], ordem: OrdemId): InvestmentCardDat
 }
 
 export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
-  const [mostrarFechadas, setMostrarFechadas] = useState(false);
+  /**
+   * As posições fechadas: escondidas por omissão, e sozinhas quando se carrega.
+   *
+   * **Antes era um interruptor com cara de filtro.** Carregar em "Já fechadas"
+   * ACRESCENTAVA-as à lista em vez de mostrar só elas — e o resultado era a
+   * Google e a NVIDIA a aparecerem debaixo de um crachá que dizia "fechadas",
+   * com oitenta unidades cada. O crachá do lado ("Sem símbolo") é um filtro a
+   * sério, o que tornava a incoerência ainda mais difícil de ler.
+   *
+   * Agora é o que diz que é. Para voltar à lista normal, desliga-se.
+   */
+  const [soFechadas, setSoFechadas] = useState(false);
   const [soSemSimbolo, setSoSemSimbolo] = useState(false);
   const [bolsa, setBolsa] = useState(TODAS);
   const [ordem, setOrdem] = useState<OrdemId>("manual");
@@ -116,13 +127,14 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
    * Os que faltam não desaparecem: são contados à parte e anunciados por
    * palavras, com o botão para os trazer.
    */
-  const semSimboloVisiveis = semSimbolo.filter((d) => mostrarFechadas || !fechada(d));
+  const semSimboloVisiveis = semSimbolo.filter((d) => (soFechadas ? fechada(d) : !fechada(d)));
   const semSimboloFechadas = semSimbolo.length - semSimboloVisiveis.length;
 
   const visiveis = useMemo(() => {
     const q = normalizar(procura);
     const filtrados = items.filter((d) => {
-      if (!mostrarFechadas && fechada(d)) return false;
+      // Ou só as fechadas, ou nenhuma delas. Ver o comentário no estado.
+      if (soFechadas ? !fechada(d) : fechada(d)) return false;
       if (soSemSimbolo && d.symbol) return false;
       if (bolsa !== TODAS && (d.exchange ?? "") !== bolsa) return false;
       if (q) {
@@ -134,9 +146,9 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
       return true;
     });
     return ordenar(filtrados, ordem);
-  }, [items, mostrarFechadas, soSemSimbolo, bolsa, procura, ordem]);
+  }, [items, soFechadas, soSemSimbolo, bolsa, procura, ordem]);
 
-  const filtrado = soSemSimbolo || bolsa !== TODAS || procura.trim() !== "";
+  const filtrado = soSemSimbolo || soFechadas || bolsa !== TODAS || procura.trim() !== "";
 
   return (
     <div className="p-4">
@@ -205,28 +217,28 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
           {fechadas.length > 0 ? (
             <button
               type="button"
-              onClick={() => setMostrarFechadas((v) => !v)}
-              aria-pressed={mostrarFechadas}
+              onClick={() => setSoFechadas((v) => !v)}
+              aria-pressed={soFechadas}
               className={`rounded-full border px-2.5 py-1 text-xs transition ${
-                mostrarFechadas
+                soFechadas
                   ? "border-fg bg-fg text-bg"
                   : "border-hair text-fg-muted hover:border-fg/30 hover:text-fg"
               }`}
             >
               {/* A contagem fica à vista mesmo com o filtro desligado: é a
                   diferença entre "arrumado" e "desaparecido". */}
-              Já fechadas ({fechadas.length})
+              Só as fechadas ({fechadas.length})
             </button>
           ) : null}
 
-          {filtrado || mostrarFechadas ? (
+          {filtrado ? (
             <button
               type="button"
               onClick={() => {
                 setProcura("");
                 setBolsa(TODAS);
                 setSoSemSimbolo(false);
-                setMostrarFechadas(false);
+                setSoFechadas(false);
               }}
               className="btn-ghost px-2 text-xs"
             >
@@ -240,7 +252,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
         <p className="py-6 text-center text-sm text-fg-muted">
           {filtrado
             ? "Nenhum investimento com estes filtros."
-            : "Só há posições fechadas por aqui — carrega em “Já fechadas” para as veres."}
+            : "Só há posições fechadas por aqui — carrega em “Só as fechadas” para as veres."}
         </p>
       ) : (
         <>
@@ -259,7 +271,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
                   em posições já fechadas — e a essas o símbolo já não muda nada.{" "}
                   <button
                     type="button"
-                    onClick={() => setMostrarFechadas(true)}
+                    onClick={() => setSoFechadas(true)}
                     className="underline underline-offset-2 hover:text-fg"
                   >
                     Mostrar na mesma
@@ -278,7 +290,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
                   // Arrumar uma lista filtrada mexia em posições que não se
                   // veem: o que está escondido continua lá e a ordem final
                   // saía diferente do que se viu a fazer.
-                  podeMover: !filtrado && !mostrarFechadas && ordem === "manual",
+                  podeMover: !filtrado && ordem === "manual",
                   primeiro: i === 0,
                   ultimo: i === visiveis.length - 1,
                 }}

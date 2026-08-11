@@ -437,3 +437,99 @@ describe("lerBreakdown", () => {
     expect(s!.porTipo).toBeUndefined();
   });
 });
+
+/**
+ * O imóvel deixa de ser arrastado ao valor de hoje.
+ *
+ * O que a casa custou é um facto com data e o índice do concelho é uma série
+ * pública: com os dois, o valor de um mês passado é uma conta e não uma
+ * projeção. É a mesma fórmula que a app usa para o valor de hoje, avaliada
+ * noutra data — e usar a mesma nos dois lados é o que faz a linha não dar um
+ * salto na costura entre o reconstruído e o medido.
+ */
+describe("reconstruir o imóvel pelo índice da zona", () => {
+  const hoje = "2026-08-10";
+
+  it("o valor de cada mês sai do índice desse mês", () => {
+    const pontos = reconstruirHistorico({
+      hoje,
+      meses: 2,
+      investimentos: [],
+      dividas: [],
+      imoveis: [
+        {
+          custoCents: 200_000_00,
+          indiceCompraCents: 1_000_00,
+          // A zona valia menos há dois meses do que há um.
+          indicePorData: { "2026-07-31": 1_200_00, "2026-06-30": 1_100_00 },
+          valorHojeCents: 260_000_00,
+        },
+      ],
+      outrosAtivosCents: 0,
+      outrasDividasCents: 0,
+    });
+
+    expect(pontos).toHaveLength(2);
+    // 200 000 x (1100/1000) e 200 000 x (1200/1000).
+    expect(pontos[0]!.assetsCents).toBe(220_000_00);
+    expect(pontos[1]!.assetsCents).toBe(240_000_00);
+  });
+
+  it("um mês sem índice fica ao valor de hoje, sem inventar nada", () => {
+    const pontos = reconstruirHistorico({
+      hoje,
+      meses: 2,
+      investimentos: [],
+      dividas: [],
+      imoveis: [
+        {
+          custoCents: 200_000_00,
+          indiceCompraCents: 1_000_00,
+          // Só o mês mais recente tem índice: o de trás é anterior à escritura,
+          // ou o INE ainda não o publicou.
+          indicePorData: { "2026-07-31": 1_200_00 },
+          valorHojeCents: 260_000_00,
+        },
+      ],
+      outrosAtivosCents: 0,
+      outrasDividasCents: 0,
+    });
+    expect(pontos[0]!.assetsCents).toBe(260_000_00);
+    expect(pontos[1]!.assetsCents).toBe(240_000_00);
+  });
+
+  it("um imóvel com índice chega para haver história", () => {
+    // Antes, sem investimentos nem dívidas, não se desenhava linha nenhuma.
+    const pontos = reconstruirHistorico({
+      hoje,
+      meses: 1,
+      investimentos: [],
+      dividas: [],
+      imoveis: [
+        {
+          custoCents: 100_00,
+          indiceCompraCents: 100,
+          indicePorData: { "2026-07-31": 110 },
+          valorHojeCents: 120_00,
+        },
+      ],
+      outrosAtivosCents: 0,
+      outrasDividasCents: 0,
+    });
+    expect(pontos).toHaveLength(1);
+  });
+
+  it("sem nada reconstruível continua a não desenhar", () => {
+    expect(
+      reconstruirHistorico({
+        hoje,
+        meses: 3,
+        investimentos: [],
+        dividas: [],
+        imoveis: [],
+        outrosAtivosCents: 500_00,
+        outrasDividasCents: 0,
+      }),
+    ).toEqual([]);
+  });
+});

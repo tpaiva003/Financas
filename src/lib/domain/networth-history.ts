@@ -307,7 +307,13 @@ export function fimDoMes(onDate: string): string {
 }
 
 /** Recua um mês, ficando no fim desse mês. */
-function mesAnterior(onDate: string): string {
+/**
+ * Exportada porque o serviço tem de calcular as MESMAS datas que a
+ * reconstrução vai visitar, para lhes ir buscar o índice dos imóveis. Duas
+ * regras diferentes davam chaves que não casam, e o índice nunca era
+ * encontrado — degradando em silêncio para o valor de hoje.
+ */
+export function mesAnterior(onDate: string): string {
   const y = Number(onDate.slice(0, 4));
   const m = Number(onDate.slice(5, 7));
   const anterior = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
@@ -365,6 +371,33 @@ export function saldoHaMeses(divida: DividaReconstruivel, meses: number): number
  * Todos os pontos saem marcados como `estimado`. Ver o cabeçalho de
  * `AtivoReconstruivel` para o que é medido e o que é assumido.
  */
+/**
+ * Um imóvel que o índice da zona consegue recuar.
+ *
+ * **Isto é reconstrução a sério, e não uma projeção do valor de hoje.** O que
+ * a casa custou é um facto com data; o índice do concelho é uma série pública
+ * trimestral. O valor num mês passado é o custo vezes a razão entre o índice
+ * desse mês e o índice da compra — a mesma fórmula que a app já usa para
+ * mostrar o valor de hoje, avaliada noutra data. Usar a mesma fórmula nos dois
+ * lados é o que faz a linha não dar um salto na costura entre o reconstruído e
+ * o medido.
+ *
+ * **O que continua por saber: quando é que as obras foram feitas.** O custo
+ * total inclui-as e não têm data guardada, por isso um mês anterior às obras
+ * aparece com elas já lá dentro — sobrestimado. É uma limitação real e fica
+ * dita; a alternativa era deixar de reconstruir o imóvel de todo, que é pior.
+ */
+export interface ImovelReconstruivel {
+  /** O que custou: compra mais obras, já com a quota do ambiente aplicada. */
+  custoCents: number;
+  /** O índice da zona à data da compra, em cêntimos por m². */
+  indiceCompraCents: number;
+  /** O índice da zona em cada mês, indexado por "AAAA-MM-DD" do fim do mês. */
+  indicePorData: Record<string, number>;
+  /** O valor de hoje, para quando o índice não chega àquele mês. */
+  valorHojeCents: number;
+}
+
 export function reconstruirHistorico(input: {
   /** "AAAA-MM-DD". */
   hoje: string;
@@ -372,7 +405,9 @@ export function reconstruirHistorico(input: {
   meses: number;
   investimentos: readonly AtivoReconstruivel[];
   dividas: readonly DividaReconstruivel[];
-  /** Bens sem passado (contas, imóveis): contam pelo valor de hoje. */
+  /** Imóveis que o índice consegue recuar. Ver `ImovelReconstruivel`. */
+  imoveis?: readonly ImovelReconstruivel[];
+  /** Bens sem passado (contas): contam pelo valor de hoje. */
   outrosAtivosCents: number;
   /** Dívidas sem plano: contam pelo valor de hoje. */
   outrasDividasCents: number;
@@ -389,7 +424,10 @@ export function reconstruirHistorico(input: {
    * mentira que esta funcionalidade já assume ter: mais vale não a desenhar.
    */
   const temMovimentos = input.investimentos.some((a) => a.movimentos.length > 0);
-  if (!temMovimentos && input.dividas.length === 0) return [];
+  // Um imóvel com índice também é história a sério: o custo tem data e o
+  // índice do concelho é uma série pública.
+  const temImovel = (input.imoveis ?? []).some((i) => Object.keys(i.indicePorData).length > 0);
+  if (!temMovimentos && !temImovel && input.dividas.length === 0) return [];
 
   // A data mais antiga em que há movimentos: antes disso não havia carteira, e
   // desenhar meses com a carteira a zero e a casa ao valor de hoje era pior do
@@ -418,7 +456,24 @@ export function reconstruirHistorico(input: {
     let dividasCents = input.outrasDividasCents;
     for (const d of input.dividas) dividasCents += saldoHaMeses(d, k);
 
-    const assetsCents = investimentosCents + input.outrosAtivosCents;
+    /**
+     * Os imóveis, ao índice da zona naquele mês.
+     *
+     * Sem índice para aquele mês fica o valor de hoje — que é o que já
+     * acontecia com todos eles. Um imóvel comprado depois daquela data conta
+     * zero: não era dele naquele mês.
+     */
+    let imoveisCents = 0;
+    for (const im of input.imoveis ?? []) {
+      const indice = im.indicePorData[data];
+      if (typeof indice === "number" && indice > 0 && im.indiceCompraCents > 0) {
+        imoveisCents += Math.round(im.custoCents * (indice / im.indiceCompraCents));
+      } else {
+        imoveisCents += im.valorHojeCents;
+      }
+    }
+
+    const assetsCents = investimentosCents + imoveisCents + input.outrosAtivosCents;
     pontos.push({
       onDate: data,
       assetsCents,

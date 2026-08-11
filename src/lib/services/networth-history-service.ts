@@ -32,13 +32,16 @@ import {
   normalizeSymbol,
   ownershipShare,
   parseCreditTerms,
+  mesAnterior,
   reconstruirHistorico,
   type AtivoReconstruivel,
+  type ImovelReconstruivel,
   type DividaReconstruivel,
   type NetWorth,
   type NetWorthSnapshot,
 } from "@/lib/domain";
 import { getQuoteSeries } from "./quotes-service";
+import { indicesDeImoveis } from "./imovel-service";
 
 /** O que aconteceu à fotografia de hoje. */
 export type CapturaEstado = "gravada" | "sem-bens" | "falhou";
@@ -99,8 +102,12 @@ export async function getNetWorthHistory(spaceId: string): Promise<NetWorthSnaps
  *
  * **O que é medido e o que é assumido.** Um investimento tem movimentos datados
  * e cotações guardadas: quantas unidades havia em Março e a que preço fechavam
- * sabe-se. Um crédito com taxa e prestação recua pela própria amortização. Uma
- * conta bancária e um imóvel **não têm passado nenhum** — entram ao valor de
+ * sabe-se. Um crédito com taxa e prestação recua pela própria amortização. E um
+ * imóvel com escritura datada e índice do concelho recua pelo índice — o que
+ * custou é um facto com data, e a série do INE é pública.
+ *
+ * O que **não** tem passado nenhum é uma conta bancária: o depósito que hoje
+ * tem 12 mil não sabe que teve 8 mil no ano passado. Essa entra ao valor de
  * hoje, o que quer dizer que a linha mostra o saldo de hoje no ano passado.
  *
  * Foi pedido assim, sabendo-o. O que não se faz é deixar de o dizer: todos
@@ -133,6 +140,26 @@ async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetW
   }
 
   const investimentos: AtivoReconstruivel[] = [];
+  const imoveis: ImovelReconstruivel[] = [];
+
+  /**
+   * As datas que a reconstrução vai visitar, para se ir buscar o índice de
+   * cada uma numa leitura só.
+   *
+   * Tem de ser calculado com a mesma regra do `reconstruirHistorico` — o mês
+   * anterior, repetido — senão as chaves não casam e o índice nunca é
+   * encontrado, o que degradaria em silêncio para o valor de hoje.
+   */
+  const datas: string[] = [];
+  {
+    let d = mesAnterior(hoje);
+    for (let k = 1; k <= MESES_A_RECONSTRUIR; k++) {
+      datas.push(d);
+      d = mesAnterior(d);
+    }
+  }
+  const indices = await indicesDeImoveis(stored, datas).catch(() => new Map());
+
   let outrosAtivosCents = 0;
   let outrasDividasCents = 0;
   const dividas: DividaReconstruivel[] = [];
@@ -170,6 +197,18 @@ async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetW
 
     const valor = Math.round((a.valueCents ?? 0) * quota);
     if (a.kind !== "divida") {
+      // Os imóveis com índice são tratados à parte, logo a seguir: recuam pelo
+      // índice da zona em vez de irem ao valor de hoje.
+      if (a.kind === "imovel" && indices.has(a.id)) {
+        const idx = indices.get(a.id)!;
+        imoveis.push({
+          custoCents: Math.round(idx.custoCents * quota),
+          indiceCompraCents: idx.indiceCompraCents,
+          indicePorData: idx.indicePorData,
+          valorHojeCents: valor,
+        });
+        continue;
+      }
       outrosAtivosCents += valor;
       continue;
     }
@@ -201,6 +240,7 @@ async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetW
     meses: MESES_A_RECONSTRUIR,
     investimentos,
     dividas,
+    imoveis,
     outrosAtivosCents,
     outrasDividasCents,
   });

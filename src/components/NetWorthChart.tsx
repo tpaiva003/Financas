@@ -466,9 +466,10 @@ export function NetWorthChart({
           <span className="mr-1 inline-block h-[2px] w-4 border-t-2 border-dashed border-fg-faint align-middle" />
           A parte a tracejado é <span className="text-fg-muted">reconstruída</span>, não
           medida: os investimentos saem dos teus movimentos e das cotações, o
-          crédito da própria amortização, mas as contas e os imóveis entram ao
-          valor de hoje — não guardam passado. Daí para a frente é o que foi
-          mesmo registado.{" "}
+          crédito da própria amortização, e os imóveis com escritura datada
+          seguem o índice do concelho. As contas entram ao valor de hoje — um
+          saldo não guarda passado. Daí para a frente é o que foi mesmo
+          registado.{" "}
           {series.medido
             ? `Por isso a variação em cima conta a partir de ${series.medido.dePeriodo}, que é a primeira fotografia a sério: comparar hoje com a reconstrução mediria sobretudo a distância entre ela e a realidade.`
             : "Ainda não há duas fotografias a sério para comparar, e por isso não se mostra variação nenhuma — a que sairia daqui seria contra a reconstrução."}

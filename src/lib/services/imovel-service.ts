@@ -64,3 +64,58 @@ export async function estimarValoresDeImoveis(
 
   return porId;
 }
+
+/**
+ * O índice da zona de cada imóvel, mês a mês, para reconstruir o passado.
+ *
+ * **Reconstrução a sério, não uma projeção do valor de hoje.** O que a casa
+ * custou é um facto com data, e o índice do concelho é uma série pública
+ * trimestral. Com os dois, o valor de um mês passado é uma conta — a mesma que
+ * a app já faz para hoje, avaliada noutra data.
+ *
+ * Usar a mesma fórmula dos dois lados é o que faz a linha não dar um salto na
+ * costura entre o reconstruído e o medido.
+ */
+export async function indicesDeImoveis(
+  assets: readonly Asset[],
+  datas: readonly string[],
+): Promise<Map<string, { custoCents: number; indiceCompraCents: number; indicePorData: Record<string, number> }>> {
+  const porId = new Map<
+    string,
+    { custoCents: number; indiceCompraCents: number; indicePorData: Record<string, number> }
+  >();
+
+  const candidatos = assets.filter(
+    (a) =>
+      a.kind === "imovel" &&
+      typeof a.purchasePriceCents === "number" &&
+      a.purchasePriceCents > 0 &&
+      Boolean(a.priceRefGeocod) &&
+      Boolean(a.purchasedAt),
+  );
+  if (candidatos.length === 0 || datas.length === 0) return porId;
+
+  const { table } = await getInePriceTable().catch(() => ({ table: null }));
+  if (!table) return porId;
+
+  for (const a of candidatos) {
+    const custoCents = custoTotalImovel({
+      purchasePriceCents: a.purchasePriceCents,
+      worksCents: a.worksCents,
+    });
+    const compra = precoNaData(table.periodos, String(a.priceRefGeocod), String(a.purchasedAt));
+    if (custoCents === null || !compra || compra.cents <= 0) continue;
+
+    const indicePorData: Record<string, number> = {};
+    for (const d of datas) {
+      // Antes da escritura a casa não era desta pessoa: não se inventa índice
+      // nenhum, e o mês fica de fora.
+      if (d < String(a.purchasedAt)) continue;
+      const p = precoNaData(table.periodos, String(a.priceRefGeocod), d);
+      if (p && p.cents > 0) indicePorData[d] = p.cents;
+    }
+    porId.set(a.id, { custoCents, indiceCompraCents: compra.cents, indicePorData });
+  }
+
+  return porId;
+}
