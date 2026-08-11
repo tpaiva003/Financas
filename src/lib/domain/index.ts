@@ -40,4 +40,5 @@ export * from "./dcf";
 export * from "./dcf-cenarios";
 export * from "./fundamentais";
 export * from "./avaliacoes";
+export * from "./logos";
 export * from "./imovel-liquido";

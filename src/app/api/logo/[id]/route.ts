@@ -15,11 +15,18 @@
  * **Um logo que não existe responde 404 e a carteira mostra o monograma.** Sem
  * esse recuo a carteira ficava aos buracos: metade dos ETF e tudo o que não é
  * marca conhecida não tem logo utilizável.
+ *
+ * **E são três fontes, não uma.** Um serviço gratuito que passe a responder 404
+ * ou a recusar o endereço de saída da Vercel apagava **todos os logos ao mesmo
+ * tempo** — o que se vê é uma carteira que os tinha e deixou de ter, e isso
+ * lê-se como perda de dados. Não se perde nada (o domínio continua gravado), mas
+ * nada no ecrã distinguia "a fonte está em baixo" de "apagaram-me os logos". Ver
+ * `domain/logos.ts`.
  */
 
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
-import { dominioValido } from "@/lib/domain";
+import { dominioValido, pareceIcone, urlsDoLogo } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -49,33 +56,40 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const dominio = bem?.logoDomain ? dominioValido(bem.logoDomain) : null;
   if (!dominio) return naoExiste();
 
-  try {
+  // Pela ordem das fontes: a primeira que devolver uma imagem a sério ganha.
+  // Uma que falhe não trava as outras — era exactamente isso que fazia um
+  // serviço em baixo parecer uma carteira sem logos.
+  for (const url of urlsDoLogo(dominio)) {
     const controlo = new AbortController();
     const t = setTimeout(() => controlo.abort(), TIMEOUT_MS);
-    const res = await fetch(`https://icons.duckduckgo.com/ip3/${dominio}.ico`, {
-      signal: controlo.signal,
-      next: { revalidate: CACHE_SEGUNDOS },
-    });
-    clearTimeout(t);
-    if (!res.ok) return naoExiste();
+    try {
+      const res = await fetch(url, {
+        signal: controlo.signal,
+        next: { revalidate: CACHE_SEGUNDOS },
+      });
+      if (!res.ok) continue;
 
-    const tipo = res.headers.get("content-type") ?? "";
-    // Só imagens. Uma página de erro devolvida com 200 é HTML, e um `<img>`
-    // que recebe HTML mostra o ícone partido em vez de cair no recuo.
-    if (!tipo.startsWith("image/")) return naoExiste();
+      const tipo = res.headers.get("content-type");
+      const bytes = await res.arrayBuffer();
+      // Só imagens, e imagens a sério: uma página de erro devolvida com 200 é
+      // HTML, e um pixel transparente de 1×1 é um "não sei" disfarçado de
+      // sucesso. Ver `pareceIcone`.
+      if (!pareceIcone(tipo, bytes.byteLength, MAX_BYTES)) continue;
 
-    const bytes = await res.arrayBuffer();
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) return naoExiste();
-
-    return new Response(bytes, {
-      headers: {
-        "content-type": tipo,
-        "Cache-Control": `public, max-age=${CACHE_SEGUNDOS}, immutable`,
-        // O endereço desta rota tem o id do bem lá dentro; não vai no Referer.
-        "Referrer-Policy": "no-referrer",
-      },
-    });
-  } catch {
-    return naoExiste();
+      return new Response(bytes, {
+        headers: {
+          "content-type": tipo!,
+          "Cache-Control": `public, max-age=${CACHE_SEGUNDOS}, immutable`,
+          // O endereço desta rota tem o id do bem lá dentro; não vai no Referer.
+          "Referrer-Policy": "no-referrer",
+        },
+      });
+    } catch {
+      // Rede, tempo esgotado, certificado do próprio site: passa-se à seguinte.
+    } finally {
+      clearTimeout(t);
+    }
   }
+
+  return naoExiste();
 }
