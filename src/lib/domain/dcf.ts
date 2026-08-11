@@ -31,8 +31,26 @@
 export interface DcfInput {
   /** Fluxo de caixa livre do último ano, em cêntimos. */
   fcfCents: number;
-  /** Crescimento anual do FCF no período explícito, em percentagem. */
+  /** Crescimento anual do FCF na primeira fase, em percentagem. */
   crescimentoPct: number;
+  /**
+   * Crescimento anual da segunda fase, quando existe.
+   *
+   * **Duas fases e não uma, porque uma só é irrealista de uma forma que
+   * favorece sempre o mesmo lado.** Uma empresa que cresce 15% ao ano não
+   * cresce 15% durante dez anos: a concorrência chega, a base fica grande, o
+   * mercado satura. Projetar a taxa dos primeiros anos até ao fim inflaciona o
+   * valor terminal — que já é a maior parte do resultado — e o exagero entra
+   * onde menos se vê.
+   *
+   * Omitido, a segunda fase não existe e vale a taxa da primeira em todos os
+   * anos. É o comportamento que esta função tinha antes de haver fases.
+   */
+  crescimentoTardioPct?: number | null;
+  /**
+   * Quantos anos dura a primeira fase. Omitido = metade da projeção.
+   */
+  anosPrimeiraFase?: number | null;
   /** Crescimento a partir daí, para sempre, em percentagem. */
   crescimentoPerpetuoPct: number;
   /** Taxa de desconto anual (custo do capital), em percentagem. */
@@ -52,6 +70,8 @@ export interface DcfAno {
   fcfCents: number;
   /** O mesmo fluxo trazido a valor de hoje. */
   presenteCents: number;
+  /** A que taxa este ano cresceu. Muda entre as duas fases. */
+  crescimentoPct: number;
 }
 
 export interface DcfResultado {
@@ -140,16 +160,32 @@ function nucleo(input: DcfInput): { ok: Omit<DcfResultado, "sensibilidade"> } | 
     };
   }
 
+  /**
+   * Onde acaba a primeira fase.
+   *
+   * Por omissão, a meio: com dez anos de projeção dá 1-5 e 6-10, que é como
+   * estes modelos se escrevem em todo o lado.
+   */
+  const gTardio =
+    typeof input.crescimentoTardioPct === "number" && Number.isFinite(input.crescimentoTardioPct)
+      ? input.crescimentoTardioPct / 100
+      : g;
+  const fase1 =
+    typeof input.anosPrimeiraFase === "number" && input.anosPrimeiraFase >= 1
+      ? Math.min(Math.round(input.anosPrimeiraFase), anos)
+      : Math.ceil(anos / 2);
+
   const projetados: DcfAno[] = [];
   let explicito = 0;
   let ultimo = fcfCents;
   for (let t = 1; t <= anos; t++) {
-    ultimo = ultimo * (1 + g);
+    ultimo = ultimo * (1 + (t <= fase1 ? g : gTardio));
     const presente = ultimo / Math.pow(1 + r, t);
     projetados.push({
       ano: t,
       fcfCents: Math.round(ultimo),
       presenteCents: Math.round(presente),
+      crescimentoPct: Math.round((t <= fase1 ? g : gTardio) * 1000) / 10,
     });
     explicito += presente;
   }

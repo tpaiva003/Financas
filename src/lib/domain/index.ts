@@ -37,4 +37,5 @@ export * from "./marcas";
 export * from "./trades-dedup";
 export * from "./analise-patrimonio";
 export * from "./dcf";
+export * from "./dcf-cenarios";
 export * from "./imovel-liquido";
