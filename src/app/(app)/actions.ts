@@ -13,6 +13,7 @@ import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
 import { buscarEuribor } from "@/lib/services/euribor-service";
+import { buscarFundamentais } from "@/lib/services/fundamentais-service";
 import { descobrirMarcas } from "@/lib/services/marca-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
@@ -80,6 +81,7 @@ import {
   parseCreditTerms,
   derivePosition,
 } from "@/lib/domain";
+import type { Fundamentais } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -3243,5 +3245,48 @@ export async function descobrirMarcasAction(
       faltam > 0
         ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível — esses ficam com as iniciais.`
         : `${gravadas} com logo.`,
+  };
+}
+
+// ---- Fundamentais de uma empresa --------------------------------------------
+
+export interface FundamentaisState extends ActionState {
+  simbolo?: string | null;
+  dados?: Fundamentais | null;
+}
+
+/**
+ * Ir buscar as contas de uma empresa para a calculadora de avaliação.
+ *
+ * **Não grava nada.** É um preenchimento de formulário: os campos aparecem
+ * escritos e continuam todos editáveis, porque o número que a fonte dá é um
+ * ponto de partida e não uma verdade. O fluxo de caixa livre dos últimos doze
+ * meses de uma empresa cíclica é uma péssima base para dez anos de projeção, e
+ * quem está a avaliar sabe disso melhor do que a app.
+ *
+ * Não toca no património nem no ambiente, por isso não revalida caminho nenhum.
+ */
+export async function buscarFundamentaisAction(
+  _prev: FundamentaisState,
+  formData: FormData,
+): Promise<FundamentaisState> {
+  // Continua a exigir sessão: é uma chamada a uma fonte externa feita a partir
+  // do servidor, e sem sessão seria um proxy aberto para quem passasse.
+  await requireUser();
+
+  const simbolo = String(formData.get("symbol") ?? "").trim();
+  if (!simbolo) return { error: "Escreve o símbolo primeiro." };
+
+  const r = await buscarFundamentais(simbolo);
+  if (!r.dados) {
+    return { error: r.problem ?? "Não consegui obter as contas desta empresa." };
+  }
+  return {
+    ok: true,
+    simbolo: r.simbolo,
+    dados: r.dados,
+    message: r.dados.emFalta.length
+      ? `Preenchi o que veio. Faltou ${r.dados.emFalta.join(", ")} — escreve à mão.`
+      : "Preenchido com os dados do Yahoo Finance. Confere antes de decidir.",
   };
 }
