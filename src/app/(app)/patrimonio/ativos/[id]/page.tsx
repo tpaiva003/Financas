@@ -22,6 +22,7 @@ import { TradeForm } from "@/components/TradeForm";
 import { TradeRow } from "@/components/TradeRow";
 import { AssetAttachments } from "@/components/AssetAttachments";
 import { SplitSugerido } from "@/components/SplitSugerido";
+import { SplitManual } from "@/components/SplitManual";
 import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
@@ -194,6 +195,13 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           ))}
         </div>
       ) : null}
+
+      {/*
+        A caixa de registar à mão fica junto dos desdobramentos, e aparece
+        sempre num investimento com movimentos: a deteção precisa das duas
+        pernas, e há corretoras que só exportam uma.
+      */}
+      {hasTrades ? <SplitManual assetId={asset.id} /> : null}
 
       {/* Os que já estão confirmados, e como se desfazem. */}
       {splits.length > 0 ? (
