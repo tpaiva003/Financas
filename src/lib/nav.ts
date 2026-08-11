@@ -46,10 +46,18 @@ export const SECTIONS: NavSection[] = [
   {
     href: "/relatorios",
     label: "Análise",
+    /**
+     * Duas famílias de perguntas, e não uma lista de páginas.
+     *
+     * "Em que gasto" e "o que tenho a crescer" são perguntas diferentes, e
+     * estavam todas debaixo de Análise sem distinção — o que fazia a segunda
+     * não existir: quem entrava via só despesas e concluía que era isso.
+     */
     children: [
-      { href: "/relatorios", label: "Resumo" },
+      { href: "/relatorios", label: "Despesas" },
       { href: "/relatorios/categorias", label: "Categorias" },
       { href: "/relatorios/evolucao", label: "Evolução" },
+      { href: "/relatorios/patrimonio", label: "Património" },
     ],
   },
   {

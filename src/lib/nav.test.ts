@@ -32,9 +32,13 @@ describe("Análise", () => {
   it("está dividida em vistas, em vez de um rolo só", () => {
     const analise = SECTIONS.find((s) => s.label === "Análise")!;
     expect(analise.children?.map((c) => c.label)).toEqual([
-      "Resumo",
+      "Despesas",
       "Categorias",
       "Evolução",
+      // As despesas e o património respondem a perguntas diferentes, e antes
+      // estavam todas debaixo de Análise sem distinção — o que fazia a segunda
+      // não existir: quem entrava via só despesas e concluía que era isso.
+      "Património",
     ]);
   });
 });
