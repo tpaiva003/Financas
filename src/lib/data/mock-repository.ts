@@ -801,6 +801,23 @@ export class MockRepository implements Repository {
     if (i >= 0) store.assetAttachments[i] = { ...store.assetAttachments[i]!, status: "pronto" };
   }
 
+  async moveAssetAttachments(
+    fromAssetId: string,
+    toAssetId: string,
+    spaceId: string,
+  ): Promise<number> {
+    let mexidos = 0;
+    for (const a of getStore().assetAttachments) {
+      // Filtra pelo ambiente tal como o Supabase: um mock mais permissivo do
+      // que a produção esconde o engano que os testes procuram.
+      if (a.assetId === fromAssetId && a.spaceId === spaceId) {
+        a.assetId = toAssetId;
+        mexidos += 1;
+      }
+    }
+    return mexidos;
+  }
+
   async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);

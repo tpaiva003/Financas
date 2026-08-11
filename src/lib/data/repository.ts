@@ -870,6 +870,19 @@ export interface Repository {
    */
   getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null>;
   createAssetAttachment(input: CreateAssetAttachment): Promise<void>;
+  /**
+   * Passa os anexos de um bem para outro, ao juntar registos repetidos.
+   *
+   * **Só mexe na linha, nunca no ficheiro.** O `storage_path` fica como está: é
+   * ele que manda na leitura, e o id do bem que lá aparece é só o sítio onde o
+   * ficheiro calhou nascer. Mover o objeto no Storage seria trabalho a mais para
+   * arriscar perder um ficheiro de alguém a meio.
+   *
+   * Existe porque a coluna tem `on delete cascade`: sem esta passagem, juntar
+   * dois registos repetidos apagava os documentos que alguém carregou — uma
+   * arrumação de catálogo a destruir ficheiros.
+   */
+  moveAssetAttachments(fromAssetId: string, toAssetId: string, spaceId: string): Promise<number>;
   markAssetAttachmentReady(id: string, spaceId: string): Promise<void>;
   deleteAssetAttachment(id: string, spaceId: string): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */

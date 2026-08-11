@@ -85,6 +85,7 @@ import {
   etapaValida,
   etapaSugerida,
   ETAPA_LABEL,
+  assinatura,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -3426,4 +3427,112 @@ export async function apagarAvaliacaoAction(formData: FormData): Promise<void> {
   if (!id) return;
   await getRepository().deleteValuation(id, ctx.space.id).catch(() => {});
   revalidatePath("/patrimonio/avaliacoes");
+}
+
+// ---- Investimentos duplicados ----------------------------------------------
+
+/**
+ * Juntar dois registos do mesmo investimento num só.
+ *
+ * **O que faz:** move os movimentos e os anexos do registo a remover para o que
+ * fica, e só depois apaga o que ficou vazio. Por esta ordem, e não pela
+ * contrária: se a remoção corresse primeiro e a mudança falhasse a meio, os
+ * movimentos ficavam presos a um investimento que já não existe — invisíveis no
+ * ecrã e a contar na mesma para o dinheiro que entrou.
+ *
+ * **Não apaga um movimento que seja.** Um registo duplicado é um erro de
+ * catalogação, não um erro de dinheiro: as compras aconteceram todas. Se depois
+ * de juntos houver dois movimentos iguais, isso é dito e fica para alguém
+ * decidir — apagar um por dedução própria é apagar uma compra a sério que por
+ * acaso se parece com outra.
+ *
+ * **Os dois ids são confrontados com o ambiente antes de se tocar em nada.** Um
+ * id vindo de um formulário não é prova de nada, e tudo aqui corre com a chave
+ * de serviço, que ignora o RLS.
+ */
+export async function fundirAtivosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const manterId = String(formData.get("manterId") ?? "").trim();
+  const removerId = String(formData.get("removerId") ?? "").trim();
+  if (!manterId || !removerId) return { error: "Faltam os investimentos a juntar." };
+  if (manterId === removerId) return { error: "São o mesmo registo." };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
+  const manter = bens.find((a) => a.id === manterId);
+  const remover = bens.find((a) => a.id === removerId);
+  if (!manter || !remover) return { error: "Investimento inválido." };
+
+  // Só o que o detetor propôs: o mesmo símbolo. Sem isto, um formulário
+  // adulterado juntava dois investimentos que não têm nada a ver um com o outro
+  // — e não há como voltar atrás.
+  const a = manter.symbol?.trim().toLowerCase();
+  const b = remover.symbol?.trim().toLowerCase();
+  if (!a || !b || a !== b) {
+    return { error: "Só junto registos com o mesmo símbolo. Estes não têm." };
+  }
+
+  const doRemovido = await repo.listAssetTrades(ctx.space.id, removerId).catch(() => []);
+  let movidos = 0;
+  for (const t of doRemovido) {
+    try {
+      await repo.updateAssetTrade(t.id, ctx.space.id, { assetId: manterId });
+      movidos += 1;
+    } catch (e) {
+      // Parar a meio deixa metade dos movimentos de cada lado, mas os dois
+      // registos continuam a existir e nada se perdeu. Continuar às cegas e
+      // apagar o registo no fim é que perdia.
+      return {
+        error: `${porqueNaoGravou(e, "o movimento")} Movi ${movidos} de ${doRemovido.length}; os dois registos continuam lá.`,
+      };
+    }
+  }
+
+  // Os anexos ANTES de apagar, e não depois: a coluna tem `on delete cascade`,
+  // por isso apagar o registo primeiro levava com ele os documentos que alguém
+  // carregou. Uma arrumação de catálogo não pode destruir ficheiros.
+  let anexos = 0;
+  try {
+    anexos = await repo.moveAssetAttachments(removerId, manterId, ctx.space.id);
+  } catch (e) {
+    return {
+      error: `${porqueNaoGravou(e, "os anexos")} Os movimentos já passaram; os dois registos continuam lá.`,
+    };
+  }
+
+  try {
+    await repo.deleteAsset(removerId, ctx.space.id);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o registo repetido") };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  revalidatePath("/patrimonio/ativos");
+
+  // Movimentos iguais depois de juntos: diz-se, não se apaga.
+  const juntos = await repo.listAssetTrades(ctx.space.id, manterId).catch(() => []);
+  const vistas = new Set<string>();
+  let repetidos = 0;
+  for (const t of juntos) {
+    const chave = assinatura(t);
+    if (vistas.has(chave)) repetidos += 1;
+    else vistas.add(chave);
+  }
+
+  const partes = [`${movidos} ${movidos === 1 ? "movimento passou" : "movimentos passaram"} para "${manter.name}".`];
+  if (anexos > 0) {
+    partes.push(`${anexos} ${anexos === 1 ? "anexo passou" : "anexos passaram"} também.`);
+  }
+  if (repetidos > 0) {
+    partes.push(
+      `Atenção: ficaram ${repetidos} ${repetidos === 1 ? "movimento igual a outro" : "movimentos iguais a outros"} no mesmo dia. Não apago nenhum — confere se são mesmo repetidos ou duas compras a sério.`,
+    );
+  }
+  return { ok: true, message: partes.join(" ") };
 }

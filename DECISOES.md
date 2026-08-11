@@ -1797,3 +1797,38 @@ O `EstadoChip` estava exportado de `ajuda/page.tsx` e a página do detalhe
 importava-o de lá. Passava no `tsc`, passava no `lint`, e só rebentava no
 `next build` — com "not a valid Page export field", numa página que ninguém
 tinha tocado. Componentes partilhados vivem em `components/`.
+
+### Registos repetidos juntam-se pelo símbolo, nunca pelo nome
+
+A importação cria dois investimentos quando a corretora escreve "ADR ON
+UNILEVER" num extrato e "ADR ON UNILEVER PLC" no seguinte. Juntá-los por
+parecença de nomes apanhava esse caso — e apanhava também "XPHYTO THERAPEUTICS"
+e "XPHYTO THERAPEUTICS - NON TRADEABLE", que são coisas diferentes: uma negoceia
+e a outra não. Parecença de nomes é um palpite sobre dinheiro de alguém; dois
+registos com `ul.us` são um facto.
+
+### Uma arrumação de catálogo não pode destruir ficheiros
+
+`asset_attachments.asset_id` tem `on delete cascade`. Apagar o registo repetido
+antes de passar os anexos levava com ele os documentos que alguém carregou — sem
+erro nenhum, porque do ponto de vista da base de dados correu tudo bem. A ordem
+é: mover movimentos, mover anexos, e só então apagar. E move-se a linha, nunca o
+ficheiro: é o `storage_path` gravado que manda na leitura, e o id do bem que lá
+aparece é só o sítio onde ele calhou nascer.
+
+### Movimentos iguais depois de uma fusão dizem-se, não se apagam
+
+Um registo repetido é um erro de catalogação, não de dinheiro: as compras
+aconteceram todas. Se depois de juntos ficarem dois movimentos com a mesma
+assinatura, isso é dito e fica para alguém decidir — apagar um por dedução
+própria é apagar uma compra a sério que por acaso se parece com outra.
+
+### Um campo que o `update` não lê é pior do que um nome de coluna errado
+
+O `updateAssetTrade` não mapeava o `assetId`. Um nome de coluna errado faz o
+PostgREST recusar a escrita inteira e alguém repara; um campo esquecido corre
+sem erro nenhum e não faz nada. A fusão de dois registos anunciava "movi 12
+movimentos" com os doze exactamente onde estavam. O `MockRepository` não podia
+apanhar isto — faz `{ ...trade, ...patch }` e aceita tudo o que lhe dêem — por
+isso o teste é sobre o texto do repositório (`colunas.test.ts`), a confrontar os
+campos da interface com os que o método trata.

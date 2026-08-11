@@ -1346,6 +1346,26 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async moveAssetAttachments(
+    fromAssetId: string,
+    toAssetId: string,
+    spaceId: string,
+  ): Promise<number> {
+    const db = getSupabaseAdmin();
+    // O `space_id` filtra a escrita, como em todas as outras: um id vindo de um
+    // formulário não é prova de nada. O `select()` devolve as linhas mexidas,
+    // que é como se sabe quantas foram — sem ele, contar-se-iam as que se
+    // esperava ter mexido, que é outra coisa.
+    const { data, error } = await db
+      .from("asset_attachments")
+      .update({ asset_id: toAssetId })
+      .eq("asset_id", fromAssetId)
+      .eq("space_id", spaceId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    return data?.length ?? 0;
+  }
+
   async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
@@ -1496,6 +1516,15 @@ export class SupabaseRepository implements Repository {
     // o nome errado aqui fazia o PostgREST recusar a escrita inteira, e o ecrã
     // dizia só "Não consegui gravar o movimento" — o erro certo, pela razão
     // errada. O mock não apanha isto, porque guarda objetos e não colunas.
+    // `assetId` primeiro, e com razão para estar aqui: sem esta linha, mudar um
+    // movimento de investimento era um NÃO-FAZER-NADA silencioso. Nenhum erro,
+    // nenhum aviso, e a fusão de dois registos duplicados dizia "movi 12
+    // movimentos" com os doze exactamente onde estavam.
+    // `assetId` primeiro, e com razão para estar aqui: sem esta linha, mudar um
+    // movimento de investimento era um NÃO-FAZER-NADA silencioso. Nenhum erro,
+    // nenhum aviso, e a fusão de dois registos duplicados dizia "movi 12
+    // movimentos" com os doze exactamente onde estavam.
+    if (patch.assetId !== undefined) row.asset_id = patch.assetId;
     if (patch.date !== undefined) row.trade_date = patch.date;
     if (patch.kind !== undefined) row.kind = patch.kind;
     if (patch.quantity !== undefined) row.quantity = patch.quantity;

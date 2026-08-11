@@ -36,6 +36,7 @@ import {
   type RatePeriod,
   type RateKind,
   type Trade,
+  duplicadosDeAtivos,
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
@@ -52,6 +53,7 @@ import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { DescobrirMarcas } from "@/components/DescobrirMarcas";
 import { AssetListSort } from "@/components/AssetListSort";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
+import { AtivosDuplicados } from "@/components/AtivosDuplicados";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
 import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
@@ -272,6 +274,16 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
     .map((a) => ({ id: a.id, name: a.name }));
 
   const semMarca = stored.filter((a) => a.kind === "investimento" && !a.logoDomain).length;
+
+  /**
+   * Dois registos do mesmo investimento, vindos de importações com nomes
+   * diferentes. Só pelo símbolo — parecença de nomes é um palpite sobre
+   * dinheiro de alguém. Ver `domain/duplicados.ts`.
+   */
+  const duplicados = duplicadosDeAtivos(
+    stored.filter((a) => a.kind === "investimento"),
+    new Map(stored.map((a) => [a.id, (tradesByAsset.get(a.id) ?? []).length])),
+  );
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
@@ -538,6 +550,14 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   ) : null}
                 </div>
 
+                {/* Antes de tudo o resto: enquanto houver dois registos do
+                    mesmo investimento, os números desta página estão errados,
+                    e nenhum dos outros avisos vale nada em cima disso. */}
+                {kind === "investimento" && duplicados.length > 0 ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <AtivosDuplicados grupos={duplicados} />
+                  </div>
+                ) : null}
                 {/* Depois de uma importação ficam dezenas de ativos sem símbolo,
                     e sem símbolo não há cotação, ganho nem rentabilidade. Só
                     aparece quando há mesmo algum por resolver. */}

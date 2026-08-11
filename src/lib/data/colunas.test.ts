@@ -146,3 +146,52 @@ describe("as colunas que o repositório escreve existem nas tabelas", () => {
     expect(problemas).toEqual([]);
   });
 });
+
+/**
+ * O outro lado da mesma moeda: um campo do `patch` que ninguém lê.
+ *
+ * O teste acima apanha um nome de coluna **errado**. Não apanha um campo
+ * **esquecido** — e o esquecimento é ainda mais silencioso: o `update` corre, o
+ * PostgREST não se queixa, e o campo que se pediu para mudar fica como estava.
+ *
+ * Foi o que aconteceu com o `assetId` no `updateAssetTrade`. Mudar um movimento
+ * de investimento era um não-fazer-nada perfeito: sem erro, sem aviso, e a
+ * fusão de dois registos duplicados anunciava "movi 12 movimentos" com os doze
+ * exactamente onde estavam.
+ *
+ * **O `MockRepository` não podia apanhar isto**, e não é descuido: ele faz
+ * `{ ...trade, ...patch }`, por isso aceita qualquer campo que lhe dêem. Um
+ * teste contra o mock passava nos dois lados, que é o mesmo que não existir.
+ */
+describe("os updates leem todos os campos que lhes podem dar", () => {
+  const src = readFileSync(REPO, "utf8");
+
+  function corpoDe(metodo: string): string {
+    const i = src.indexOf(`  async ${metodo}(`);
+    expect(i).toBeGreaterThan(-1);
+    const resto = src.slice(i + 1);
+    const fim = resto.search(/^ {2}async [A-Za-z0-9_]+\(/m);
+    return fim < 0 ? resto : resto.slice(0, fim);
+  }
+
+  /** Os campos de uma interface do `repository.ts`, sem os comentários. */
+  function camposDe(nome: string): string[] {
+    const decl = readFileSync(join(RAIZ, "src", "lib", "data", "repository.ts"), "utf8");
+    const i = decl.indexOf(`export interface ${nome} {`);
+    expect(i).toBeGreaterThan(-1);
+    const corpo = decl.slice(i, decl.indexOf("\n}", i));
+    return [...corpo.matchAll(/^\s{2}([a-zA-Z][A-Za-z0-9]*)\??:/gm)].map((m) => m[1]!);
+  }
+
+  it("o updateAssetTrade trata todos os campos do movimento", () => {
+    const corpo = corpoDe("updateAssetTrade");
+    // O id identifica a linha, o ambiente filtra a escrita e a data de criação
+    // não se corrige: nenhum dos três é um campo a alterar.
+    const fora = new Set(["id", "spaceId", "createdAt"]);
+    const esquecidos = camposDe("AssetTrade")
+      .filter((c) => !fora.has(c))
+      .filter((c) => !corpo.includes(`patch.${c} !== undefined`));
+
+    expect(esquecidos).toEqual([]);
+  });
+});
