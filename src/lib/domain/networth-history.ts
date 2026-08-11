@@ -30,6 +30,18 @@ export interface NetWorthSnapshot {
   netCents: number;
   /** Reconstruído em vez de medido. Ver `NetWorthPoint.estimado`. */
   estimado?: boolean;
+  /**
+   * Quanto valia cada tipo de bem naquele dia.
+   *
+   * Vem de uma coluna `jsonb`, por isso chega como `unknown` e **tem de ser
+   * validado** — é o modo de falha nº 4 desta app: dados guardados por versões
+   * antigas chegam incompletos, e `undefined >= 0` é `false`, que se lê como
+   * "esta coluna não existe". Ver `lerBreakdown`.
+   *
+   * Ausente nos pontos reconstruídos: a reconstrução sabe somar o total e não
+   * sabe reparti-lo por tipo.
+   */
+  porTipo?: Record<string, number>;
 }
 
 export interface NetWorthPoint extends NetWorthSnapshot {
@@ -116,6 +128,27 @@ function numero(v: unknown): number | null {
  * fotografias do mesmo dia no gráfico davam dois pontos sobrepostos e uma
  * variação de zero pelo meio, que se lê como um dia parado.
  */
+/**
+ * A repartição por tipo, lida de um `jsonb` sem acreditar nele.
+ *
+ * Devolve `undefined` quando não há nada de aproveitável, e nunca um objeto
+ * meio preenchido: uma linha do gráfico feita de buracos e zeros diria que
+ * naquele mês não havia imóveis, quando o que não havia era o registo.
+ *
+ * Aceita só valores numéricos finitos. Um `null` guardado por uma versão
+ * antiga não vira zero — desaparece, e a linha parte-se, que é o que a
+ * verdade daquele mês pede.
+ */
+export function lerBreakdown(bruto: unknown): Record<string, number> | undefined {
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(bruto as Record<string, unknown>)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    out[k] = Math.round(v);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function normalizeSnapshots(raw: readonly unknown[]): NetWorthSnapshot[] {
   const porDia = new Map<string, NetWorthSnapshot>();
 
@@ -135,6 +168,7 @@ export function normalizeSnapshots(raw: readonly unknown[]): NetWorthSnapshot[] 
       debtsCents,
       netCents: assetsCents - debtsCents,
       estimado: r.estimado === true,
+      porTipo: lerBreakdown(r.breakdown ?? r.porTipo),
     });
   }
 

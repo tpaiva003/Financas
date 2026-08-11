@@ -237,6 +237,15 @@ export interface Asset {
    * pedido pelo browser — ver o cabeçalho dessa rota.
    */
   logoDomain?: string | null;
+  /**
+   * Numa dívida: que bem é que ela financia.
+   *
+   * O campo vive na dívida e não no bem porque um imóvel pode ter mais do que
+   * um crédito — o da compra e o das obras — e um crédito financia uma coisa
+   * só. Serve para mostrar o líquido: o que a casa vale menos o que falta
+   * pagar dela.
+   */
+  financesAssetId?: string | null;
   updatedAt?: string | null;
 }
 

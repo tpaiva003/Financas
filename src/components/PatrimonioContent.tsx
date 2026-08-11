@@ -11,6 +11,7 @@ import {
   buildNetWorth,
   buildPosition,
   movimentosImplausiveis,
+  liquidoPorBem,
   aplicarSplits,
   detetarSplits,
   buildNetWorthSeries,
@@ -31,6 +32,7 @@ import {
   type AssetKind,
   type AssetView,
   type CreditoPlano,
+  type LiquidoDoBem,
   type RatePeriod,
   type RateKind,
   type Trade,
@@ -242,6 +244,32 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       };
     })
     .filter((g): g is NonNullable<typeof g> => g !== null);
+
+  /**
+   * O líquido de cada bem que tenha crédito ligado.
+   *
+   * A quota já está aplicada nos dois lados — `net.assets` traz o valor com a
+   * fatia deste ambiente — por isso subtrair um do outro mantém a proporção.
+   * Voltar a aplicá-la aqui dava metade de metade, que é o engano que esta app
+   * já cometeu uma vez com as quotas.
+   */
+  const liquidos = liquidoPorBem(
+    net.assets
+      .filter((a) => a.kind !== "divida")
+      .map((a) => ({ id: a.id, name: a.name, valueCents: a.currentValueCents })),
+    net.assets
+      .filter((a) => a.kind === "divida")
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        balanceCents: a.currentValueCents,
+        financesAssetId: stored.find((s) => s.id === a.id)?.financesAssetId ?? null,
+      })),
+  );
+  /** Bens que um crédito pode financiar. As dívidas não financiam dívidas. */
+  const bensFinanciaveis = stored
+    .filter((a) => a.kind !== "divida" && a.kind !== "investimento")
+    .map((a) => ({ id: a.id, name: a.name }));
 
   const semMarca = stored.filter((a) => a.kind === "investimento" && !a.logoDomain).length;
   const podeSugerir = tickerSuggestAvailable();
@@ -636,6 +664,8 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                         members={memberOptions}
                         podeLerContrato={podeLerContrato}
                         anexos={anexosDe(a.id)}
+                        liquido={liquidos.get(a.id) ?? null}
+                        bensFinanciaveis={bensFinanciaveis}
                       />
                     ))}
                   </ul>
@@ -655,6 +685,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
           contexto={view === "dividas" ? "dividas" : "ativos"}
           members={memberOptions}
           podeLerContrato={podeLerContrato}
+          bensFinanciaveis={bensFinanciaveis}
         />
       ) : null}
 
@@ -982,12 +1013,17 @@ function AssetRow({
   primeiro,
   ultimo,
   anexos,
+  liquido,
+  bensFinanciaveis,
 }: {
   asset: AssetView;
   stored: Asset | null;
   members: { id: string; name: string }[];
   /** `null` quer dizer "não consegui ler", nunca "não há nenhum". */
   anexos: AnexoView[] | null;
+  /** O líquido deste bem, quando tem crédito ligado. */
+  liquido: LiquidoDoBem | null;
+  bensFinanciaveis: { id: string; name: string }[];
   /** Há leitura de contratos configurada? */
   podeLerContrato: boolean;
   /** Para desligar os botões de mover nas pontas da lista. */
@@ -1339,6 +1375,31 @@ function AssetRow({
         </p>
       ) : null}
 
+      {/*
+        O líquido: o que o bem vale menos o que falta pagar dele.
+        A pergunta que toda a gente faz sobre a sua casa, e que só existia
+        diluída no total do património.
+      */}
+      {liquido ? (
+        <p className="mt-2 text-xs text-fg-muted">
+          Líquido:{" "}
+          <span
+            className={`font-mono tnum ${liquido.liquidoCents >= 0 ? "text-credit" : "text-debt"}`}
+          >
+            {formatCents(liquido.liquidoCents)}
+          </span>{" "}
+          <span className="text-fg-faint">
+            — falta pagar {formatCents(liquido.dividaCents)} em{" "}
+            {liquido.creditos.map((c) => c.name).join(", ")}
+            {liquido.pagoPct !== null ? `. ${liquido.pagoPct}% já é teu` : ""}
+            {liquido.liquidoCents < 0
+              ? ". Deves mais do que ele vale, o que é normal nos primeiros anos"
+              : ""}
+            .
+          </span>
+        </p>
+      ) : null}
+
       {a.notes ? <p className="mt-2 text-xs text-fg-faint">{a.notes}</p> : null}
 
       {/*
@@ -1373,6 +1434,7 @@ function AssetRow({
           <AssetForm
             members={members}
             podeLerContrato={podeLerContrato}
+            bensFinanciaveis={bensFinanciaveis}
             asset={{
               id: a.id,
               name: a.name,
@@ -1400,6 +1462,7 @@ function AssetRow({
               ownershipPct: stored?.ownershipPct ?? null,
               coOwnerMemberId: stored?.coOwnerMemberId ?? null,
               symbol: stored?.symbol ?? null,
+              financesAssetId: stored?.financesAssetId ?? null,
             }}
           />
         </div>

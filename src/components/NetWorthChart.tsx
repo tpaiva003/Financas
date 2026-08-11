@@ -24,6 +24,39 @@ import type {
 /** Quantos pontos cabem sem ficar ilegível no telemóvel. */
 const MAX_PONTOS = 24;
 
+/**
+ * Um traçado que se parte nos buracos em vez de os atravessar.
+ *
+ * É a regra da linha do património aplicada às outras: ligar dois pontos por
+ * cima de meses de que não se sabe nada afirma uma coisa sobre eles. O primeiro
+ * segmento depois de um buraco é um "move", não um "line".
+ */
+function tracarComBuracos(
+  valores: readonly (number | null)[],
+  x: (i: number) => number,
+  y: (cents: number) => number,
+): string {
+  let recomeca = true;
+  return valores
+    .map((v, i) => {
+      if (v === null) {
+        recomeca = true;
+        return null;
+      }
+      const seg = `${recomeca ? "M" : "L"}${x(i)},${y(v)}`;
+      recomeca = false;
+      return seg;
+    })
+    .filter((seg): seg is string => seg !== null)
+    .join(" ");
+}
+
+/** Que tipos de bem ganham linha própria, e como se chamam. */
+const TIPOS_COM_LINHA: { id: string; label: string }[] = [
+  { id: "investimento", label: "Investimentos" },
+  { id: "imovel", label: "Imóveis" },
+];
+
 export function NetWorthChart({
   series,
   captura,
@@ -102,9 +135,32 @@ export function NetWorthChart({
     .map((l) => ({ ...l, valores: l.valores.slice(-MAX_PONTOS) }))
     .filter((l) => l.valores.some((v) => v !== null));
 
+  /**
+   * As linhas por tipo de bem, tiradas da repartição gravada em cada
+   * fotografia.
+   *
+   * Um ponto sem repartição — os reconstruídos não a têm — fica a `null` e a
+   * linha parte-se ali. Zero seria dizer que naquele mês não havia imóveis,
+   * quando o que não havia era o registo.
+   *
+   * Só entram os tipos com pelo menos dois pontos: com um só não há linha
+   * nenhuma para desenhar, e um ponto solto no meio do gráfico não se lê.
+   */
+  const linhasPorTipo = TIPOS_COM_LINHA.map((t) => ({
+    ...t,
+    valores: points.map((p) => {
+      const v = p.porTipo?.[t.id];
+      return typeof v === "number" ? v : null;
+    }),
+  })).filter((l) => l.valores.filter((v) => v !== null).length >= 2);
+
   const valores = [
     ...points.map((p) => p.netCents),
     ...linhasIndice.flatMap((l) => l.valores.filter((v): v is number => v !== null)),
+    // Os tipos também: um imóvel de 400 mil por cima de um líquido de 300 mil
+    // saía fora do desenho, e uma linha que desaparece lê-se como uma linha
+    // que não existe.
+    ...linhasPorTipo.flatMap((l) => l.valores.filter((v): v is number => v !== null)),
   ];
   const max = Math.max(...valores);
   const min = Math.min(...valores);
@@ -200,6 +256,21 @@ export function NetWorthChart({
         Sem ponto escolhido mostra-se o último — assim a linha nunca está vazia
         e não há salto de altura ao passar o rato.
       */}
+      {linhasPorTipo.length > 0 ? (
+        <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-faint">
+          {linhasPorTipo.map((l) => (
+            <span key={l.id} className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className={`inline-block h-0 w-4 border-t ${l.id === "investimento" ? "border-credit/60" : "border-fg/50"}`}
+              />
+              {l.label}
+            </span>
+          ))}
+          <span>dentro do total, e não somados a ele.</span>
+        </p>
+      ) : null}
+
       {linhasIndice.length > 0 ? (
         <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-faint">
           {linhasIndice.map((l, k) => (
@@ -292,30 +363,36 @@ export function NetWorthChart({
         ) : null}
 
         {/*
+          As linhas por tipo de bem: investimentos e imóveis.
+
+          Vão a cheio e finas, e não a tracejado como os índices, porque isto é
+          medido e aquilo é contexto. Só aparecem onde há repartição gravada —
+          os pontos reconstruídos não a têm, porque a reconstrução sabe somar o
+          total e não sabe reparti-lo.
+        */}
+        {linhasPorTipo.map((l) => {
+          const d = tracarComBuracos(l.valores, x, y);
+          if (!d) return null;
+          return (
+            <path
+              key={l.id}
+              d={d}
+              fill="none"
+              className={l.id === "investimento" ? "stroke-credit/50" : "stroke-fg/40"}
+              strokeWidth={0.9}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+
+        {/*
           Os índices, a tracejado fino e por baixo da linha do património: são
           contexto, não são a coisa que se veio ver.
         */}
         {linhasIndice.map((l, k) => {
-          /**
-           * Um buraco na série parte a linha em vez de a atravessar.
-           *
-           * É a mesma regra da linha do património: ligar dois pontos por cima
-           * de meses sem cotação afirma uma coisa sobre eles. O primeiro
-           * segmento depois de um buraco é um "move", não um "line".
-           */
-          let recomeca = true;
-          const d = l.valores
-            .map((v, i) => {
-              if (v === null) {
-                recomeca = true;
-                return null;
-              }
-              const seg = `${recomeca ? "M" : "L"}${x(i)},${y(v)}`;
-              recomeca = false;
-              return seg;
-            })
-            .filter((seg): seg is string => seg !== null)
-            .join(" ");
+          const d = tracarComBuracos(l.valores, x, y);
           if (!d) return null;
           return (
             <path

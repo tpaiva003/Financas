@@ -1718,7 +1718,27 @@ export async function saveAssetAction(
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))
         : null,
+    /**
+     * Que bem é que este crédito financia.
+     *
+     * Só nas dívidas: num bem o campo não existe e não pode entrar por um
+     * formulário adulterado. O id é confrontado com os bens do ambiente mais
+     * abaixo — um id vindo do formulário não é prova de nada.
+     */
+    financesAssetId:
+      kind === "divida" ? String(formData.get("financesAssetId") ?? "").trim() || null : null,
   };
+
+  // O bem financiado tem de ser mesmo deste ambiente, e não pode ser o próprio
+  // crédito: um bem a financiar-se a si mesmo dava um líquido a zero com ar de
+  // conta feita.
+  if (patch.financesAssetId) {
+    const doAmbiente = await getRepository().listAssets(ctx.space.id).catch(() => []);
+    const alvo = doAmbiente.find((a) => a.id === patch.financesAssetId);
+    if (!alvo || alvo.kind === "divida" || alvo.id === String(formData.get("id") ?? "").trim()) {
+      patch.financesAssetId = null;
+    }
+  }
 
   const id = String(formData.get("id") ?? "").trim();
   // Só a criação conta para o tecto: editar um bem que já existe nunca pode ser

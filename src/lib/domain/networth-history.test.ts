@@ -4,6 +4,7 @@ import {
   buildNetWorthSeries,
   juntarHistorico,
   normalizeSnapshots,
+  lerBreakdown,
   porMes,
   precoEm,
   reconstruirHistorico,
@@ -385,5 +386,54 @@ describe("variação medida contra variação total", () => {
     const s = buildNetWorthSeries([ponto("2025-03-31", 400_000), ponto("2025-04-30", 440_000)]);
     expect(s.comecaEstimado).toBe(false);
     expect(s.medido!.changeCents).toBe(s.changeCents);
+  });
+});
+
+/**
+ * A repartição por tipo vem de um `jsonb` e chega como `unknown`. É o modo de
+ * falha nº 4 desta app: dados guardados por versões antigas chegam
+ * incompletos, e `undefined >= 0` é `false`, o que se lê como "esta coluna não
+ * existe".
+ */
+describe("lerBreakdown", () => {
+  it("lê os números que lá estão", () => {
+    expect(lerBreakdown({ investimento: 1000, imovel: 250_000 })).toEqual({
+      investimento: 1000,
+      imovel: 250_000,
+    });
+  });
+
+  it("deita fora o que não é número, sem os transformar em zero", () => {
+    // Zero diria "naquele mês não havia imóveis", quando o que não havia era o
+    // registo. A chave desaparece e a linha parte-se ali.
+    expect(lerBreakdown({ investimento: 1000, imovel: null })).toEqual({ investimento: 1000 });
+    expect(lerBreakdown({ imovel: "250000" })).toBeUndefined();
+    expect(lerBreakdown({ imovel: Number.NaN })).toBeUndefined();
+  });
+
+  it("nada aproveitável não é um objeto vazio", () => {
+    expect(lerBreakdown(null)).toBeUndefined();
+    expect(lerBreakdown("{}")).toBeUndefined();
+    expect(lerBreakdown([])).toBeUndefined();
+    expect(lerBreakdown({})).toBeUndefined();
+  });
+
+  it("chega às fotografias normalizadas", () => {
+    const [s] = normalizeSnapshots([
+      {
+        onDate: "2026-03-31",
+        assetsCents: 300_000,
+        debtsCents: 100_000,
+        breakdown: { imovel: 250_000, investimento: 50_000 },
+      },
+    ]);
+    expect(s!.porTipo).toEqual({ imovel: 250_000, investimento: 50_000 });
+  });
+
+  it("uma fotografia sem repartição não ganha uma vazia", () => {
+    const [s] = normalizeSnapshots([
+      { onDate: "2026-03-31", assetsCents: 300_000, debtsCents: 0 },
+    ]);
+    expect(s!.porTipo).toBeUndefined();
   });
 });

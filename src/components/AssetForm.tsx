@@ -37,6 +37,7 @@ export interface AssetFormValues {
   ownershipPct?: number | null;
   /** Quem tem o resto, quando é alguém do ambiente. */
   coOwnerMemberId?: string | null;
+  financesAssetId?: string | null;
   /** Crédito: a data do último pagamento. */
   maturityDate?: string | null;
   /** Crédito com períodos de taxa. Já validado — quem monta isto usa `parseCreditTerms`. */
@@ -91,10 +92,13 @@ export function AssetForm({
   members = [],
   /** Há leitura de contratos configurada? Sem chave não se anuncia. */
   podeLerContrato = false,
+  /** Bens que um crédito pode financiar: imóveis, carros, o que se compra a crédito. */
+  bensFinanciaveis = [],
 }: {
   asset?: AssetFormValues;
   contexto?: "ativos" | "dividas";
   members?: OwnershipMember[];
+  bensFinanciaveis?: { id: string; name: string }[];
   podeLerContrato?: boolean;
 }) {
   const [state, action] = useFormState(saveAssetAction, empty);
@@ -362,6 +366,38 @@ export function AssetForm({
                   Basta um dos dois. Se indicares os dois, manda a prestação.
                 </p>
               </div>
+            </div>
+          ) : null}
+
+          {/*
+            Que bem é que este crédito financia.
+
+            Sem isto, um imóvel de 300 mil com 200 mil por pagar são duas linhas
+            que a app não sabe ligar — e a pergunta "quanto é que a casa é
+            minha?" não tem resposta em ecrã nenhum.
+          */}
+          {isDebt && bensFinanciaveis.length > 0 ? (
+            <div>
+              <label className="label" htmlFor={`asset-finances-${uid}`}>
+                Financia que bem? (opcional)
+              </label>
+              <select
+                id={`asset-finances-${uid}`}
+                name="financesAssetId"
+                defaultValue={asset?.financesAssetId ?? ""}
+                className="select"
+              >
+                <option value="">Nenhum em particular</option>
+                {bensFinanciaveis.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-fg-faint">
+                Ligar o crédito ao bem faz aparecer o líquido: o que ele vale
+                menos o que falta pagar dele.
+              </p>
             </div>
           ) : null}
 

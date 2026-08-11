@@ -1388,6 +1388,7 @@ export class SupabaseRepository implements Repository {
         symbol: input.symbol ?? null,
         exchange: input.exchange ?? null,
         logo_domain: input.logoDomain ?? null,
+        finances_asset_id: input.financesAssetId ?? null,
         sort_order: input.sortOrder ?? null,
         created_by: input.createdBy ?? null,
       })
@@ -1426,6 +1427,7 @@ export class SupabaseRepository implements Repository {
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     if (patch.exchange !== undefined) row.exchange = patch.exchange;
     if (patch.logoDomain !== undefined) row.logo_domain = patch.logoDomain;
+    if (patch.financesAssetId !== undefined) row.finances_asset_id = patch.financesAssetId;
     if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -2179,6 +2181,7 @@ function rowToAsset(r: any): Asset {
     symbol: r.symbol ?? null,
     exchange: r.exchange ?? null,
     logoDomain: r.logo_domain ?? null,
+    financesAssetId: r.finances_asset_id ?? null,
     sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,
   };
