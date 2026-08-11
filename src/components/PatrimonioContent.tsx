@@ -48,6 +48,7 @@ import {
 import { InvestmentGrid } from "@/components/InvestmentGrid";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
 import { DescobrirMarcas } from "@/components/DescobrirMarcas";
+import { AssetListSort } from "@/components/AssetListSort";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
@@ -482,6 +483,11 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   {/* Só quando há mesmo algum por resolver: um botão que não
                       tem nada para fazer é ruído numa página cheia. */}
                   {kind === "investimento" && semMarca > 0 ? <DescobrirMarcas /> : null}
+                  {/* Ordenar as listas que não são a grelha dos investimentos.
+                      Com um bem só não há ordem nenhuma para escolher. */}
+                  {kind !== "investimento" && (byKind.get(kind) ?? []).length > 1 ? (
+                    <AssetListSort listaId={`lista-${kind}`} />
+                  ) : null}
                 </div>
 
                 {/* Depois de uma importação ficam dezenas de ativos sem símbolo,
@@ -591,7 +597,7 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                     }))}
                   />
                 ) : (
-                  <ul className="divide-y divide-hair2">
+                  <ul id={`lista-${kind}`} className="divide-y divide-hair2">
                     {(byKind.get(kind) ?? []).map((a, i, lista) => (
                       <AssetRow
                         key={a.id}
@@ -1015,7 +1021,15 @@ function AssetRow({
       : 0;
 
   return (
-    <li className="px-5 py-3.5">
+    /* Os `data-*` são o que permite ordenar no cliente sem voltar ao servidor:
+       os valores já estão no HTML, e o seletor só troca os filhos de sítio. A
+       taxa fica em branco quando não há, para não ser lida como zero. */
+    <li
+      className="px-5 py-3.5"
+      data-nome={a.name}
+      data-valor={a.currentValueCents}
+      data-taxa={a.interestRatePct ?? ""}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
         {isInvestment ? (

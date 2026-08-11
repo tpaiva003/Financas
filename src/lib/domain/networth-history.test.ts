@@ -333,3 +333,57 @@ describe("juntarHistorico", () => {
     for (let i = 1; i < j.length; i++) expect(j[i]!.onDate > j[i - 1]!.onDate).toBe(true);
   });
 });
+
+/**
+ * A percentagem do gráfico era calculada contra o primeiro ponto, que pode ser
+ * uma reconstrução — e uma reconstrução leva lá dentro o saldo de HOJE das
+ * contas projetado para trás. Comparar o presente com isso mede a distância
+ * entre a estimativa e a realidade, não o crescimento. Dava "+297%" a quem não
+ * triplicou nada.
+ */
+describe("variação medida contra variação total", () => {
+  const ponto = (onDate: string, netCents: number, estimado?: boolean) => ({
+    onDate,
+    assetsCents: netCents,
+    debtsCents: 0,
+    netCents,
+    ...(estimado ? { estimado: true } : {}),
+  });
+
+  it("marca que a série começa numa reconstrução", () => {
+    const s = buildNetWorthSeries([
+      ponto("2025-01-31", 100_000, true),
+      ponto("2025-02-28", 110_000, true),
+      ponto("2025-03-31", 400_000),
+    ]);
+    expect(s.comecaEstimado).toBe(true);
+  });
+
+  it("sem dois pontos medidos não há variação medida", () => {
+    const s = buildNetWorthSeries([
+      ponto("2025-01-31", 100_000, true),
+      ponto("2025-03-31", 400_000),
+    ]);
+    // Um só ponto medido não se compara com nada.
+    expect(s.medido).toBeNull();
+  });
+
+  it("com dois medidos, a variação medida ignora a reconstrução", () => {
+    const s = buildNetWorthSeries([
+      ponto("2025-01-31", 100_000, true),
+      ponto("2025-03-31", 400_000),
+      ponto("2025-04-30", 440_000),
+    ]);
+    // A total compara 440 000 com 100 000: +340%. A medida compara com
+    // 400 000, que é a primeira fotografia a sério: +10%.
+    expect(Math.round(s.changePct!)).toBe(340);
+    expect(Math.round(s.medido!.changePct!)).toBe(10);
+    expect(s.medido!.changeCents).toBe(40_000);
+  });
+
+  it("uma série toda medida não tem nada de especial", () => {
+    const s = buildNetWorthSeries([ponto("2025-03-31", 400_000), ponto("2025-04-30", 440_000)]);
+    expect(s.comecaEstimado).toBe(false);
+    expect(s.medido!.changeCents).toBe(s.changeCents);
+  });
+});

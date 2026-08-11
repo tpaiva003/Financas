@@ -61,6 +61,28 @@ export interface NetWorthSeries {
   changePct: number | null;
   /** Quantos dias a série cobre, do primeiro ao último ponto. */
   days: number;
+  /**
+   * A série começa numa reconstrução?
+   *
+   * Importa porque a variação de cima é medida **contra esse ponto**, e um
+   * ponto reconstruído leva lá dentro o saldo de hoje das contas e o valor de
+   * hoje dos imóveis, projetados para trás. Comparar o presente com essa
+   * projeção mede sobretudo a diferença entre a estimativa e a realidade.
+   */
+  comecaEstimado: boolean;
+  /**
+   * A mesma variação, mas só a partir do primeiro ponto **medido**.
+   *
+   * É o número honesto quando a série começa numa reconstrução: compara duas
+   * fotografias reais. `null` quando não há dois pontos medidos — e nesse caso
+   * o ecrã tem de dizer que não há, em vez de mostrar a outra sem aviso.
+   */
+  medido: {
+    changeCents: number;
+    changePct: number | null;
+    /** O rótulo do primeiro ponto medido, para o ecrã poder dizer "desde X". */
+    dePeriodo: string;
+  } | null;
 }
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -152,15 +174,44 @@ export function buildNetWorthSeries(
   }));
 
   if (points.length < 2) {
-    return { points, changeCents: null, changePct: null, days: 0 };
+    return {
+      points,
+      changeCents: null,
+      changePct: null,
+      days: 0,
+      comecaEstimado: points[0]?.estimado === true,
+      medido: null,
+    };
   }
 
   const primeiro = points[0]!;
   const ultimo = points[points.length - 1]!;
   const changeCents = ultimo.netCents - primeiro.netCents;
 
+  /**
+   * A variação entre os pontos MEDIDOS, quando há pelo menos dois.
+   *
+   * Os estimados vêm todos antes dos medidos — o passado é o que se
+   * reconstrói — por isso o primeiro medido é o primeiro que não é estimado.
+   */
+  const medidos = points.filter((p) => !p.estimado);
+  const medido =
+    medidos.length >= 2
+      ? (() => {
+          const de = medidos[0]!;
+          const mudanca = ultimo.netCents - de.netCents;
+          return {
+            changeCents: mudanca,
+            changePct: de.netCents > 0 ? (mudanca / de.netCents) * 100 : null,
+            dePeriodo: de.label,
+          };
+        })()
+      : null;
+
   return {
     points,
+    comecaEstimado: primeiro.estimado === true,
+    medido,
     changeCents,
     /**
      * Só há percentagem quando o ponto de partida é positivo. A partir de zero

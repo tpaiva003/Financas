@@ -112,22 +112,44 @@ export function NetWorthChart({
   const tracoEstimado = temEstimado ? traco(0, Math.min(ultimoEstimado + 1, points.length - 1)) : "";
   const tracoMedido = ultimoEstimado + 1 <= points.length - 1 ? traco(Math.max(ultimoEstimado, 0), points.length - 1) : "";
 
-  const subiu = (series.changeCents ?? 0) >= 0;
+  /**
+   * A variação em cima é a MEDIDA, quando a série começa numa reconstrução.
+   *
+   * A variação sobre a série toda compara o presente com um ponto que leva lá
+   * dentro o saldo de hoje das contas e o valor de hoje dos imóveis projetados
+   * para trás. Mede sobretudo a distância entre a estimativa e a realidade — e
+   * dava "+297%" a alguém cujo património não triplicou. Uma percentagem é a
+   * coisa mais fácil de acreditar de um gráfico: não se confere contra nada.
+   *
+   * Sem dois pontos medidos não há número honesto para pôr aqui, e então não se
+   * põe nenhum: um "—" com a explicação ao lado é melhor do que uma
+   * percentagem que se lê como uma conquista.
+   */
+  const usarMedido = series.comecaEstimado;
+  const variacao = usarMedido ? series.medido : series;
+  const cents = variacao ? variacao.changeCents : null;
+  const pct = variacao ? variacao.changePct : null;
+  const subiu = (cents ?? 0) >= 0;
 
   return (
     <div className="card p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <p className="eyebrow">Evolução do património</p>
-        {series.changeCents !== null ? (
+        {cents !== null ? (
           <p className={`font-mono text-xs tnum ${subiu ? "text-credit" : "text-debt"}`}>
             {subiu ? "+" : ""}
-            {formatCents(series.changeCents)}
+            {formatCents(cents)}
             {/* Só há percentagem quando se parte de um património positivo: de
                 -50 mil para -10 mil a divisão dá o sinal ao contrário do que
                 aconteceu. Sem ela, mostra-se a variação em euros e mais nada. */}
-            {series.changePct !== null
-              ? ` (${series.changePct >= 0 ? "+" : ""}${Math.round(series.changePct)}%)`
-              : ""}
+            {pct !== null ? ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)` : ""}
+            {usarMedido && series.medido ? (
+              <span className="ml-1 text-fg-faint">desde {series.medido.dePeriodo}</span>
+            ) : null}
+          </p>
+        ) : usarMedido ? (
+          <p className="font-mono text-xs text-fg-faint">
+            variação por medir
           </p>
         ) : null}
       </div>
@@ -205,7 +227,10 @@ export function NetWorthChart({
           medida: os investimentos saem dos teus movimentos e das cotações, o
           crédito da própria amortização, mas as contas e os imóveis entram ao
           valor de hoje — não guardam passado. Daí para a frente é o que foi
-          mesmo registado.
+          mesmo registado.{" "}
+          {series.medido
+            ? `Por isso a variação em cima conta a partir de ${series.medido.dePeriodo}, que é a primeira fotografia a sério: comparar hoje com a reconstrução mediria sobretudo a distância entre ela e a realidade.`
+            : "Ainda não há duas fotografias a sério para comparar, e por isso não se mostra variação nenhuma — a que sairia daqui seria contra a reconstrução."}
         </p>
       ) : null}
 
