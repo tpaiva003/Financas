@@ -36,3 +36,4 @@ export * from "./splits";
 export * from "./marcas";
 export * from "./trades-dedup";
 export * from "./analise-patrimonio";
+export * from "./dcf";
