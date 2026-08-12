@@ -1209,3 +1209,41 @@ mesmo com o ambiente cheio — caso contrário o limite passava de tecto a armad
   desenvolvimento bloqueia o acesso à rede externa. O código trata todos os
   campos como opcionais, mas a primeira execução com rede aberta pode revelar
   nomes de campos diferentes do esperado.
+
+## A landing dizia metade do que a app faz — 2026-08-12
+
+A página pública tinha ficado parada na primeira versão do produto: vendia um
+substituto do Tricount e mais nada. Entretanto a app passou a ter importação de
+extratos e de ficheiros de corretora, rendimentos e taxa de poupança, análise
+por categoria e comerciante, património líquido com dívidas amortizadas,
+carteira com rentabilidade (TIR e TWR) comparada com um ETF em euros,
+calculadora FIRE e avaliação de empresas por DCF. Nada disto estava escrito.
+
+Pior do que omitir: a secção "A caminho" listava como futuro **coisas que já
+funcionam**. Relatórios por categoria e por mês, importação de bancos e anexar
+recibos estavam todos feitos e prometidos como se não estivessem. Uma landing
+que subestima o produto assim custa duas vezes — não convence quem chega e faz
+duvidar quem já usa.
+
+Decisões tomadas:
+
+- **A promessa passa a ser o arco todo**, do dividir a conta ao património.
+  O título antigo ("as contas da casa, finalmente claras") só cobria o
+  princípio; passa a "as contas da casa, e o que vem a seguir".
+- **Uma secção nova, "O que faz", com as seis áreas** (dividir, importar,
+  rendimentos, análise, património, FIRE), em vez de as esconder atrás de uma
+  lista de vantagens.
+- **Os investimentos ganham secção própria.** É a parte mais subestimada e a
+  mais difícil de explicar: as três perguntas (quanto rendeu o meu dinheiro,
+  o investimento foi bom, e se tivesse comprado o índice) fazem mais pelo
+  produto do que qualquer lista de funcionalidades.
+- **A "A caminho" só tem o que ainda não existe:** mais bancos e corretoras,
+  offline, símbolo de bolsa a partir do nome, SSO, lembretes de acerto e
+  aprender a divisão pelo histórico. Cada linha foi verificada contra o código
+  antes de ficar ou sair.
+- **Nada de números inventados.** Sem contagens de utilizadores, sem
+  testemunhos, sem "milhares de pessoas". A app é jovem e a página diz o que
+  faz, não o que gostava de ser.
+- A postura de acesso **mantém-se**: "quero saber mais" e o formulário de
+  contacto, não registo aberto. Ligar o registo é decisão por tomar
+  (ver `RETOMAR.md`), e a página não a antecipa.
