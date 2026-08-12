@@ -10,9 +10,13 @@
 
 ## 0. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
-**Migração por correr: 0039** (datas de mercado). As 0037 e 0038 já foram
-corridas, e as 0028–0036 também. Sem a 0039, o painel "A caminho" no património
-não aparece; o resto funciona na mesma.
+**Migrações todas corridas até à 0039**, confirmado pelo Tiago a 2026-08-12.
+
+**Por confirmar em produção** (nada disto foi testável a partir da caixa de
+desenvolvimento, porque o proxy bloqueia o Yahoo e a chave da Anthropic não está
+lá): o botão das contas (`quoteSummary`), o gráfico do historial que depende
+dele, o resumo por IA dos anexos, e o botão das datas de mercado — que usa o
+mesmo caminho das contas, por isso os dois caem ou passam juntos.
 
 **Copiar as migrações do GitHub pela vista "raw"**: a página renderizada pode
 colar lixo no início do ficheiro (`#FF00FF`), e o erro que sai daí é um
