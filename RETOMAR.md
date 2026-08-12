@@ -3,16 +3,46 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-11 (avaliação de empresas: DCF, contas do
-> Yahoo, funil).
+> Última atualização: 2026-08-12 (funil com empresas, anexos e resumo por IA;
+> o 404 das contas).
 
 ---
 
 ## 0. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
-**Migração por correr: 0037.** Sem ela o funil (`/patrimonio/avaliacoes`) fica
-vazio e guardar um estudo dá erro; o resto da avaliação funciona na mesma. As
-0028–0036 já foram corridas.
+**Migrações por correr: 0037 e 0038**, por esta ordem. Sem elas o funil
+(`/patrimonio/avaliacoes`) fica vazio, guardar um estudo dá erro e os anexos das
+avaliações não existem; o resto da avaliação funciona na mesma. As 0028–0036 já
+foram corridas — confirmado contra a base de dados.
+
+### O que se fez a 2026-08-12
+
+- **O 404 das contas.** `googl.us` é a convenção **interna** desta app e não é um
+  ticker que exista em lado nenhum. O serviço das cotações já traduzia
+  (`forSource`: `googl.us` → `GOOGL`, `edp.pt` → `EDP.LS`); o das contas pedia o
+  símbolo em cru e levava 404 em tudo — que se lê como "esta empresa não existe".
+  O construtor do endereço passou para o domínio (`urlDosFundamentais`) para
+  haver um teste que confirme a tradução.
+- **O funil deixa de exigir um DCF.** Aponta-se uma empresa com nome, símbolo,
+  data, marca e notas; um botão abre a calculadora já preenchida, e o estudo é
+  gravado **naquela linha** em vez de criar um segundo cartão. Os campos do DCF
+  passam a poder ser nulos, com um `check` a garantir que ou estão todos ou
+  nenhum está — meio estudo é pior do que nenhum.
+- **Anexos por avaliação, e um resumo escrito por IA.** Relatórios e
+  apresentações vão direto para o Storage; a IA lê o texto e escreve o que
+  percebeu, incluindo uma secção obrigatória do que fica por saber. **Não devolve
+  número nenhum para o cálculo** — a tentação era pedir-lhe o fluxo de caixa
+  livre, e nesse dia o valor por ação passava a depender de um modelo a ler um
+  PDF.
+- **Logos no funil**, pela mesma rota servida pelo servidor que os investimentos
+  usam. A busca (três fontes) passou para um serviço partilhado: duas cópias
+  divergiam, e a que ficasse para trás continuava a usar uma fonte em baixo.
+- **Gráfico do historial**, com dez métricas a escolher num clique e valores ao
+  passar o rato. Uma margem de 32% não diz nada; 22 → 26 → 32 diz que a empresa
+  está a ganhar escala, e 40 → 36 → 32 diz o contrário com o mesmo número no fim.
+- **Alinhamento dos campos** da calculadora: rótulos de duas linhas ("Fluxo de
+  caixa livre (mM)") empurravam a caixa para uma altura diferente da coluna ao
+  lado.
 
 ### O que passou a existir
 

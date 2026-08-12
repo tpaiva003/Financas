@@ -67,27 +67,48 @@ export function etapaSugerida(atrativo: boolean | null): EtapaAvaliacao {
   return atrativo ? "esperar" : "arquivada";
 }
 
-/** Um estudo guardado, como o funil precisa de o ler. */
+/** Uma linha do funil, como o ecrã precisa de a ler. */
 export interface AvaliacaoResumo {
   id: string;
   simbolo: string | null;
   nome: string;
   etapa: EtapaAvaliacao;
-  /** "AAAA-MM-DD" do dia em que foi feito. */
+  /** "AAAA-MM-DD" do dia em que a empresa entrou no funil. */
   data: string;
-  /** O preço ponderado a que se estava disposto a comprar, em cêntimos. */
-  precoPonderadoCents: number;
+  /**
+   * O dia do DCF, quando o há.
+   *
+   * **É diferente da `data`, e a diferença importa.** Uma empresa apontada há um
+   * ano e ainda por estudar não tem pressupostos a envelhecer — não tem
+   * pressupostos nenhuns. Marcá-la de velha mandava rever um estudo que nunca
+   * existiu, e a seguir ninguém acreditava no aviso quando ele fosse a sério.
+   */
+  dataDoEstudo: string | null;
+  /**
+   * O preço ponderado a que se estava disposto a comprar, em cêntimos.
+   *
+   * `null` numa empresa que ainda só está apontada.
+   */
+  precoPonderadoCents: number | null;
   /** O preço de mercado no dia do estudo. */
   precoNaAlturaCents: number | null;
   upsidePct: number | null;
   notas: string | null;
+  /** O domínio da marca, para o logo. */
+  logoDomain?: string | null;
+  /** O que a IA leu nos anexos, e quando. */
+  resumoIa?: string | null;
+  resumoIaEm?: string | null;
+  anexos?: number;
 }
 
 export interface AvaliacaoNoFunil extends AvaliacaoResumo {
   /** Há um estudo mais recente da mesma empresa. */
   substituida: boolean;
-  /** Quantos dias tem. */
+  /** Quantos dias tem a entrada no funil. */
   idadeDias: number;
+  /** Já tem números, ou ainda é só um nome apontado? */
+  temEstudo: boolean;
   /**
    * Os pressupostos já têm idade que chegue para não se confiar neles.
    *
@@ -137,14 +158,21 @@ export function montarFunil(
 
   return ordenadas.map((a) => {
     const idadeDias = diasEntre(a.data, hoje);
+    const temEstudo = a.precoPonderadoCents !== null;
     return {
       ...a,
+      temEstudo,
       substituida: maisRecente.get(chave(a)) !== a.id,
       idadeDias,
-      // Uma avaliação substituída já não se cobra de idade: o que interessa
-      // dela é que foi substituída, e duas marcas no mesmo cartão não dizem
-      // mais do que uma.
-      envelhecida: maisRecente.get(chave(a)) === a.id && idadeDias > DIAS_ATE_ENVELHECER,
+      // Conta-se a idade DO ESTUDO, não a da entrada no funil: uma empresa
+      // apontada há um ano e ainda por estudar não tem pressupostos a
+      // envelhecer. E uma avaliação substituída já não se cobra de idade —
+      // duas marcas no mesmo cartão não dizem mais do que uma.
+      envelhecida:
+        temEstudo &&
+        a.dataDoEstudo !== null &&
+        maisRecente.get(chave(a)) === a.id &&
+        diasEntre(a.dataDoEstudo, hoje) > DIAS_ATE_ENVELHECER,
     };
   });
 }
@@ -164,6 +192,7 @@ export function contarPorEtapa(funil: readonly AvaliacaoNoFunil[]): Record<Etapa
  * Devolve `null` quando já lá está — nesse caso a pergunta não é essa.
  */
 export function quantoFaltaDescer(a: AvaliacaoResumo): number | null {
+  if (a.precoPonderadoCents === null) return null;
   if (a.precoNaAlturaCents === null || a.precoNaAlturaCents <= 0) return null;
   if (a.precoPonderadoCents >= a.precoNaAlturaCents) return null;
   return Math.round(((a.precoNaAlturaCents - a.precoPonderadoCents) / a.precoNaAlturaCents) * 1000) / 10;

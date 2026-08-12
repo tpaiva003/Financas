@@ -3,7 +3,10 @@ import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { montarFunil, type AvaliacaoResumo } from "@/lib/domain";
+import { resumoAnexosAvailable } from "@/lib/services/resumo-anexos-service";
 import { FunilAvaliacoes } from "@/components/FunilAvaliacoes";
+import { NovaAvaliacao } from "@/components/NovaAvaliacao";
+import type { AnexoAvaliacaoView } from "@/components/AvaliacaoAnexos";
 
 export const metadata = { title: "Funil de avaliação · Rachar" };
 export const dynamic = "force-dynamic";
@@ -21,11 +24,11 @@ export default async function Page() {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
-  // A tabela pode não existir ainda (migração 0037 por correr). Um ecrã vazio é
-  // melhor do que um erro, e a página diz o que fazer.
-  const guardadas = await getRepository()
-    .listValuations(ctx.space.id)
-    .catch(() => []);
+  const repo = getRepository();
+  // As tabelas podem não existir ainda (migrações 0037/0038 por correr). Um ecrã
+  // vazio é melhor do que um erro, e a página diz o que fazer.
+  const guardadas = await repo.listValuations(ctx.space.id).catch(() => []);
+  const anexos = await repo.listValuationAttachments(ctx.space.id).catch(() => []);
 
   const resumos: AvaliacaoResumo[] = guardadas.map((v) => ({
     id: v.id,
@@ -33,13 +36,30 @@ export default async function Page() {
     nome: v.name,
     etapa: v.stage,
     data: v.studyDate,
+    dataDoEstudo: v.valuedAt,
     precoPonderadoCents: v.weightedPriceCents,
     precoNaAlturaCents: v.priceAtStudyCents,
     upsidePct: v.upsidePct,
     notas: v.notes,
+    logoDomain: v.logoDomain,
+    resumoIa: v.aiSummary,
+    resumoIaEm: v.aiSummaryAt,
   }));
 
-  const funil = montarFunil(resumos, new Date().toISOString().slice(0, 10));
+  const hoje = new Date().toISOString().slice(0, 10);
+  const funil = montarFunil(resumos, hoje);
+
+  // Só os que chegaram mesmo ao Storage: uma linha em `a-enviar` é um envio que
+  // falhou, e prometer um ficheiro que não está lá é pior do que não o listar.
+  const porAvaliacao: Record<string, AnexoAvaliacaoView[]> = {};
+  for (const a of anexos) {
+    if (a.status !== "pronto") continue;
+    (porAvaliacao[a.valuationId] ??= []).push({
+      id: a.id,
+      fileName: a.fileName,
+      sizeBytes: a.sizeBytes,
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -47,20 +67,23 @@ export default async function Page() {
         <p className="eyebrow">Património</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Funil</h1>
         <p className="mt-1 max-w-prose text-sm text-fg-muted">
-          As empresas que estudaste e onde é que cada decisão ficou. Cada estudo
-          guarda os pressupostos do dia em que foi feito e nunca se recalcula
-          sozinho — reavaliar cria um novo.
+          As empresas que te interessam e onde é que cada decisão ficou. Aponta
+          uma antes de saber nada dela; quando a estudares, o estudo fica
+          agarrado a ela com os pressupostos do dia em que o fizeste.{" "}
+          <Link href="/patrimonio/dcf" className="underline underline-offset-2 hover:text-fg">
+            Avaliar uma empresa
+          </Link>
+          .
         </p>
       </div>
 
-      <p className="text-sm text-fg-muted">
-        <Link href="/patrimonio/dcf" className="underline underline-offset-2 hover:text-fg">
-          Avaliar uma empresa
-        </Link>
-        .
-      </p>
+      <NovaAvaliacao hoje={hoje} />
 
-      <FunilAvaliacoes funil={funil} />
+      <FunilAvaliacoes
+        funil={funil}
+        anexosPorAvaliacao={porAvaliacao}
+        podeResumir={resumoAnexosAvailable()}
+      />
     </div>
   );
 }

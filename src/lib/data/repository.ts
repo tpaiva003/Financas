@@ -362,24 +362,40 @@ export interface CreateAssetSplitInput {
  * uma mudança de fórmula reescrevesse a conclusão de uma decisão já tomada. Ver
  * a migração 0037 e `avaliacoes.ts` no domínio.
  */
+/**
+ * Uma linha do funil de avaliação.
+ *
+ * **Pode não ter estudo nenhum.** Uma empresa que se apontou hoje entra aqui com
+ * nome, data e notas, e mais nada — que é o passo mais barato do processo e era
+ * o único que a app não suportava. Os campos do DCF são todos nulos nesse caso,
+ * **e ou estão todos preenchidos ou nenhum está**: meio estudo é pior do que
+ * nenhum, porque um preço ponderado sobrevive à remoção do fluxo de caixa que o
+ * produziu e fica no ecrã como um número que ninguém consegue explicar. A regra
+ * está num `check` da migração 0038, e não só na boa vontade de quem escreve.
+ */
 export interface StoredValuation {
   id: string;
   spaceId: string;
   symbol: string | null;
   name: string;
   stage: EtapaAvaliacao;
-  /** O dia do estudo, "AAAA-MM-DD". */
+  /** O dia em que a empresa entrou no funil, "AAAA-MM-DD". */
   studyDate: string;
+  /** O dia do DCF. `null` numa empresa que ainda só está apontada. */
+  valuedAt: string | null;
+  /** O domínio da marca, para o logo. Mesma ideia dos investimentos. */
+  logoDomain: string | null;
 
-  fcfCents: number;
-  shares: number;
-  netDebtCents: number;
-  discountPct: number;
-  perpetualPct: number;
-  years: number;
-  marginPct: number;
+  fcfCents: number | null;
+  shares: number | null;
+  netDebtCents: number | null;
+  discountPct: number | null;
+  perpetualPct: number | null;
+  years: number | null;
+  marginPct: number | null;
   /**
-   * `null` quando o que estava guardado não passou na validação.
+   * `null` quando não há estudo, **ou** quando o que estava guardado não passou
+   * na validação.
    *
    * Ver `lerCenarios`: um cenário a que falte a probabilidade entraria na média
    * pesada como zero. Sem cenários mostra-se o estudo sem eles, em vez de o
@@ -387,20 +403,19 @@ export interface StoredValuation {
    */
   scenarios: CenarioDcf[] | null;
 
-  weightedPriceCents: number;
+  weightedPriceCents: number | null;
   priceAtStudyCents: number | null;
   upsidePct: number | null;
 
   notes: string | null;
+  /** O que a IA leu nos anexos, e quando. */
+  aiSummary: string | null;
+  aiSummaryAt: string | null;
   createdAt: string | null;
 }
 
-export interface CreateValuationInput {
-  spaceId: string;
-  symbol: string | null;
-  name: string;
-  stage: EtapaAvaliacao;
-  studyDate: string;
+/** Os números de um DCF. Vão sempre juntos — ver o `check` da 0038. */
+export interface ValuationEstudo {
   fcfCents: number;
   shares: number;
   netDebtCents: number;
@@ -412,9 +427,55 @@ export interface CreateValuationInput {
   weightedPriceCents: number;
   priceAtStudyCents: number | null;
   upsidePct: number | null;
+  valuedAt: string;
+}
+
+export interface CreateValuationInput {
+  spaceId: string;
+  symbol: string | null;
+  name: string;
+  stage: EtapaAvaliacao;
+  studyDate: string;
   notes: string | null;
+  logoDomain?: string | null;
+  /** Omitido numa empresa que ainda só está apontada. */
+  estudo?: ValuationEstudo | null;
   createdBy?: string | null;
 }
+
+/** O que se pode corrigir depois. Campos omitidos ficam como estão. */
+export interface UpdateValuationInput {
+  stage?: EtapaAvaliacao;
+  name?: string;
+  symbol?: string | null;
+  notes?: string | null;
+  logoDomain?: string | null;
+  aiSummary?: string | null;
+}
+
+/**
+ * Um documento de uma avaliação: relatório, apresentação, nota.
+ *
+ * Tabela própria e não uma coluna a mais nos anexos dos bens: uma empresa em
+ * radar **não é um bem** — ainda não se comprou nada. Ver a migração 0038.
+ */
+export interface ValuationAttachment {
+  id: string;
+  spaceId: string;
+  valuationId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  /** `<space_id>/avaliacoes/<valuation_id>/<id>.<ext>`. Nunca vem do cliente. */
+  storagePath: string;
+  status: "a-enviar" | "pronto";
+  /** O texto extraído, para a IA não ter de reler o ficheiro a cada pergunta. */
+  extractedText: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+}
+
+export type CreateValuationAttachment = Omit<ValuationAttachment, "createdAt" | "extractedText">;
 
 export interface CreateTicketInput {
   spaceId: string;
@@ -940,10 +1001,27 @@ export interface Repository {
   // Avaliações de empresas. Ver `avaliacoes.ts` no domínio para as etapas.
   /** Os estudos do ambiente, do mais recente para o mais antigo. */
   listValuations(spaceId: string): Promise<StoredValuation[]>;
-  createValuation(input: CreateValuationInput): Promise<void>;
-  /** Muda a etapa do funil. O ambiente filtra a escrita. */
-  updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void>;
+  createValuation(input: CreateValuationInput): Promise<string>;
+  /** Corrige etapa, nome, notas ou marca. O ambiente filtra a escrita. */
+  updateValuation(id: string, spaceId: string, patch: UpdateValuationInput): Promise<void>;
+  /**
+   * Escreve os números de um DCF numa linha que ainda não os tinha.
+   *
+   * Separado do `updateValuation` de propósito: os campos do estudo vão sempre
+   * todos juntos, e um patch parcial deixaria meio estudo gravado. Ver o `check`
+   * da migração 0038.
+   */
+  setValuationEstudo(id: string, spaceId: string, estudo: ValuationEstudo): Promise<void>;
   deleteValuation(id: string, spaceId: string): Promise<void>;
+
+  // Anexos de uma avaliação. Ver `ValuationAttachment` para o porquê da tabela.
+  listValuationAttachments(spaceId: string, valuationId?: string): Promise<ValuationAttachment[]>;
+  getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null>;
+  createValuationAttachment(input: CreateValuationAttachment): Promise<void>;
+  markValuationAttachmentReady(id: string, spaceId: string): Promise<void>;
+  /** Guarda o texto lido do ficheiro, para a IA o poder resumir sem o reler. */
+  setValuationAttachmentText(id: string, spaceId: string, texto: string | null): Promise<void>;
+  deleteValuationAttachment(id: string, spaceId: string): Promise<void>;
 
   // Pedidos de ajuda. Ver `Ticket` para a regra das notas internas.
   createTicket(input: CreateTicketInput): Promise<string>;

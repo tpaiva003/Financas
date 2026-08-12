@@ -1832,3 +1832,45 @@ movimentos" com os doze exactamente onde estavam. O `MockRepository` não podia
 apanhar isto — faz `{ ...trade, ...patch }` e aceita tudo o que lhe dêem — por
 isso o teste é sobre o texto do repositório (`colunas.test.ts`), a confrontar os
 campos da interface com os que o método trata.
+
+### O símbolo interno não é o símbolo da fonte
+
+`googl.us` é a convenção desta app e não existe em bolsa nenhuma. As cotações já
+traduziam com `forSource`; as contas pediam o símbolo em cru e levavam 404 em
+tudo — e um 404 lê-se como "esta empresa não existe", quando o que não existia
+era o nome que lhe estávamos a chamar. O construtor do endereço vive no domínio
+por causa disso: para haver um teste que confirme que a tradução acontece antes
+de o pedido sair.
+
+### Ou o estudo está inteiro, ou não existe
+
+O funil passou a aceitar empresas sem DCF, o que obrigou a relaxar as colunas dos
+pressupostos. O que **não** se relaxou foi a relação entre eles: há um `check` a
+garantir que ou estão todos preenchidos ou nenhum está. Sem isso ficava-se com
+meio estudo — um preço ponderado que sobrevive à remoção do fluxo de caixa que o
+produziu, e fica no ecrã como um número que ninguém consegue explicar.
+
+### A idade que conta é a do estudo, não a da entrada no funil
+
+Uma empresa apontada há um ano e ainda por ler não tem pressupostos a envelhecer:
+não tem pressupostos nenhuns. Marcá-la de velha mandava rever um estudo que nunca
+existiu — e a seguir ninguém acreditaria no aviso quando ele fosse a sério. São
+duas datas e duas colunas.
+
+### A IA lê documentos e escreve prosa; não devolve números para o cálculo
+
+É a regra da importação ("a IA escolhe colunas, não lê dados") aplicada onde a
+tentação é maior: seria fácil pedir-lhe o fluxo de caixa livre do relatório e
+enfiá-lo no DCF, e nesse dia o valor por ação passava a depender de um modelo a
+ler um PDF. O resumo tem data e diz de que ficheiros saiu, e tem uma secção
+obrigatória do que fica por saber — um resumo que dá tudo por esclarecido é pior
+do que nenhum.
+
+### Um gráfico do historial mostra uma métrica de cada vez
+
+Sobrepor ROCE, margens e fluxo livre no mesmo eixo era juntar percentagens com
+milhares de milhões e pôr o desenho a mentir sobre a escala. Cada uma tem o seu
+eixo e trocar custa um clique. O eixo não começa em zero — uma margem entre 30% e
+33% desenhada do zero é uma linha reta que esconde a única coisa que interessa —
+e por isso os valores vão escritos, para o corte não exagerar o movimento sem
+aviso.

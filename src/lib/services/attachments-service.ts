@@ -110,3 +110,34 @@ export async function removerAnexoDoStorage(path: string): Promise<void> {
 
 /** Quanto o envio ainda vale, para a UI poder avisar. */
 export const ENVIO_VALIDO_SEGUNDOS = ENVIO_SEGUNDOS;
+
+/** `<space_id>/avaliacoes/<valuation_id>/<id>.<ext>`. Ver a migração 0038. */
+export function caminhoDoAnexoDaAvaliacao(
+  spaceId: string,
+  valuationId: string,
+  anexoId: string,
+  contentType: string,
+): string {
+  return `${spaceId}/avaliacoes/${valuationId}/${anexoId}.${extensaoDoTipo(contentType)}`;
+}
+
+/**
+ * Descarrega um anexo para o servidor o poder ler.
+ *
+ * **Só o servidor faz isto, e só para extrair texto.** O ficheiro não volta a
+ * passar pelo browser: o que sobe para o modelo é texto, não bytes, e o que o
+ * ecrã mostra é o resumo.
+ *
+ * Devolve `null` em vez de atirar. Um anexo que desapareceu do Storage não pode
+ * deitar abaixo o resumo dos outros sete.
+ */
+export async function descarregarAnexo(path: string): Promise<Buffer | null> {
+  if (dataMode() !== "supabase") return null;
+  try {
+    const { data, error } = await getSupabaseAdmin().storage.from(BUCKET).download(path);
+    if (error || !data) return null;
+    return Buffer.from(await data.arrayBuffer());
+  } catch {
+    return null;
+  }
+}

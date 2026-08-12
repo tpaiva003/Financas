@@ -40,6 +40,10 @@ import type {
   CreateAssetSplitInput,
   StoredValuation,
   CreateValuationInput,
+  UpdateValuationInput,
+  ValuationEstudo,
+  ValuationAttachment,
+  CreateValuationAttachment,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -87,6 +91,7 @@ interface Store {
   assetAttachments: AssetAttachment[];
   assetSplits: StoredAssetSplit[];
   valuations: StoredValuation[];
+  valuationAttachments: ValuationAttachment[];
   tickets: Ticket[];
   ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
@@ -121,6 +126,7 @@ function getStore(): Store {
       assetAttachments: [],
       assetSplits: [],
       valuations: [],
+      valuationAttachments: [],
       tickets: [],
       ticketMessages: [],
       quotes: {},
@@ -1066,40 +1072,124 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.studyDate < b.studyDate ? 1 : a.studyDate > b.studyDate ? -1 : 0));
   }
 
-  async createValuation(input: CreateValuationInput): Promise<void> {
+  async createValuation(input: CreateValuationInput): Promise<string> {
+    const id = `val_${randomUUID()}`;
+    const e = input.estudo ?? null;
     getStore().valuations.push({
-      id: `val_${randomUUID()}`,
+      id,
       spaceId: input.spaceId,
       symbol: input.symbol,
       name: input.name,
       stage: input.stage,
       studyDate: input.studyDate,
-      fcfCents: input.fcfCents,
-      shares: input.shares,
-      netDebtCents: input.netDebtCents,
-      discountPct: input.discountPct,
-      perpetualPct: input.perpetualPct,
-      years: input.years,
-      marginPct: input.marginPct,
-      scenarios: input.scenarios,
-      weightedPriceCents: input.weightedPriceCents,
-      priceAtStudyCents: input.priceAtStudyCents,
-      upsidePct: input.upsidePct,
+      valuedAt: e?.valuedAt ?? null,
+      logoDomain: input.logoDomain ?? null,
+      fcfCents: e?.fcfCents ?? null,
+      shares: e?.shares ?? null,
+      netDebtCents: e?.netDebtCents ?? null,
+      discountPct: e?.discountPct ?? null,
+      perpetualPct: e?.perpetualPct ?? null,
+      years: e?.years ?? null,
+      marginPct: e?.marginPct ?? null,
+      scenarios: e?.scenarios ?? null,
+      weightedPriceCents: e?.weightedPriceCents ?? null,
+      priceAtStudyCents: e?.priceAtStudyCents ?? null,
+      upsidePct: e?.upsidePct ?? null,
       notes: input.notes,
+      aiSummary: null,
+      aiSummaryAt: null,
       createdAt: new Date().toISOString(),
     });
+    return id;
   }
 
-  async updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void> {
+  async updateValuation(id: string, spaceId: string, patch: UpdateValuationInput): Promise<void> {
     // Filtra pelo ambiente tal como o Supabase. Um mock mais permissivo do que
     // a produção esconde exactamente o engano que os testes procuram.
     const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
-    if (v) v.stage = stage;
+    if (!v) return;
+    if (patch.stage !== undefined) v.stage = patch.stage;
+    if (patch.name !== undefined) v.name = patch.name;
+    if (patch.symbol !== undefined) v.symbol = patch.symbol;
+    if (patch.notes !== undefined) v.notes = patch.notes;
+    if (patch.logoDomain !== undefined) v.logoDomain = patch.logoDomain;
+    if (patch.aiSummary !== undefined) {
+      v.aiSummary = patch.aiSummary;
+      v.aiSummaryAt = patch.aiSummary === null ? null : new Date().toISOString();
+    }
+  }
+
+  async setValuationEstudo(id: string, spaceId: string, e: ValuationEstudo): Promise<void> {
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!v) return;
+    Object.assign(v, {
+      fcfCents: e.fcfCents,
+      shares: e.shares,
+      netDebtCents: e.netDebtCents,
+      discountPct: e.discountPct,
+      perpetualPct: e.perpetualPct,
+      years: e.years,
+      marginPct: e.marginPct,
+      scenarios: e.scenarios,
+      weightedPriceCents: e.weightedPriceCents,
+      priceAtStudyCents: e.priceAtStudyCents,
+      upsidePct: e.upsidePct,
+      valuedAt: e.valuedAt,
+    });
   }
 
   async deleteValuation(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.valuations = store.valuations.filter((v) => !(v.id === id && v.spaceId === spaceId));
+    // O `on delete cascade` da migração leva os anexos; o mock aplica a mesma
+    // regra, senão ficavam anexos de uma avaliação que já não existe.
+    store.valuationAttachments = store.valuationAttachments.filter((a) => a.valuationId !== id);
+  }
+
+  // ---- Anexos de uma avaliação -------------------------------------------
+
+  async listValuationAttachments(
+    spaceId: string,
+    valuationId?: string,
+  ): Promise<ValuationAttachment[]> {
+    return getStore().valuationAttachments.filter(
+      (a) => a.spaceId === spaceId && (valuationId ? a.valuationId === valuationId : true),
+    );
+  }
+
+  async getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null> {
+    return (
+      getStore().valuationAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null
+    );
+  }
+
+  async createValuationAttachment(input: CreateValuationAttachment): Promise<void> {
+    getStore().valuationAttachments.push({
+      ...input,
+      extractedText: null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async markValuationAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.status = "pronto";
+  }
+
+  async setValuationAttachmentText(
+    id: string,
+    spaceId: string,
+    texto: string | null,
+  ): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.extractedText = texto;
+  }
+
+  async deleteValuationAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuationAttachments = store.valuationAttachments.filter(
+      (a) => !(a.id === id && a.spaceId === spaceId),
+    );
   }
 
   // ---- Pedidos de ajuda -------------------------------------------------

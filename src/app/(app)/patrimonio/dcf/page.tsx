@@ -12,9 +12,27 @@ export const dynamic = "force-dynamic";
  * Vive no Património e não numa secção própria: é o passo antes de um
  * investimento existir, e é aí que se vai procurá-lo.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: { id?: string; nome?: string; simbolo?: string };
+}) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
+
+  /**
+   * Vindo do funil, o ecrã abre já com o que se sabe da empresa.
+   *
+   * O `id` viaja no endereço para o estudo ser gravado **naquela linha** em vez
+   * de criar um segundo cartão da mesma empresa. Não é uma credencial: a ação
+   * de gravar confronta-o com o ambiente antes de escrever, e um id de outro
+   * ambiente é recusado lá — aqui só serve para preencher um campo escondido.
+   */
+  const doFunil = {
+    id: searchParams?.id?.trim() || null,
+    nome: searchParams?.nome?.trim() || "",
+    simbolo: searchParams?.simbolo?.trim() || "",
+  };
 
   return (
     <div className="space-y-6">
@@ -43,7 +61,7 @@ export default async function Page() {
         de por cento. É por isso que aparece um intervalo e não um número.
       </p>
 
-      <DcfCalculadora />
+      <DcfCalculadora doFunil={doFunil} />
     </div>
   );
 }

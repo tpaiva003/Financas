@@ -52,6 +52,7 @@ export function GuardarAvaliacao({
   cenarios,
   notas,
   atrativo,
+  valuationId,
 }: {
   nome: string;
   simbolo: string;
@@ -66,6 +67,14 @@ export function GuardarAvaliacao({
   cenarios: CenarioDcf[];
   notas: string;
   atrativo: boolean | null;
+  /**
+   * A linha do funil a preencher, quando isto veio de lá.
+   *
+   * Sem ele, estudar uma empresa que já estava apontada criava um segundo
+   * cartão da mesma empresa e o primeiro ficava marcado como substituído — a
+   * app a duplicar o que a pessoa acabou de fazer o trabalho de ligar.
+   */
+  valuationId: string | null;
 }) {
   const [state, guardar] = useFormState(guardarAvaliacaoAction, vazio);
   // A etapa que o veredicto sugere, e não a que a app impõe: um DCF diz se o
@@ -107,14 +116,17 @@ export function GuardarAvaliacao({
       <input type="hidden" name="scenarios" value={JSON.stringify(cenarios)} />
       <input type="hidden" name="notes" value={notas} />
       <input type="hidden" name="stage" value={etapa} />
+      {valuationId ? <input type="hidden" name="valuationId" value={valuationId} /> : null}
 
       <div>
-        <p className="eyebrow">Guardar</p>
+        <p className="eyebrow">{valuationId ? "Guardar no funil" : "Guardar"}</p>
         <p className="mt-2 text-xs leading-snug text-fg-faint">
           Fica com os pressupostos de hoje e nunca se recalcula sozinho: uma
           decisão tomada com este número tem de continuar a poder ser lida com
-          ele. Reavaliar mais tarde cria um estudo novo, e o antigo fica lá com a
-          data.
+          ele.{" "}
+          {valuationId
+            ? "Vai para a empresa que já tinhas no funil, em vez de criar outro cartão."
+            : "Reavaliar mais tarde cria um estudo novo, e o antigo fica lá com a data."}
         </p>
       </div>
 

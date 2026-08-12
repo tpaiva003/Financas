@@ -34,6 +34,10 @@ import type {
   CreateAssetSplitInput,
   StoredValuation,
   CreateValuationInput,
+  UpdateValuationInput,
+  ValuationEstudo,
+  ValuationAttachment,
+  CreateValuationAttachment,
   CreateTicketInput,
   CreateTicketMessageInput,
   Income,
@@ -1901,38 +1905,81 @@ export class SupabaseRepository implements Repository {
     return rows.map(rowToValuation);
   }
 
-  async createValuation(input: CreateValuationInput): Promise<void> {
+  async createValuation(input: CreateValuationInput): Promise<string> {
     const db = getSupabaseAdmin();
+    const id = `val_${randomUUID()}`;
+    const e = input.estudo ?? null;
     const { error } = await db.from("valuations").insert({
-      id: `val_${randomUUID()}`,
+      id,
       space_id: input.spaceId,
       symbol: input.symbol,
       name: input.name,
       stage: input.stage,
       study_date: input.studyDate,
-      fcf_cents: input.fcfCents,
-      shares: input.shares,
-      net_debt_cents: input.netDebtCents,
-      discount_pct: input.discountPct,
-      perpetual_pct: input.perpetualPct,
-      years: input.years,
-      margin_pct: input.marginPct,
-      scenarios: input.scenarios,
-      weighted_price_cents: input.weightedPriceCents,
-      price_at_study_cents: input.priceAtStudyCents,
-      upside_pct: input.upsidePct,
+      logo_domain: input.logoDomain ?? null,
       notes: input.notes,
       created_by: input.createdBy ?? null,
+      // Ou vão todos, ou nenhum vai. O `check` da 0038 diz o mesmo do lado da
+      // base de dados; aqui a forma do tipo já não deixa escrever meio estudo.
+      fcf_cents: e?.fcfCents ?? null,
+      shares: e?.shares ?? null,
+      net_debt_cents: e?.netDebtCents ?? null,
+      discount_pct: e?.discountPct ?? null,
+      perpetual_pct: e?.perpetualPct ?? null,
+      years: e?.years ?? null,
+      margin_pct: e?.marginPct ?? null,
+      scenarios: e?.scenarios ?? null,
+      weighted_price_cents: e?.weightedPriceCents ?? null,
+      price_at_study_cents: e?.priceAtStudyCents ?? null,
+      upside_pct: e?.upsidePct ?? null,
+      valued_at: e?.valuedAt ?? null,
     });
+    if (error) throw new Error(error.message);
+    return id;
+  }
+
+  async updateValuation(
+    id: string,
+    spaceId: string,
+    patch: UpdateValuationInput,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.stage !== undefined) row.stage = patch.stage;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.symbol !== undefined) row.symbol = patch.symbol;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (patch.logoDomain !== undefined) row.logo_domain = patch.logoDomain;
+    if (patch.aiSummary !== undefined) {
+      row.ai_summary = patch.aiSummary;
+      // A data anda sempre com o texto: um resumo sem data lê-se como o resumo
+      // do documento que se carregou agora, mesmo que seja de há seis meses.
+      row.ai_summary_at = patch.aiSummary === null ? null : new Date().toISOString();
+    }
+    // O `space_id` filtra a escrita: um id vindo do formulário não é prova de nada.
+    const { error } = await db.from("valuations").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async updateValuationStage(id: string, spaceId: string, stage: EtapaAvaliacao): Promise<void> {
+  async setValuationEstudo(id: string, spaceId: string, e: ValuationEstudo): Promise<void> {
     const db = getSupabaseAdmin();
-    // O ambiente filtra a escrita: um id vindo do formulário não é prova de nada.
     const { error } = await db
       .from("valuations")
-      .update({ stage, updated_at: new Date().toISOString() })
+      .update({
+        fcf_cents: e.fcfCents,
+        shares: e.shares,
+        net_debt_cents: e.netDebtCents,
+        discount_pct: e.discountPct,
+        perpetual_pct: e.perpetualPct,
+        years: e.years,
+        margin_pct: e.marginPct,
+        scenarios: e.scenarios,
+        weighted_price_cents: e.weightedPriceCents,
+        price_at_study_cents: e.priceAtStudyCents,
+        upside_pct: e.upsidePct,
+        valued_at: e.valuedAt,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id)
       .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
@@ -1941,6 +1988,83 @@ export class SupabaseRepository implements Repository {
   async deleteValuation(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db.from("valuations").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ---- Anexos de uma avaliação -------------------------------------------
+
+  async listValuationAttachments(
+    spaceId: string,
+    valuationId?: string,
+  ): Promise<ValuationAttachment[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("valuation_attachments").select("*").eq("space_id", spaceId);
+      if (valuationId) q = q.eq("valuation_id", valuationId);
+      return q.order("created_at").range(de, ate);
+    });
+    return rows.map(rowToValuationAttachment);
+  }
+
+  async getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("valuation_attachments")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToValuationAttachment(data) : null;
+  }
+
+  async createValuationAttachment(input: CreateValuationAttachment): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("valuation_attachments").insert({
+      id: input.id,
+      space_id: input.spaceId,
+      valuation_id: input.valuationId,
+      file_name: input.fileName,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      storage_path: input.storagePath,
+      status: input.status,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async markValuationAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .update({ status: "pronto" })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setValuationAttachmentText(
+    id: string,
+    spaceId: string,
+    texto: string | null,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .update({ extracted_text: texto })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteValuationAttachment(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -2196,21 +2320,55 @@ function rowToValuation(r: any): StoredValuation {
     studyDate: String(r.study_date).slice(0, 10),
     // `numeric` e `bigint` chegam como texto do PostgREST. Sem o `Number`, uma
     // taxa de desconto entrava nas contas como string e o DCF devolvia NaN.
-    fcfCents: Number(r.fcf_cents),
-    shares: Number(r.shares),
-    netDebtCents: Number(r.net_debt_cents),
-    discountPct: Number(r.discount_pct),
-    perpetualPct: Number(r.perpetual_pct),
-    years: Number(r.years),
-    marginPct: Number(r.margin_pct),
+    // `n()` e não `Number()`: `Number(null)` é 0, e um zero num campo de dívida
+    // líquida ou de fluxo de caixa não se distingue de uma empresa sem dívida
+    // ou sem fluxo. Uma empresa apenas apontada tem estes campos todos vazios.
+    fcfCents: n(r.fcf_cents),
+    shares: n(r.shares),
+    netDebtCents: n(r.net_debt_cents),
+    discountPct: n(r.discount_pct),
+    perpetualPct: n(r.perpetual_pct),
+    years: n(r.years),
+    marginPct: n(r.margin_pct),
     // Validado campo a campo. Ver `lerCenarios`.
     scenarios: lerCenarios(r.scenarios),
-    weightedPriceCents: Number(r.weighted_price_cents),
-    priceAtStudyCents: r.price_at_study_cents === null || r.price_at_study_cents === undefined
-      ? null
-      : Number(r.price_at_study_cents),
-    upsidePct: r.upside_pct === null || r.upside_pct === undefined ? null : Number(r.upside_pct),
+    weightedPriceCents: n(r.weighted_price_cents),
+    priceAtStudyCents: n(r.price_at_study_cents),
+    upsidePct: n(r.upside_pct),
+    valuedAt: r.valued_at ? String(r.valued_at).slice(0, 10) : null,
+    logoDomain: r.logo_domain ?? null,
     notes: r.notes ?? null,
+    aiSummary: r.ai_summary ?? null,
+    aiSummaryAt: r.ai_summary_at ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+/**
+ * Um número que pode não existir.
+ *
+ * `Number(null)` é `0`, e um zero num campo de dívida líquida ou de fluxo de
+ * caixa não se distingue de uma empresa sem dívida ou sem fluxo. Numa linha do
+ * funil que ainda só está apontada, todos estes campos são nulos.
+ */
+function n(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
+
+function rowToValuationAttachment(r: any): ValuationAttachment {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    valuationId: r.valuation_id,
+    fileName: r.file_name,
+    contentType: r.content_type,
+    sizeBytes: Number(r.size_bytes),
+    storagePath: r.storage_path,
+    status: r.status === "pronto" ? "pronto" : "a-enviar",
+    extractedText: r.extracted_text ?? null,
+    createdBy: r.created_by ?? null,
     createdAt: r.created_at ?? null,
   };
 }

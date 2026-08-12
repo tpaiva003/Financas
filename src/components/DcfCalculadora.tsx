@@ -29,6 +29,7 @@ import {
 import { PreencherAtivoDoDcf } from "./PreencherAtivoDoDcf";
 import { GuardarAvaliacao } from "./GuardarAvaliacao";
 import { BuscarFundamentais } from "./BuscarFundamentais";
+import { HistoricoGrafico } from "./HistoricoGrafico";
 
 /** Em milhares de milhões, que é como estes números vêm num relatório. */
 function bilioesParaCents(v: string): number {
@@ -41,9 +42,16 @@ function num(v: string): number {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-export function DcfCalculadora() {
-  const [nome, setNome] = useState("");
-  const [simbolo, setSimbolo] = useState("");
+export interface VindoDoFunil {
+  /** A linha do funil a preencher, quando isto veio de lá. */
+  id: string | null;
+  nome: string;
+  simbolo: string;
+}
+
+export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
+  const [nome, setNome] = useState(doFunil?.nome ?? "");
+  const [simbolo, setSimbolo] = useState(doFunil?.simbolo ?? "");
 
   // Dados da empresa, em milhares de milhões.
   const [fcf, setFcf] = useState("");
@@ -104,7 +112,7 @@ export function DcfCalculadora() {
   return (
     <div className="space-y-5">
       <section className="card space-y-4 p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <p className="eyebrow">Dados da empresa</p>
           <BuscarFundamentais
             simbolo={simbolo}
@@ -149,9 +157,9 @@ export function DcfCalculadora() {
         <div className="grid gap-3 sm:grid-cols-3">
           <Campo label="Dívida de longo prazo (mM)" valor={divida} onChange={setDivida} placeholder="9,987" />
           <Campo label="Caixa e equivalentes (mM)" valor={caixa} onChange={setCaixa} placeholder="10,422" />
-          <div>
+          <div className="flex h-full flex-col">
             <p className="label">Dívida líquida (mM)</p>
-            <p className="input flex items-center font-mono text-sm text-fg-muted">
+            <p className="input mt-auto flex items-center font-mono text-sm text-fg-muted">
               {divida.trim() || caixa.trim()
                 ? (dividaLiquidaCents / 100 / 1_000_000_000).toFixed(3).replace(".", ",")
                 : "—"}
@@ -427,6 +435,7 @@ export function DcfCalculadora() {
             cenarios={cenarios}
             notas={notas}
             atrativo={ok.atrativo}
+            valuationId={doFunil?.id ?? null}
           />
 
           <PreencherAtivoDoDcf
@@ -508,7 +517,13 @@ function Historial({ contas }: { contas: Fundamentais }) {
         é a mesma coisa que 32% depois de 40 e 36.
       </p>
 
-      <div className="-mx-1 overflow-x-auto px-1">
+      <HistoricoGrafico historico={h} />
+
+      <details className="mt-4 group">
+        <summary className="cursor-pointer text-xs text-fg-faint hover:text-fg-muted">
+          Ver os números todos
+        </summary>
+        <div className="-mx-1 mt-3 overflow-x-auto px-1">
         <table className="w-full min-w-[30rem] text-sm">
           <thead>
             <tr className="text-right text-xs text-fg-muted">
@@ -539,7 +554,8 @@ function Historial({ contas }: { contas: Fundamentais }) {
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      </details>
 
       {contas.emFalta.length > 0 ? (
         <p className="mt-3 text-xs leading-snug text-fg-faint">
@@ -649,8 +665,16 @@ function Campo({
   mono?: boolean;
 }) {
   const id = `dcf-${label.replace(/[^a-z]/gi, "").toLowerCase()}`;
+  /**
+   * O rótulo em cima e o campo encostado ao fundo.
+   *
+   * "Fluxo de caixa livre (mM)" ocupa duas linhas onde "Preço por ação" ocupa
+   * uma, e numa grelha isso empurrava cada caixa para uma altura diferente. Com
+   * a coluna a esticar e o `mt-auto`, os campos ficam todos alinhados por baixo
+   * seja qual for o tamanho do rótulo.
+   */
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <label className="label" htmlFor={id}>
         {label}
       </label>
@@ -660,7 +684,7 @@ function Campo({
         inputMode={mono ? undefined : "decimal"}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`input ${mono ? "font-mono" : ""}`}
+        className={`input mt-auto ${mono ? "font-mono" : ""}`}
       />
     </div>
   );

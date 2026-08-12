@@ -24,9 +24,15 @@ import { readPdfText } from "@/lib/import/read-file";
 import { getInePriceTable } from "@/lib/services/ine-service";
 import {
   caminhoDoAnexo,
+  caminhoDoAnexoDaAvaliacao,
+  descarregarAnexo,
   removerAnexoDoStorage,
   signedUploadUrl,
 } from "@/lib/services/attachments-service";
+import {
+  resumirAnexos,
+  resumoAnexosAvailable,
+} from "@/lib/services/resumo-anexos-service";
 import {
   conversar,
   conversaAvailable,
@@ -86,6 +92,7 @@ import {
   etapaSugerida,
   ETAPA_LABEL,
   assinatura,
+  dominioValido,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -3374,25 +3381,68 @@ export async function guardarAvaliacaoAction(
   const etapaBruta = String(formData.get("stage") ?? "");
   const etapa = etapaValida(etapaBruta) ? etapaBruta : etapaSugerida(avaliacao.ok.atrativo);
 
+  const hoje = new Date().toISOString().slice(0, 10);
+  const estudo = {
+    fcfCents: Math.round(fcfCents),
+    shares,
+    netDebtCents: Math.round(netDebtCents),
+    discountPct,
+    perpetualPct,
+    years: Math.round(years),
+    marginPct,
+    scenarios: cenarios,
+    weightedPriceCents: avaliacao.ok.precoPonderadoCents,
+    priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
+    upsidePct: avaliacao.ok.upsidePonderadoPct,
+    valuedAt: hoje,
+  };
+
+  const repo = getRepository();
+  const notas = String(formData.get("notes") ?? "").trim() || null;
+
+  /**
+   * Vinha do funil? Então escreve-se os números na linha que já lá está.
+   *
+   * Sem isto, estudar uma empresa que se tinha apontado criava um segundo
+   * cartão da mesma empresa e o primeiro ficava marcado como substituído — a
+   * app a duplicar o que o utilizador acabou de fazer o trabalho de ligar. O id
+   * é confrontado com o ambiente antes de se escrever nele.
+   */
+  const doFunil = String(formData.get("valuationId") ?? "").trim();
+  if (doFunil) {
+    const existente = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+      (v) => v.id === doFunil,
+    );
+    if (!existente) return { error: "Essa entrada do funil já não existe." };
+    try {
+      await repo.setValuationEstudo(doFunil, ctx.space.id, estudo);
+      await repo.updateValuation(doFunil, ctx.space.id, {
+        stage: etapa,
+        name: nome,
+        symbol: simboloBruto ? simboloBruto.toLowerCase() : null,
+        // As notas do ecrã só substituem as do funil quando há mesmo alguma
+        // coisa escrita: um campo em branco não apaga o que lá estava.
+        ...(notas ? { notes: notas } : {}),
+      });
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a avaliação") };
+    }
+    revalidatePath("/patrimonio/avaliacoes");
+    return {
+      ok: true,
+      message: `Estudo gravado em "${nome}", na etapa "${ETAPA_LABEL[etapa]}".`,
+    };
+  }
+
   try {
-    await getRepository().createValuation({
+    await repo.createValuation({
       spaceId: ctx.space.id,
       symbol: simboloBruto ? simboloBruto.toLowerCase() : null,
       name: nome,
       stage: etapa,
-      studyDate: new Date().toISOString().slice(0, 10),
-      fcfCents: Math.round(fcfCents),
-      shares,
-      netDebtCents: Math.round(netDebtCents),
-      discountPct,
-      perpetualPct,
-      years: Math.round(years),
-      marginPct,
-      scenarios: cenarios,
-      weightedPriceCents: avaliacao.ok.precoPonderadoCents,
-      priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
-      upsidePct: avaliacao.ok.upsidePonderadoPct,
-      notes: String(formData.get("notes") ?? "").trim() || null,
+      studyDate: hoje,
+      notes: notas,
+      estudo,
       createdBy: ctx.user.id,
     });
   } catch (e) {
@@ -3406,6 +3456,113 @@ export async function guardarAvaliacaoAction(
   };
 }
 
+/**
+ * Apontar uma empresa no funil, antes de haver estudo nenhum.
+ *
+ * **É o passo mais barato do processo e era o único que a app não suportava.**
+ * O funil servia só de arquivo de estudos: uma empresa só lá entrava depois de
+ * alguém ter feito um DCF completo — quando o que se faz primeiro é o oposto,
+ * apontar um nome e voltar a ele mais tarde.
+ */
+export async function criarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (!nome) return { error: "Escreve o nome da empresa." };
+
+  const simbolo = String(formData.get("symbol") ?? "").trim().toLowerCase() || null;
+
+  // A data pode ser escolhida: quem aponta uma empresa hoje pode estar a
+  // registar uma decisão de há um mês, e a data manda na ordem do funil.
+  const dataBruta = String(formData.get("studyDate") ?? "").trim();
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(dataBruta)
+    ? dataBruta
+    : new Date().toISOString().slice(0, 10);
+
+  const etapaBruta = String(formData.get("stage") ?? "");
+  const etapa = etapaValida(etapaBruta) ? etapaBruta : "radar";
+
+  // O domínio da marca, para o logo, com a mesma validação dos investimentos:
+  // é ele que vai parar a um pedido feito pelo servidor.
+  const marcaBruta = String(formData.get("logoDomain") ?? "").trim();
+  const logoDomain = marcaBruta ? dominioValido(marcaBruta) : null;
+  if (marcaBruta && !logoDomain) return { error: "Esse domínio de marca não me parece válido." };
+
+  try {
+    await getRepository().createValuation({
+      spaceId: ctx.space.id,
+      symbol: simbolo,
+      name: nome,
+      stage: etapa,
+      studyDate: data,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      logoDomain,
+      // Sem estudo: é uma empresa apontada, não um DCF.
+      estudo: null,
+      createdBy: ctx.user.id,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a empresa") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: `"${nome}" ficou em "${ETAPA_LABEL[etapa]}".` };
+}
+
+/** Corrigir o que está escrito num cartão do funil: nome, símbolo, marca, notas. */
+export async function editarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Faltou a avaliação." };
+
+  // O id é confrontado com o ambiente antes de se escrever nele: um id vindo do
+  // formulário não é prova de nada, e tudo aqui corre com a chave de serviço.
+  const existente = (await getRepository().listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === id,
+  );
+  if (!existente) return { error: "Essa avaliação já não existe." };
+
+  const patch: { name?: string; symbol?: string | null; notes?: string | null; logoDomain?: string | null } = {};
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (nome) patch.name = nome;
+
+  if (formData.has("symbol")) {
+    const s = String(formData.get("symbol") ?? "").trim().toLowerCase();
+    patch.symbol = s || null;
+  }
+  if (formData.has("notes")) {
+    patch.notes = String(formData.get("notes") ?? "").trim() || null;
+  }
+  if (formData.has("logoDomain")) {
+    const m = String(formData.get("logoDomain") ?? "").trim();
+    if (!m) patch.logoDomain = null;
+    else {
+      const d = dominioValido(m);
+      if (!d) return { error: "Esse domínio de marca não me parece válido." };
+      patch.logoDomain = d;
+    }
+  }
+
+  try {
+    await getRepository().updateValuation(id, ctx.space.id, patch);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a avaliação") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: "Guardado." };
+}
+
 export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
@@ -3415,7 +3572,7 @@ export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<voi
   if (!id || !etapaValida(etapa)) return;
 
   // O ambiente vai na escrita: um id vindo do formulário não é prova de nada.
-  await getRepository().updateValuationStage(id, ctx.space.id, etapa).catch(() => {});
+  await getRepository().updateValuation(id, ctx.space.id, { stage: etapa }).catch(() => {});
   revalidatePath("/patrimonio/avaliacoes");
 }
 
@@ -3535,4 +3692,177 @@ export async function fundirAtivosAction(
     );
   }
   return { ok: true, message: partes.join(" ") };
+}
+
+// ---- Anexos de uma avaliação, e o resumo que a IA faz deles -----------------
+
+/**
+ * Preparar o envio de um documento para uma avaliação.
+ *
+ * Mesmo desenho dos anexos dos bens, e pela mesma razão: o ficheiro nunca passa
+ * pela app. O servidor emite um URL de envio assinado e o browser fala com o
+ * Storage; o que atravessa a app é o nome, o tipo e o tamanho.
+ */
+export async function prepararAnexoAvaliacaoAction(
+  _prev: AnexoPreparado,
+  formData: FormData,
+): Promise<AnexoPreparado> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const valuationId = String(formData.get("valuationId") ?? "").trim();
+  const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
+  const contentType = String(formData.get("contentType") ?? "").trim();
+  const sizeBytes = Number(formData.get("sizeBytes") ?? 0);
+  if (!valuationId || !fileName) return { error: "Falta o ficheiro." };
+
+  const repo = getRepository();
+  // A avaliação tem de ser mesmo deste ambiente: um id vindo do formulário não
+  // é prova de nada, e tudo aqui corre com a chave de serviço.
+  const avaliacao = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === valuationId,
+  );
+  if (!avaliacao) return { error: "Avaliação inválida." };
+
+  const doAmbiente = await repo.listValuationAttachments(ctx.space.id).catch(() => []);
+  const veredicto = checkAnexo({
+    plan: ctx.space.plan ?? "free",
+    porBem: doAmbiente.filter((a) => a.valuationId === valuationId).length,
+    bytesNoAmbiente: doAmbiente.reduce((s, a) => s + a.sizeBytes, 0),
+    bytesDoFicheiro: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+    contentType,
+  });
+  if (!veredicto.allowed) return { error: veredicto.message ?? "Não dá para anexar isto." };
+
+  const anexoId = `anx_${randomUUID()}`;
+  const storagePath = caminhoDoAnexoDaAvaliacao(ctx.space.id, valuationId, anexoId, contentType);
+
+  const destino = await signedUploadUrl(storagePath);
+  if (!destino) return { error: "Não consegui preparar o envio." };
+
+  try {
+    await repo.createValuationAttachment({
+      id: anexoId,
+      spaceId: ctx.space.id,
+      valuationId,
+      fileName,
+      contentType,
+      sizeBytes: Math.max(0, Math.round(sizeBytes)),
+      storagePath,
+      status: "a-enviar",
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar o anexo." };
+  }
+
+  return { ok: true, uploadUrl: destino.url, token: destino.token, anexoId };
+}
+
+export async function confirmarAnexoAvaliacaoAction(anexoId: string): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  const id = String(anexoId ?? "").trim();
+  if (!id) return { error: "Anexo inválido." };
+
+  try {
+    await getRepository().markValuationAttachmentReady(id, ctx.space.id);
+  } catch {
+    return { error: "Não consegui confirmar o anexo." };
+  }
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: "Anexo guardado." };
+}
+
+export async function apagarAnexoAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const repo = getRepository();
+  const anexo = await repo.getValuationAttachment(id, ctx.space.id).catch(() => null);
+  if (!anexo) return;
+
+  // A linha **e** o ficheiro: um anexo apagado que fica no Storage torna falsa
+  // a frase "apagamos os teus dados".
+  await repo.deleteValuationAttachment(id, ctx.space.id).catch(() => {});
+  await removerAnexoDoStorage(anexo.storagePath);
+  revalidatePath("/patrimonio/avaliacoes");
+}
+
+/**
+ * Ler os anexos e escrever um resumo.
+ *
+ * **A IA lê texto e devolve prosa. Não devolve número nenhum para a app usar.**
+ * Seria fácil pedir-lhe o fluxo de caixa livre e enfiá-lo no DCF, e nesse dia o
+ * valor por ação passava a depender de um modelo a ler um PDF. O que entra no
+ * cálculo vem da fonte de dados ou do teclado de quem avalia.
+ *
+ * O texto extraído fica guardado por anexo: na segunda vez não se volta a
+ * descarregar nem a ler o ficheiro.
+ */
+export async function resumirAnexosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (!resumoAnexosAvailable()) return { error: "O resumo assistido não está configurado." };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Faltou a avaliação." };
+
+  const repo = getRepository();
+  const avaliacao = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === id,
+  );
+  if (!avaliacao) return { error: "Essa avaliação já não existe." };
+
+  const anexos = (await repo.listValuationAttachments(ctx.space.id, id).catch(() => [])).filter(
+    (a) => a.status === "pronto",
+  );
+  if (anexos.length === 0) return { error: "Ainda não há anexos para ler." };
+
+  const documentos: { fileName: string; texto: string }[] = [];
+  for (const a of anexos) {
+    // Já lido antes: não se volta a descarregar nem a extrair.
+    if (a.extractedText) {
+      documentos.push({ fileName: a.fileName, texto: a.extractedText });
+      continue;
+    }
+    const bytes = await descarregarAnexo(a.storagePath);
+    if (!bytes) continue;
+
+    let texto = "";
+    if (a.contentType === "application/pdf") {
+      texto = await readPdfText(bytes).catch(() => "");
+    } else if (a.contentType.startsWith("text/")) {
+      texto = bytes.toString("utf8");
+    }
+    // Uma imagem não tem texto para ler, e isso não é um erro — é o que é.
+    if (!texto.trim()) continue;
+
+    await repo.setValuationAttachmentText(a.id, ctx.space.id, texto).catch(() => {});
+    documentos.push({ fileName: a.fileName, texto });
+  }
+
+  const r = await resumirAnexos(avaliacao.name, documentos);
+  if (!r.resumo) return { error: r.problem ?? "Não consegui resumir." };
+
+  try {
+    await repo.updateValuation(id, ctx.space.id, { aiSummary: r.resumo });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o resumo") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  const ignorados = anexos.length - r.usados;
+  return {
+    ok: true,
+    message:
+      ignorados > 0
+        ? `Resumi ${r.usados} de ${anexos.length} anexos. ${ignorados === 1 ? "Um ficou" : `${ignorados} ficaram`} de fora por não ter texto que se lesse — digitalizações e imagens não têm.`
+        : `Resumi ${r.usados} ${r.usados === 1 ? "anexo" : "anexos"}.`,
+  };
 }

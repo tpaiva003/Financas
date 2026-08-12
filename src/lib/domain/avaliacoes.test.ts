@@ -15,6 +15,7 @@ const base: AvaliacaoResumo = {
   nome: "Empresa de Ensaio",
   etapa: "esperar",
   data: "2026-08-01",
+  dataDoEstudo: "2026-08-01",
   precoPonderadoCents: 300_00,
   precoNaAlturaCents: 400_00,
   upsidePct: -25,
@@ -86,9 +87,49 @@ describe("montarFunil", () => {
    * estudo já foi substituído duas vezes por outro que ninguém pôs aqui.
    */
   it("avisa quando os pressupostos passaram de meio ano", () => {
-    const f = montarFunil([{ ...base, data: "2026-01-01" }], "2026-08-11");
+    const f = montarFunil([{ ...base, data: "2026-01-01", dataDoEstudo: "2026-01-01" }], "2026-08-11");
     expect(f[0]!.envelhecida).toBe(true);
-    expect(montarFunil([{ ...base, data: "2026-07-01" }], "2026-08-11")[0]!.envelhecida).toBe(false);
+    expect(
+      montarFunil([{ ...base, data: "2026-07-01", dataDoEstudo: "2026-07-01" }], "2026-08-11")[0]!
+        .envelhecida,
+    ).toBe(false);
+  });
+
+  /**
+   * Uma empresa apontada há um ano e ainda por estudar não tem pressupostos a
+   * envelhecer — não tem pressupostos nenhuns. Marcá-la de velha mandava rever
+   * um estudo que nunca existiu, e a seguir ninguém acreditaria no aviso quando
+   * ele fosse a sério.
+   */
+  it("não cobra idade a uma empresa que ainda só está apontada", () => {
+    const f = montarFunil(
+      [
+        {
+          ...base,
+          data: "2024-01-01",
+          dataDoEstudo: null,
+          precoPonderadoCents: null,
+          precoNaAlturaCents: null,
+          upsidePct: null,
+        },
+      ],
+      "2026-08-11",
+    );
+    expect(f[0]!.temEstudo).toBe(false);
+    expect(f[0]!.envelhecida).toBe(false);
+    expect(f[0]!.idadeDias).toBeGreaterThan(900);
+  });
+
+  /**
+   * A data de entrada no funil e a do estudo são coisas diferentes: uma empresa
+   * pode estar apontada há dois anos e ter sido estudada ontem.
+   */
+  it("conta a idade do estudo, e não a da entrada no funil", () => {
+    const f = montarFunil(
+      [{ ...base, data: "2024-01-01", dataDoEstudo: "2026-08-01" }],
+      "2026-08-11",
+    );
+    expect(f[0]!.envelhecida).toBe(false);
   });
 
   it("não marca de velha uma avaliação que já está marcada de substituída", () => {
@@ -153,6 +194,11 @@ describe("quantoFaltaDescer", () => {
   it("não responde quando o preço já lá está", () => {
     expect(quantoFaltaDescer({ ...base, precoNaAlturaCents: 250_00 })).toBeNull();
     expect(quantoFaltaDescer({ ...base, precoNaAlturaCents: null })).toBeNull();
+  });
+
+  it("não responde a uma empresa sem estudo nenhum", () => {
+    // Sem preço ponderado não há alvo, e "falta descer X%" precisa de um alvo.
+    expect(quantoFaltaDescer({ ...base, precoPonderadoCents: null })).toBeNull();
   });
 });
 

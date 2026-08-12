@@ -55,8 +55,13 @@ export function BuscarFundamentais({
 
   const semSimbolo = !simbolo.trim();
 
+  /**
+   * `contents` e não uma caixa: assim o botão e a mensagem são filhos directos
+   * da linha do cabeçalho, e a mensagem cai numa linha inteira (`basis-full`)
+   * em vez de esticar a linha do botão e desalinhar o título ao lado.
+   */
   return (
-    <div className="space-y-1.5">
+    <div className="contents">
       <form action={buscar} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="symbol" value={simbolo} />
         <Botao desativado={semSimbolo} />
@@ -66,13 +71,13 @@ export function BuscarFundamentais({
       </form>
 
       {state.error ? (
-        <p role="alert" className="text-xs leading-snug text-debt">
+        <p role="alert" className="basis-full text-xs leading-snug text-debt">
           {state.error} Os campos ficam para escrever à mão.
         </p>
       ) : null}
 
       {state.ok && state.message ? (
-        <p className="text-xs leading-snug text-fg-faint">
+        <p className="basis-full text-xs leading-snug text-fg-faint">
           {state.message}
           {state.simbolo && state.simbolo !== simbolo.trim().toLowerCase() ? (
             <> Encontrei-a como <span className="font-mono text-fg-muted">{state.simbolo}</span>.</>
