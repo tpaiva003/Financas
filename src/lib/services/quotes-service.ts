@@ -435,6 +435,21 @@ async function toEurAtDate(
  * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
  * preço que havia, e quem chama mostra a data para não haver enganos.
  */
+/**
+ * Quantos símbolos podem ir à rede numa visita.
+ *
+ * **Existe porque a página do património demorava uma eternidade a abrir.** Um
+ * símbolo que a fonte não conhece nunca chega a ter cotação guardada, e por isso
+ * conta como "velho" **em todas as visitas para sempre** — quatro tentativas com
+ * dez segundos de espera cada, por cada um deles, sempre. Com uma dúzia desses
+ * na carteira, abrir o ecrã passava a ser uma ida à rede de vários minutos.
+ *
+ * Com um tecto, cada visita adianta um pouco e nenhuma paga tudo. Quem quiser
+ * tudo de uma vez carrega no botão, que passa `force` e não tem tecto: aí a
+ * espera é pedida, e uma espera pedida não é o mesmo que uma imposta.
+ */
+const MAX_IDAS_A_REDE_POR_VISITA = 6;
+
 export async function refreshStalePrices(
   spaceId: string,
   options: { force?: boolean } = {},
@@ -444,8 +459,95 @@ export async function refreshStalePrices(
   const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
   if (withSymbol.length === 0) return [];
 
+  /**
+   * Tudo o que está guardado, numa consulta só.
+   *
+   * Antes eram três idas à base de dados por símbolo, e com meia centena de
+   * investimentos isso são cento e cinquenta viagens para desenhar um ecrã cujos
+   * dados já estavam gravados.
+   */
+  const candidatosDeTodos = withSymbol.flatMap((a) => symbolCandidates(a.symbol!));
+  const guardadas = await repo.latestQuotesFor(candidatosDeTodos).catch(() => new Map());
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Quem já tem cotação fresca não vai à rede nem à base de dados outra vez.
+  let idasDisponiveis = options.force ? Number.POSITIVE_INFINITY : MAX_IDAS_A_REDE_POR_VISITA;
+
   return Promise.all(
     withSymbol.map(async (a): Promise<PriceFreshness> => {
+      /**
+       * O atalho: já há cotação fresca guardada para uma das formas do símbolo.
+       *
+       * Sem `force`, este caminho não toca na rede nem faz mais consultas — e é
+       * o caminho de quase todos os investimentos em quase todas as visitas.
+       */
+      if (!options.force) {
+        const fresca = symbolCandidates(a.symbol!)
+          .map((c) => ({ c, q: guardadas.get(c) }))
+          .find((x) => x.q && !isStale(x.q.date, hoje));
+
+        if (fresca?.q) {
+          const q = fresca.q;
+          const original = isForeign(q.currency)
+            ? { quoteCents: q.closeCents, quoteCurrency: q.currency }
+            : { quoteCents: null, quoteCurrency: null };
+
+          const emEuros = await toEurAtDate(q.closeCents, q.currency, q.date);
+          if (emEuros === null) {
+            return {
+              assetId: a.id,
+              symbol: fresca.c,
+              quoteDate: q.date,
+              refreshed: false,
+              problem: `Cotação em ${q.currency} e sem taxa de câmbio para a converter.`,
+              quoteCents: null,
+              quoteCurrency: null,
+            };
+          }
+          if (emEuros !== a.unitPriceCents) {
+            const gravou = await repo
+              .updateAsset(a.id, spaceId, { unitPriceCents: emEuros })
+              .then(() => true)
+              .catch(() => false);
+            return {
+              assetId: a.id,
+              symbol: fresca.c,
+              quoteDate: q.date,
+              refreshed: gravou,
+              problem: gravou ? null : "Fui buscar a cotação mas não a consegui guardar.",
+              ...original,
+            };
+          }
+          return {
+            assetId: a.id,
+            symbol: fresca.c,
+            quoteDate: q.date,
+            refreshed: false,
+            problem: null,
+            ...original,
+          };
+        }
+
+        // Está velha e o tecto já foi gasto: fica para a próxima visita, com o
+        // que se sabe. Um preço velho identificado como velho é informação.
+        if (idasDisponiveis <= 0) {
+          const qualquer = symbolCandidates(a.symbol!)
+            .map((c) => ({ c, q: guardadas.get(c) }))
+            .find((x) => x.q);
+          return {
+            assetId: a.id,
+            symbol: qualquer?.c ?? a.symbol!,
+            quoteDate: qualquer?.q?.date ?? null,
+            refreshed: false,
+            problem:
+              "Ainda não fui buscar a cotação nesta visita. Carrega em «Atualizar preços» para não esperar pela próxima.",
+            quoteCents: null,
+            quoteCurrency: null,
+          };
+        }
+        idasDisponiveis -= 1;
+      }
+
       // Um ticker escrito à mão vem quase sempre sem sufixo de praça ("MSFT",
       // não "msft.us"), e sem sufixo a fonte não o encontra. Tentam-se as
       // formas prováveis, e guarda-se a que funcionou para não se andar a

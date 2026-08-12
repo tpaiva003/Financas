@@ -982,6 +982,18 @@ export interface Repository {
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
   /** Só o fecho mais recente, para quem quer o preço e não a série. */
   latestQuote(symbol: string): Promise<StoredQuote | null>;
+  /**
+   * O fecho mais recente de vários símbolos de uma vez.
+   *
+   * **Existe por causa do tempo que a página do património demorava a abrir.**
+   * Por símbolo eram três idas à base de dados (`latestQuoteDate`,
+   * `latestQuote`, `quoteCurrency`); com meia centena de investimentos, isso são
+   * cento e cinquenta viagens só para desenhar um ecrã que já tinha os dados
+   * guardados. Aqui é uma.
+   */
+  latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>>;
   /** Guarda cotações, sem duplicar as que já lá estão. */
   saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void>;
   /** Em que moeda estão as cotações guardadas deste símbolo. */

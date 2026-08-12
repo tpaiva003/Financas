@@ -1597,6 +1597,40 @@ export class SupabaseRepository implements Repository {
     };
   }
 
+  async latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>> {
+    const fora = new Map<string, { date: string; closeCents: number; currency: string }>();
+    const unicos = [...new Set(symbols.map((s) => s.trim().toLowerCase()).filter(Boolean))];
+    if (unicos.length === 0) return fora;
+
+    const db = getSupabaseAdmin();
+    // Uma consulta só, paginada: a tabela das cotações tem uma linha por dia e
+    // por símbolo, e com dez anos de histórico passa das mil à vontade. Uma
+    // leitura cortada aqui devolvia o preço de um dia qualquer como se fosse o
+    // último — e ninguém repararia.
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("quotes")
+        .select("symbol, quote_date, close_cents, currency")
+        .in("symbol", unicos)
+        .order("quote_date", { ascending: false })
+        .range(de, ate),
+    );
+
+    // Vêm da mais recente para a mais antiga: a primeira de cada símbolo ganha.
+    for (const r of rows) {
+      const s = String(r.symbol);
+      if (fora.has(s)) continue;
+      fora.set(s, {
+        date: String(r.quote_date).slice(0, 10),
+        closeCents: Number(r.close_cents),
+        currency: (r.currency as string | undefined) ?? "EUR",
+      });
+    }
+    return fora;
+  }
+
   async quoteCurrency(symbol: string): Promise<string | null> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

@@ -895,6 +895,25 @@ export class MockRepository implements Repository {
     return all.length > 0 ? all[all.length - 1]! : null;
   }
 
+  async latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>> {
+    const fora = new Map<string, { date: string; closeCents: number; currency: string }>();
+    const store = getStore();
+    for (const bruto of symbols) {
+      const s = bruto.trim().toLowerCase();
+      const lista = store.quotes[s];
+      if (!lista || lista.length === 0) continue;
+      const ultima = lista[lista.length - 1]!;
+      fora.set(s, {
+        date: ultima.date,
+        closeCents: ultima.closeCents,
+        currency: store.quoteCurrencies?.[s] ?? "EUR",
+      });
+    }
+    return fora;
+  }
+
   async quoteCurrency(symbol: string): Promise<string | null> {
     return getStore().quoteCurrencies[symbol] ?? null;
   }
