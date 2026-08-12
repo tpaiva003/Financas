@@ -14,6 +14,7 @@ import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
 import { buscarEuribor } from "@/lib/services/euribor-service";
 import { buscarFundamentais } from "@/lib/services/fundamentais-service";
+import { atualizarDatasDeMercado } from "@/lib/services/datas-service";
 import { descobrirMarcas } from "@/lib/services/marca-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
@@ -3864,5 +3865,44 @@ export async function resumirAnexosAction(
       ignorados > 0
         ? `Resumi ${r.usados} de ${anexos.length} anexos. ${ignorados === 1 ? "Um ficou" : `${ignorados} ficaram`} de fora por não ter texto que se lesse — digitalizações e imagens não têm.`
         : `Resumi ${r.usados} ${r.usados === 1 ? "anexo" : "anexos"}.`,
+  };
+}
+
+// ---- Datas de mercado -------------------------------------------------------
+
+/**
+ * Ir buscar as datas de resultados e dividendos dos investimentos em carteira.
+ *
+ * **A pedido e não a cada visita.** São uma chamada por símbolo a uma fonte
+ * externa; correr isto sozinho ao abrir a carteira punha dezenas de pedidos numa
+ * função com tempo limitado. O serviço salta os que já foram consultados esta
+ * semana, por isso carregar duas vezes seguidas não faz nada da segunda.
+ */
+export async function atualizarDatasAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const r = await atualizarDatasDeMercado(ctx.space.id, { force: true });
+  revalidatePath("/patrimonio");
+
+  if (r.consultados === 0) {
+    return { ok: true, message: "Não há investimentos com símbolo em carteira." };
+  }
+  if (r.gravados === 0) {
+    return {
+      error: `Não consegui obter datas para nenhum dos ${r.consultados}. A fonte pode estar a recusar — as cotações não são afetadas.`,
+    };
+  }
+  // Diz sempre o que ficou de fora: um resultado que só conta os acertos lê-se
+  // como "está tudo tratado", e não está.
+  return {
+    ok: true,
+    message:
+      r.falhados > 0
+        ? `${r.gravados} de ${r.consultados} com datas novas. ${r.falhados} não deram — a fonte não os conhece ou recusou.`
+        : `${r.gravados} ${r.gravados === 1 ? "investimento" : "investimentos"} com datas em dia.`,
   };
 }

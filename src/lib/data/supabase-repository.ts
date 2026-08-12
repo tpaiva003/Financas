@@ -1453,6 +1453,10 @@ export class SupabaseRepository implements Repository {
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
     if (patch.exchange !== undefined) row.exchange = patch.exchange;
     if (patch.logoDomain !== undefined) row.logo_domain = patch.logoDomain;
+    if (patch.nextEarningsDate !== undefined) row.next_earnings_date = patch.nextEarningsDate;
+    if (patch.dividendDate !== undefined) row.dividend_date = patch.dividendDate;
+    if (patch.exDividendDate !== undefined) row.ex_dividend_date = patch.exDividendDate;
+    if (patch.marketDatesAt !== undefined) row.market_dates_at = patch.marketDatesAt;
     if (patch.financesAssetId !== undefined) row.finances_asset_id = patch.financesAssetId;
     if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
@@ -2460,6 +2464,12 @@ function rowToAsset(r: any): Asset {
     exchange: r.exchange ?? null,
     logoDomain: r.logo_domain ?? null,
     financesAssetId: r.finances_asset_id ?? null,
+    // Datas de mercado. `slice(0, 10)` porque uma coluna `date` chega como
+    // "2026-02-03" mas o PostgREST já devolveu carimbos completos noutras.
+    nextEarningsDate: r.next_earnings_date ? String(r.next_earnings_date).slice(0, 10) : null,
+    dividendDate: r.dividend_date ? String(r.dividend_date).slice(0, 10) : null,
+    exDividendDate: r.ex_dividend_date ? String(r.ex_dividend_date).slice(0, 10) : null,
+    marketDatesAt: r.market_dates_at ?? null,
     sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,
   };

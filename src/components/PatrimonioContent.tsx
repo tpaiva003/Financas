@@ -37,6 +37,7 @@ import {
   type RateKind,
   type Trade,
   duplicadosDeAtivos,
+  datasAProximar,
 } from "@/lib/domain";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
@@ -54,6 +55,7 @@ import { DescobrirMarcas } from "@/components/DescobrirMarcas";
 import { AssetListSort } from "@/components/AssetListSort";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { AtivosDuplicados } from "@/components/AtivosDuplicados";
+import { DatasAProximar } from "@/components/DatasAProximar";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
 import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
@@ -284,6 +286,32 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
     stored.filter((a) => a.kind === "investimento"),
     new Map(stored.map((a) => [a.id, (tradesByAsset.get(a.id) ?? []).length])),
   );
+
+  /**
+   * Resultados e dividendos a caminho, das posições que estão em carteira.
+   *
+   * Lê-se do que está gravado e nunca vai à fonte aqui: uma chamada externa por
+   * investimento ao desenhar a página punha dezenas de pedidos numa função com
+   * tempo limitado. Quem quiser pôr em dia carrega no botão.
+   */
+  const investimentosEmCarteira = stored.filter(
+    (a) => a.kind === "investimento" && (a.quantity ?? 0) > 0,
+  );
+  const datasProximas = datasAProximar(
+    investimentosEmCarteira.map((a) => ({
+      id: a.id,
+      name: a.name,
+      symbol: a.symbol,
+      emCarteira: true,
+      nextEarningsDate: a.nextEarningsDate,
+      exDividendDate: a.exDividendDate,
+      dividendDate: a.dividendDate,
+    })),
+    new Date().toISOString().slice(0, 10),
+  );
+  const datasPorConsultar = investimentosEmCarteira.filter(
+    (a) => a.symbol && !a.marketDatesAt,
+  ).length;
   const podeSugerir = tickerSuggestAvailable();
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
@@ -556,6 +584,14 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                 {kind === "investimento" && duplicados.length > 0 ? (
                   <div className="border-b border-hair2 px-5 pb-4 pt-3">
                     <AtivosDuplicados grupos={duplicados} />
+                  </div>
+                ) : null}
+                {/* As datas a caminho, logo a seguir aos duplicados: é a única
+                    coisa desta página com prazo — uma data-ex que passa não
+                    volta. */}
+                {kind === "investimento" && investimentosEmCarteira.length > 0 ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <DatasAProximar datas={datasProximas} porConsultar={datasPorConsultar} />
                   </div>
                 ) : null}
                 {/* Depois de uma importação ficam dezenas de ativos sem símbolo,

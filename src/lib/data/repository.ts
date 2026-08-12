@@ -248,6 +248,24 @@ export interface Asset {
    * pagar dela.
    */
   financesAssetId?: string | null;
+
+  /**
+   * Datas que valem um aviso, como a fonte as deu. Ver `datas-mercado.ts`.
+   *
+   * **Não se apagam depois de passarem.** Uma apresentação de resultados de
+   * anteontem explica o salto na cotação que alguém está a olhar hoje; quem lê
+   * decide o que mostra, e a coluna guarda o que a fonte disse.
+   */
+  nextEarningsDate?: string | null;
+  dividendDate?: string | null;
+  exDividendDate?: string | null;
+  /**
+   * Quando é que estas datas foram consultadas.
+   *
+   * Sem isto não se distingue "esta empresa não paga dividendo" de "ainda não
+   * fui perguntar" — e o ecrã diria a mesma coisa nos dois casos: nada.
+   */
+  marketDatesAt?: string | null;
   updatedAt?: string | null;
 }
 

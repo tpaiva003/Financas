@@ -10,10 +10,13 @@
 
 ## 0. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
-**Migrações por correr: 0037 e 0038**, por esta ordem. Sem elas o funil
-(`/patrimonio/avaliacoes`) fica vazio, guardar um estudo dá erro e os anexos das
-avaliações não existem; o resto da avaliação funciona na mesma. As 0028–0036 já
-foram corridas — confirmado contra a base de dados.
+**Migração por correr: 0039** (datas de mercado). As 0037 e 0038 já foram
+corridas, e as 0028–0036 também. Sem a 0039, o painel "A caminho" no património
+não aparece; o resto funciona na mesma.
+
+**Copiar as migrações do GitHub pela vista "raw"**: a página renderizada pode
+colar lixo no início do ficheiro (`#FF00FF`), e o erro que sai daí é um
+`syntax error` que não parece ter nada a ver.
 
 ### O que se fez a 2026-08-12
 
@@ -94,11 +97,23 @@ contrário do que significa. Onde está "—" não há dado — não é zero.
 
 ### Por fazer nesta frente
 
-- **Notificações das datas importantes** (resultados, dividendo). As datas já
-  vêm da fonte e aparecem no ecrã; falta o lembrete.
 - **Comparação com o setor** — a última coluna da folha do Tiago que ainda não
   tem equivalente.
-- Reabrir um estudo guardado na calculadora (hoje relê-se, não se reedita).
+- **Confirmar em produção** que o botão das contas (`quoteSummary`) funciona e
+  que o resumo por IA dos anexos corre. Nenhum dos dois foi testável daqui.
+
+### Feito a 2026-08-12, à noite
+
+- **Reavaliar parte do estudo anterior.** Só o id viaja no endereço; o servidor
+  lê o resto. Um DCF tem onze pressupostos, e enfiá-los no URL deixava fabricar
+  um estudo com os números que se quisesse à espera que alguém carregasse em
+  guardar sem reparar.
+- **Datas de mercado** (migração **0039**): resultados, data-ex e pagamento,
+  gravados no bem e mostrados em "A caminho", no património. Prazos diferentes
+  por tipo — catorze dias para resultados (dá para reler o estudo), sete para a
+  data-ex (é a única com prazo a sério: passou, perdeu-se o dividendo), cinco
+  para o pagamento. Uma data que passou há menos de três dias continua a
+  aparecer, porque explica o salto na cotação que se está a olhar hoje.
 
 ---
 

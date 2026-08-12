@@ -1874,3 +1874,33 @@ eixo e trocar custa um clique. O eixo não começa em zero — uma margem entre 
 33% desenhada do zero é uma linha reta que esconde a única coisa que interessa —
 e por isso os valores vão escritos, para o corte não exagerar o movimento sem
 aviso.
+
+### Um aviso que aparece sempre deixa de ser um aviso
+
+Se a carteira mostrasse a próxima apresentação de resultados de todas as
+posições o ano inteiro, ao fim de uma semana ninguém lia aquela zona do ecrã — e
+no dia em que uma data interessasse, já estava invisível. Por isso os prazos são
+diferentes por tipo e curtos: catorze dias para resultados (o que dá para reler o
+estudo antes de a empresa o invalidar), sete para a data-ex, cinco para o
+pagamento. E uma data que passou há menos de três dias continua a aparecer,
+porque explica o salto na cotação que alguém está a olhar hoje.
+
+### A data-ex é a única destas datas com consequência
+
+Quem quiser o dividendo tem de ter as ações antes desse dia: passou, perdeu-se, e
+não há como voltar atrás. Nas outras duas não há nada a decidir — há só a saber.
+É por isso que vem destacada e as outras não.
+
+### Não se distingue "não paga dividendo" de "ainda não perguntei" sem um carimbo
+
+Sem a coluna que diz quando é que as datas foram consultadas, o ecrã dizia a
+mesma coisa nos dois casos: nada. Com ela, um investimento que nunca foi
+consultado aparece como tal, e a app sabe quando voltar a ir. E o carimbo só se
+escreve quando a consulta corre — senão uma fonte em baixo adiava a tentativa
+seguinte por uma semana.
+
+### Uma falha ao ir buscar datas não apaga as que já se sabiam
+
+Escrever `null` por cima quando a fonte não responde transformava um problema de
+rede numa empresa que aparentemente deixou de pagar dividendo. Fica a data
+anterior, com a idade que tem.

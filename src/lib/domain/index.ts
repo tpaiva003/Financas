@@ -42,4 +42,5 @@ export * from "./fundamentais";
 export * from "./avaliacoes";
 export * from "./logos";
 export * from "./duplicados";
+export * from "./datas-mercado";
 export * from "./imovel-liquido";
