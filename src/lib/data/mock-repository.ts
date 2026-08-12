@@ -48,7 +48,11 @@ import type {
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
+  seedAssets,
+  seedAssetTrades,
   seedExpenses,
+  seedIncomes,
+  seedQuotes,
   seedSettlements,
   seedSpaces,
   seedMembers,
@@ -82,6 +86,9 @@ const globalForStore = globalThis as unknown as { __financasStore?: Store };
 
 function getStore(): Store {
   if (!globalForStore.__financasStore) {
+    // As cotações de exemplo são partilhadas por símbolo (não pertencem a
+    // nenhum ambiente), por isso entram já na forma indexada que o store usa.
+    const quoteSeries = seedQuotes();
     globalForStore.__financasStore = {
       spaces: seedSpaces(),
       members: seedMembers(),
@@ -97,11 +104,11 @@ function getStore(): Store {
       importTemplates: [],
       importReminders: [],
       spendingGoals: [],
-      assets: [],
-      assetTrades: [],
-      quotes: {},
-      quoteCurrencies: {},
-      income: [],
+      assets: seedAssets(),
+      assetTrades: seedAssetTrades(),
+      quotes: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.quotes])),
+      quoteCurrencies: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.currency])),
+      income: seedIncomes(),
       resetTokens: [],
     };
   }

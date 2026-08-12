@@ -15,7 +15,11 @@ import { createClient } from "@supabase/supabase-js";
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
+  seedAssets,
+  seedAssetTrades,
   seedExpenses,
+  seedIncomes,
+  seedQuotes,
   seedSettlements,
 } from "../src/lib/data/seed-data";
 
@@ -106,6 +110,85 @@ async function main() {
   }));
   const { error: settleErr } = await db.from("settlements").insert(settlements);
   if (settleErr && !/duplicate/i.test(settleErr.message)) throw settleErr;
+
+  // Património, movimentos, cotações e rendimento. Tudo com id fixo e upsert
+  // pela chave primária: correr o seed duas vezes não duplica nada.
+  console.log("→ A semear património…");
+  await upsert(
+    "assets",
+    seedAssets().map((a) => ({
+      id: a.id,
+      space_id: a.spaceId,
+      name: a.name,
+      kind: a.kind,
+      quantity: a.quantity ?? null,
+      unit_cost_cents: a.unitCostCents ?? null,
+      unit_price_cents: a.unitPriceCents ?? null,
+      value_cents: a.valueCents ?? null,
+      purchased_at: a.purchasedAt ?? null,
+      notes: a.notes ?? null,
+      interest_rate_pct: a.interestRatePct ?? null,
+      monthly_payment_cents: a.monthlyPaymentCents ?? null,
+      term_months: a.termMonths ?? null,
+      rate_kind: a.rateKind ?? null,
+      symbol: a.symbol ?? null,
+      created_by: "tiago",
+    })),
+    "id",
+  );
+
+  console.log("→ A semear movimentos dos investimentos…");
+  await upsert(
+    "asset_trades",
+    seedAssetTrades().map((t) => ({
+      id: t.id,
+      space_id: t.spaceId,
+      asset_id: t.assetId,
+      trade_date: t.date,
+      kind: t.kind,
+      quantity: t.quantity ?? null,
+      unit_price_cents: t.unitPriceCents ?? null,
+      amount_cents: t.amountCents,
+      currency: t.currency ?? null,
+      original_amount_cents: t.originalAmountCents ?? null,
+      fx_rate: t.fxRate ?? null,
+      notes: t.notes ?? null,
+      created_by: "tiago",
+    })),
+    "id",
+  );
+
+  console.log("→ A semear cotações…");
+  for (const serie of seedQuotes()) {
+    const rows = serie.quotes.map((q) => ({
+      symbol: serie.symbol,
+      quote_date: q.date,
+      close_cents: q.closeCents,
+      currency: serie.currency,
+    }));
+    // Aos quinhentos, como no repositório: a API do Supabase não gosta de
+    // lotes grandes e uma série inteira são centenas de dias.
+    for (let i = 0; i < rows.length; i += 500) {
+      await upsert("quotes", rows.slice(i, i + 500), "symbol,quote_date");
+    }
+  }
+
+  console.log("→ A semear rendimentos…");
+  await upsert(
+    "income",
+    seedIncomes().map((i) => ({
+      id: i.id,
+      space_id: i.spaceId,
+      kind: i.kind,
+      description: i.description,
+      amount_cents: i.amountCents,
+      date: i.date,
+      recurring: i.recurring,
+      notes: i.notes ?? null,
+      created_by: "tiago",
+    })),
+    "id",
+  );
 
   console.log("✓ Seed concluído.");
 }

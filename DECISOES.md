@@ -1247,3 +1247,140 @@ Decisões tomadas:
 - A postura de acesso **mantém-se**: "quero saber mais" e o formulário de
   contacto, não registo aberto. Ligar o registo é decisão por tomar
   (ver `RETOMAR.md`), e a página não a antecipa.
+
+## Seed: património, investimentos e rendimentos — 2026-08-12
+
+O modo mock tinha despesas mas nada mais: `assets`, `asset_trades`, `quotes` e
+`income` arrancavam vazios. Metade da app (património, dívidas, rentabilidade,
+comparação com o índice, FIRE e taxa de poupança) abria em estado vazio, o que
+contraria o entregável "app navegável de ponta a ponta" e não serve para tirar
+capturas de ecrã.
+
+Decisões tomadas:
+
+- **As cotações são geradas, não escritas à mão.** Uma tendência anual suave com
+  uma ondulação sinusoidal (`SeriesSpec` em `seed-data.ts`) dá centenas de
+  fechos diários a partir de cinco números por símbolo. Escrever fechos à mão
+  seria impossível de manter e de ler, e a app precisa mesmo do **histórico**,
+  não só do preço de hoje, para a comparação com o índice funcionar.
+- **Determinismo total**, como já acontecia nas despesas: nenhuma chamada a
+  `Math.random` nem a `new Date()`. Os mesmos dados saem sempre iguais, que é o
+  que as capturas de ecrã e os testes exigem.
+- **As séries dos índices de referência (`sxr8.de`, `eunl.de`) também são
+  semeadas.** Sem elas, "e se tivesse ido para o índice?" só funcionaria com
+  rede. As séries acabam em 2026-08-11, um dia antes da data em que o exemplo
+  foi montado, para `isStale` as considerar frescas e a página não ir à fonte.
+- **A ação americana fica em dólares.** É o caso que exercita o câmbio de ponta
+  a ponta (movimentos com `currency`/`fxRate`, cotação em USD). Sem rede, a
+  conversão do preço atual não é possível e o ecrã diz isso — que é o
+  comportamento correto: nunca se grava uma cotação em dólares como se fossem
+  euros (ver migração 0019).
+- **O ambiente de exemplo passa a ter `plan: "full"`.** É o ambiente dos donos
+  da allow-list, e é o que `planForNewSpace` já lhes dá. Sem isto o exemplo
+  arrancava com 98 das 100 despesas do plano gratuito gastas: a app abria com
+  um aviso de limite e sem espaço para registar seja o que for.
+- **Limitação conhecida:** a taxa de poupança sai alta (85–96%) porque o
+  histórico de despesas de exemplo só tem as despesas partilhadas (≈365 €/mês)
+  e o rendimento semeado são ordenados inteiros. Pela mesma razão, o número
+  FIRE sugerido pelas despesas (109 491 €) é baixo e o progresso dá ~49%.
+  Corrigir isto obriga a alargar o histórico de despesas (prestação do crédito,
+  seguros, comunicações, gastos individuais), que fica por fazer.
+
+## A landing tinha de deixar de parecer um documento — 2026-08-12
+
+Depois de a página passar a contar a app toda, o Tiago apontou quatro coisas:
+os travessões longos, a falta de capturas de ecrã, uma citação que dava a
+entender que há discussões em casa, e a página estar "estanque", sem vida nem
+movimento, com linhas separadoras a mais entre blocos.
+
+### As linhas
+
+A grelha de cartões era `gap-px` sobre `bg-hair`, o que desenha uma
+quadrícula completa, e as secções alternavam com `border-y border-hair`. Cinco
+grelhas e cinco barras horizontais: a página lia-se como uma folha de cálculo.
+
+Regra que fica: **na landing, uma linha só existe se significar sequência, se
+estiver a desenhar-se, ou se for anatomia de um componente** (moldura de
+aparelho, campo de formulário, linha de despesa dentro de uma captura).
+Divisórias estáticas entre blocos, nenhuma. Dentro da app isto não se aplica:
+o `.row` com `border-b` está certo e não se tocou.
+
+Em vez delas:
+
+- **Cartões com contorno na sombra, não na borda** (`.surface`). O fio passa a
+  `box-shadow: 0 0 0 1px`, que fica fora da caixa de layout e pode ser bem mais
+  fraco do que o `--c-hair`. É o `--c-hair` que dava o aspeto de arame.
+- **Lavagens de fundo sem aresta** (`.wash`), com `inset: -6rem 0`: a transição
+  de cor acontece fora da secção, por isso não há sítio onde se veja uma linha.
+  E só duas na página inteira, senão é uma zebra.
+- **Cabeçalho sem borda**, que ganha fundo e sombra ao sair do topo, detetado
+  por uma sentinela de 1px observada e não por um ouvinte de `scroll`.
+
+### O movimento
+
+Uma família só: entradas a 620ms com `cubic-bezier(0.16,1,0.3,1)`, percurso de
+14px, cascata de 70ms travada ao quarto item, e **uma vez e nunca mais**
+(`unobserve` no primeiro disparo). Um observador partilhado por toda a página,
+não um por elemento.
+
+O que **não** entrou, e porquê: contadores a subir de zero (numa app de dinheiro
+lê-se como slot machine, e o valor é precisamente o que tem de parecer sólido);
+parallax; brilho a seguir o rato (não existe no telemóvel, que é o aparelho
+principal deste produto); e uma segunda camada de gradiente fixa. Fica só a
+deriva de 40s no `body::before` que já existia, e **apenas na landing**
+(`body:has([data-landing])`): ninguém quer o fundo a andar por trás de uma
+tabela de despesas.
+
+O único momento com JavaScript de propósito é o ecrã do herói, que anda sozinho
+uma vez ao fim de 1,8s e depois fica quieto. Demonstra o invariante que mais
+custa explicar por palavras: **quem pagou é independente de como se divide**. O
+Tiago pagou o jantar inteiro nos dois casos; o que muda é quanto a Clara lhe
+deve.
+
+**Armadilha que apanhámos à primeira:** o estado de partida da revelação é
+`opacity: 0`, por isso sem JavaScript a página ficava em branco. O `<noscript>`
+que a salva tem de ir por `dangerouslySetInnerHTML` e **sem `>` no seletor**: o
+React escapa o texto dos filhos, dentro de `<style>` o browser não desfaz o
+escape, e um seletor inválido faz cair a regra toda, incluindo a parte boa.
+Verificado com o JavaScript desligado, não assumido.
+
+### As capturas de ecrã
+
+- **São a app a sério**, com os dados de exemplo do modo mock. Nunca dados de
+  pessoas reais numa página pública.
+- **O ecrã é sempre de noite, a moldura é que muda de tema** (classe `.screen`).
+  Um telemóvel escuro sobre papel quente é o que um telemóvel é, e uma captura
+  escura a flutuar sem moldura sobre fundo claro fica um buraco no meio da
+  página. Poupa também metade dos ficheiros.
+- **Recorte próprio para telemóvel**: a 390px, um ecrã de 1440px reduzido é um
+  borrão cinzento.
+- **O herói não é imagem, é HTML.** O maior elemento da primeira vista passa a
+  ser texto, fica nítido em qualquer ecrã e permite mexer.
+- Orçamento: 90 KB por captura, 500 KB na página. Estamos nos 264 KB.
+- `npm run shots` volta a tirá-las todas. Sem isto, a página promete daqui a
+  três meses um produto que já não existe.
+
+### O texto
+
+- **Travessões longos, zero.** Vírgula, dois pontos, ponto final ou parênteses.
+- A citação do problema passou a ser sobre **o tempo e o trabalho à mão**, não
+  sobre discussões: "uma hora ao domingo à noite: abrir o extrato, copiar para a
+  folha de cálculo, somar as colunas". O custo destas contas é o serão que
+  levam, não a zanga que causam. Pelo mesmo motivo, o cartão "contas partilhadas
+  sem discussões" passou a "dividir sem fazer contas".
+
+### Dois bugs apanhados pelo caminho
+
+1. **O middleware barrava as páginas públicas.** `/privacidade`, `/termos` e
+   `/recuperar` redirecionavam para o login. As duas primeiras estão no rodapé e
+   a Google exige-as acessíveis sem sessão para aprovar o SSO; a terceira é a
+   reposição de palavra-chave, que por definição é para quem **não** consegue
+   entrar. Também apanhava `/landing/` e o `/icon.svg`, e era isso que deixava a
+   landing sem imagens: o otimizador do Next ia buscar o ficheiro e recebia um
+   redirecionamento.
+2. **O `.env.example` trazia `AUTH_URL="https://rachar.pt"`.** O README manda
+   copiá-lo para `.env.local` e arrancar, e com um URL de produção os cookies de
+   sessão saem `Secure`, que o browser recusa em `http://localhost`. Ou seja, o
+   arranque documentado não dava para entrar na app, e sem erro nenhum: o login
+   volta ao login. O `.env.example` passa a trazer o URL local, com os valores
+   de produção em comentário ao lado.

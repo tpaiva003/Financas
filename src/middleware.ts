@@ -15,12 +15,24 @@ import { authConfig } from "@/lib/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_EXACT = ["/", "/login"];
+/**
+ * Páginas que têm mesmo de abrir sem sessão.
+ *
+ * A `/recuperar` é o caso que mais depressa se percebe: quem perdeu a
+ * palavra-chave não pode ter de entrar para a repor. As `/privacidade` e
+ * `/termos` estão aqui pela mesma razão por que existem, a Google exige-as
+ * acessíveis sem sessão para aprovar o ecrã de consentimento do SSO, e o
+ * rodapé da landing aponta para as duas.
+ */
+const PUBLIC_EXACT = ["/", "/login", "/privacidade", "/termos", "/recuperar"];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isPublic =
-    PUBLIC_EXACT.includes(pathname) || pathname.startsWith("/login/");
+    PUBLIC_EXACT.includes(pathname) ||
+    pathname.startsWith("/login/") ||
+    // O link de reposição traz o código no caminho: /recuperar/<token>.
+    pathname.startsWith("/recuperar/");
 
   if (isPublic) {
     if (req.auth && pathname === "/login") {
@@ -39,7 +51,11 @@ export default auth((req) => {
 });
 
 export const config = {
+  // `landing/` são as capturas de ecrã da página pública, e os ícones são
+  // pedidos pelo browser antes de haver sessão nenhuma. Passar por aqui punha
+  // o middleware a responder-lhes com um redirecionamento para o login, que é
+  // o que estragava as imagens da landing.
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)",
+    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|landing/|icon.svg|apple-icon.svg).*)",
   ],
 };
