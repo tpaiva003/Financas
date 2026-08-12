@@ -43,4 +43,5 @@ export * from "./avaliacoes";
 export * from "./logos";
 export * from "./duplicados";
 export * from "./datas-mercado";
+export * from "./capital-em-divida";
 export * from "./imovel-liquido";

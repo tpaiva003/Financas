@@ -250,6 +250,18 @@ export interface Asset {
   financesAssetId?: string | null;
 
   /**
+   * O montante contratado do crédito, em cêntimos.
+   *
+   * **Não é o que falta pagar** — esse é o `valueCents`. Serve para calcular o
+   * capital em dívida a partir do contrato quando ninguém o souber de cabeça, e
+   * nunca substitui o que está registado: o cálculo não sabe de amortizações
+   * antecipadas nem de comissões, e o valor do banco ganha sempre. Ver
+   * `credito-contrato.ts`. E o nome não é `originalAmountCents` de propósito:
+   * esse já existe nos movimentos e quer dizer o montante na moeda original.
+   */
+  contractedAmountCents?: number | null;
+
+  /**
    * Datas que valem um aviso, como a fonte as deu. Ver `datas-mercado.ts`.
    *
    * **Não se apagam depois de passarem.** Uma apresentação de resultados de

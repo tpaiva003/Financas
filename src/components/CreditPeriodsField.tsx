@@ -327,7 +327,13 @@ export function CreditPeriodsField({
             {usados.map((k) => (
               <div key={k}>
                 <label className="label" htmlFor={`cp-idxrate-${uid}-${k}`}>{INDEXANTES[k]} (%)</label>
-                <div className="flex items-center gap-2">
+                {/*
+                  `flex-wrap` e `min-w-0`, e não é detalhe: a nota do BCE é um
+                  irmão com `basis-full`, e numa linha que não quebra ela
+                  disputava a largura com o campo até o esmagar num círculo — o
+                  valor ficava lá dentro, invisível.
+                */}
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     id={`cp-idxrate-${uid}-${k}`}
                     name={`indexanteRate-${k}`}
@@ -335,7 +341,7 @@ export function CreditPeriodsField({
                     value={taxas[k] ?? ""}
                     onChange={(e) => setTaxas((t) => ({ ...t, [k]: e.target.value }))}
                     placeholder="2,1"
-                    className="input h-9 flex-1 text-xs"
+                    className="input h-9 min-w-0 flex-1 text-xs"
                   />
                   <BuscarEuribor
                     indexante={k}
