@@ -4,11 +4,12 @@
 > o repositório, a base de dados e o GitHub — não de memória.
 >
 > Última atualização: 2026-08-12 (foco do património por tipo de bem; séries
-> temporais no DCF; as contas do Yahoo confirmadas a funcionar).
+> temporais no DCF; análise por setor; as contas do Yahoo confirmadas a
+> funcionar). **Migração 0041 por correr.**
 
 ---
 
-## 0. Sessão de 2026-08-12 (noite) — foco do património e séries no DCF
+## 0. Sessão de 2026-08-12 (noite) — foco do património, séries no DCF, setores
 
 **As contas do Yahoo funcionam em produção.** O Tiago confirmou-o com a
 Alphabet preenchida de ponta a ponta (fluxo livre, ações, preço, dívida, caixa
@@ -61,16 +62,38 @@ botão das **datas de mercado** usa o mesmo caminho — se um passa, o outro pas
   uma das séries ficava certa — e as duas continuavam a desenhar-se com o mesmo
   ar de facto.
 
+### Análise por setor — feito na mesma sessão
+
+Pedida pelo Tiago: "análise dos ativos por setor, por evolução das empresas, por
+reforços". Vive em **Análise → Património**, por baixo do mês a mês.
+
+- **Migração 0041** (`sector`, `industry`, `profile_at` no bem). **POR CORRER** à
+  data desta escrita — enquanto não correr, a secção aparece com tudo em "Por
+  classificar", que é o comportamento correto e não uma avaria.
+- O setor vem do módulo `assetProfile`, que passou a ir **no mesmo pedido** das
+  contas. A atualização semanal das datas de mercado já o traz de borla; o botão
+  "Ir buscar setores" trata os restantes, doze de cada vez.
+- **Só preenche o que está vazio.** Um setor corrigido à mão nunca é reescrito —
+  é o invariante das entradas manuais.
+- `profile_at` distingue "a fonte não sabe" (normal nos ETF) de "ainda não fui
+  perguntar", e só se escreve quando a consulta corre.
+
+O que esta leitura se recusa a fazer, e é o que a torna fiável: **"Por
+classificar" é um grupo com nome e nunca uma fatia calada**, e **com nada
+classificado não há maior setor nenhum** — anunciar "o maior é Por classificar,
+com 100%" apresentava a ausência de um dado como uma conclusão sobre a carteira.
+Mostram-se **duas** leituras: o peso no valor de hoje e o peso no dinheiro que
+entrou. Um setor que subiu muito ocupa mais peso do que alguma vez se decidiu
+dar-lhe, e é assim que uma concentração aparece sem ninguém a ter escolhido.
+
 ### Por fazer nesta frente
 
-- **Análise por setor** (pedida pelo Tiago: "análise dos ativos por setor, por
-  evolução das empresas, por reforços"). Precisa de uma coluna `sector` no bem,
-  alimentada pelo módulo `assetProfile` do Yahoo — que é o mesmo `quoteSummary`
-  agora confirmado a funcionar, por isso o caminho está aberto. Migração 0041.
+- **Correr a 0041** e carregar em "Ir buscar setores".
 - **Comparação com o setor** no DCF — a última coluna da folha do Tiago. Médias
-  setoriais a sério não existem numa fonte gratuita; a alternativa honesta é
-  comparar com os próprios investimentos do mesmo setor, o que só faz sentido
-  depois de existir a coluna acima.
+  setoriais a sério não existem numa fonte gratuita, e inventá-las era o modo de
+  falha nº 5 desta app. A alternativa honesta é comparar com os **próprios
+  investimentos do mesmo setor**, o que só passa a fazer sentido depois de a
+  0041 estar corrida e os setores preenchidos.
 
 ---
 

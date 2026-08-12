@@ -2001,3 +2001,65 @@ um nome de campo, só uma das séries ficava certa — e as duas continuavam a
 desenhar-se com o mesmo ar de facto. A única diferença é a chave: o anual indexa
 por ano (para juntar um exercício reexpresso), o trimestral por data (senão os
 quatro trimestres de 2025 colapsam num ponto só).
+
+---
+
+## A carteira por setor (2026-08-12)
+
+### O setor fica no bem, e não numa tabela de setores
+
+É um texto por investimento que muda de década a década. Uma tabela de referência
+com chave estrangeira obrigava a uma junção em todas as leituras da carteira para
+devolver uma palavra, e a inventar uma linha nova sempre que a fonte estreasse um
+nome. Agrupar por texto é o que esta app já faz com as categorias de despesa.
+
+### A tradução vive no código, não na base de dados
+
+Guarda-se o nome como a fonte lhe chama, em inglês, e traduz-se ao ler. Assim um
+nome que o Yahoo estreie **chega ao ecrã como está** em vez de cair numa fatia
+"Outros" — que juntaria numa fatia só coisas sem nada a ver umas com as outras,
+sem ninguém dar por isso.
+
+### "Por classificar" é um grupo com nome e nunca uma fatia calada
+
+Se metade da carteira não tem setor, a percentagem do maior setor está errada por
+metade. Um gráfico que só desenhe os classificados esconde exactamente isso e
+apresenta uma conta incompleta como se fosse a conta. Os que faltam contam para o
+total, aparecem na lista, e o ecrã diz quantos são e que percentagem do valor
+representam.
+
+### Com nada classificado não há maior setor nenhum
+
+O caso de uma carteira acabada de importar. "O maior é *Por classificar*, com
+100%" apresentava a ausência de um dado como uma conclusão sobre a carteira. A
+ordenação por si só não chegava para isto — foi preciso um teste que falhasse
+contra a versão que só ordenava, e a primeira tentativa de o escrever passava dos
+dois lados, o que quer dizer que não testava nada.
+
+### Duas leituras de peso, e não uma
+
+O peso no valor de hoje diz onde é que o dinheiro está; o peso no dinheiro que
+entrou diz onde é que se decidiu pô-lo. Um setor que subiu muito ocupa mais peso
+do que alguma vez se decidiu dar-lhe — é assim que uma concentração aparece sem
+ninguém a ter escolhido. A segunda linha só se mostra quando as duas se afastam
+três pontos ou mais: iguais, é ruído.
+
+### As empresas ordenam-se pelo dinheiro que entrou, não pelo valor
+
+A pergunta é sobre as decisões que se tomaram, e a maior posição de hoje pode ser
+a que menos dinheiro levou.
+
+### Um ETF sem setor na fonte não é uma falha
+
+A fonte não classifica fundos por setor. Chamar-lhe erro mandava alguém procurar
+um problema que não existe, por isso a mensagem separa "não deu resposta"
+(repete-se à próxima) de "respondeu que não sabe" (não se repete). É o
+`profile_at` que permite a distinção — e ele só se escreve quando a consulta
+corre, porque carimbá-lo numa falha de rede adiava a tentativa seguinte sem nada
+ter sido perguntado.
+
+### Um lote de cada vez
+
+Uma carteira com cinquenta investimentos sem setor dava cinquenta idas à rede em
+série dentro de uma função com tempo limitado — que estoirava o prazo e não
+gravava nada. Doze por passagem, com o número que falta no próprio botão.
