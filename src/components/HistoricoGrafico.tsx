@@ -189,13 +189,13 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
       <p className="text-xs text-fg-muted">
         {sobre !== null && activo !== null ? (
           <>
-            <span className="text-fg-faint">{historico[sobre]!.ano}:</span>{" "}
+            <span className="text-fg-faint">{historico[sobre]!.rotulo}:</span>{" "}
             <span className="font-mono tnum text-fg">{formatar(activo, metrica.unidade)}</span>
           </>
         ) : (
           <>
             <span className="text-fg-faint">
-              {historico[0]!.ano}–{historico[historico.length - 1]!.ano}:
+              {historico[0]!.rotulo}–{historico[historico.length - 1]!.rotulo}:
             </span>{" "}
             <span className="font-mono tnum text-fg">
               {formatar(primeiro, metrica.unidade)} → {formatar(ultimo, metrica.unidade)}
@@ -210,7 +210,7 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
         preserveAspectRatio="none"
         className="h-28 w-full overflow-visible"
         role="img"
-        aria-label={`${metrica.label} de ${historico[0]!.ano} a ${historico[historico.length - 1]!.ano}`}
+        aria-label={`${metrica.label} de ${historico[0]!.rotulo} a ${historico[historico.length - 1]!.rotulo}`}
         onMouseLeave={() => setSobre(null)}
         onPointerLeave={() => setSobre(null)}
       >
@@ -242,7 +242,7 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
         {/* Faixas invisíveis: apontar a um ponto de 2px é um exercício de perícia. */}
         {historico.map((a, i) => (
           <rect
-            key={a.ano}
+            key={a.rotulo}
             x={x(i) - W / historico.length / 2}
             y={0}
             width={W / historico.length}
@@ -256,7 +256,7 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
 
       <div className="flex justify-between font-mono text-[10px] text-fg-faint">
         {historico.map((a) => (
-          <span key={a.ano}>{a.ano}</span>
+          <span key={a.rotulo}>{a.rotulo}</span>
         ))}
       </div>
 

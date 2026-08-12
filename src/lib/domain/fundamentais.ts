@@ -25,9 +25,21 @@
 
 import { forSource, moedaDeSubunidade } from "./quotes";
 
-/** Um ano de contas, com os rácios já calculados. */
+/** Um período de contas, com os rácios já calculados. */
 export interface AnoFundamental {
   ano: number;
+  /**
+   * Como o período se chama: "2025" num exercício, "set/25" num trimestre.
+   *
+   * **Os trimestres são rotulados pelo mês em que acabam e não por "T1…T4".**
+   * O ano fiscal da Apple acaba em setembro e o primeiro trimestre dela fecha
+   * em dezembro — chamar-lhe "T1" quando o calendário diz T4, ou "T4" quando a
+   * empresa lhe chama T1, engana das duas maneiras. O mês de fecho não precisa
+   * de convenção nenhuma para se ler.
+   */
+  rotulo: string;
+  /** O fim do período, "AAAA-MM-DD". É por aqui que a série se ordena. */
+  fim: string | null;
   receitaBilioes: number | null;
   margemBrutaPct: number | null;
   margemOperacionalPct: number | null;
@@ -84,8 +96,18 @@ export interface Fundamentais {
   /** Dívida total (curto mais longo prazo), em milhares de milhões. */
   dividaBilioes: number | null;
   caixaBilioes: number | null;
-  /** Do ano mais antigo para o mais recente. */
+  /** Exercícios anuais, do mais antigo para o mais recente. */
   historico: AnoFundamental[];
+  /**
+   * Trimestres, do mais antigo para o mais recente.
+   *
+   * Serve para ver a tendência recente com mais resolução — quatro pontos
+   * anuais escondem uma margem que virou há dois trimestres. **Não entra em
+   * nenhuma conta**: as médias, o CAGR e os cenários continuam a sair só dos
+   * exercícios anuais, porque um trimestre comparado com o anterior mede
+   * sazonalidade tanto como desempenho.
+   */
+  trimestral: AnoFundamental[];
   medias: MediasHistoricas;
   estimativas: EstimativasAnalistas;
   datas: DatasEmpresa;
@@ -107,6 +129,11 @@ export const MODULOS_FUNDAMENTAIS = [
   "incomeStatementHistory",
   "balanceSheetHistory",
   "cashflowStatementHistory",
+  // Os mesmos três, por trimestre. Vêm no mesmo pedido e no mesmo custo: o
+  // `quoteSummary` aceita a lista toda de uma vez.
+  "incomeStatementHistoryQuarterly",
+  "balanceSheetHistoryQuarterly",
+  "cashflowStatementHistoryQuarterly",
   "earningsTrend",
   "calendarEvents",
 ] as const;
@@ -205,17 +232,112 @@ export function cagrPct(serie: (number | null)[]): number | null {
 
 type Linha = Record<string, unknown>;
 
-function porAno(linhas: unknown): Map<number, Linha> {
-  const m = new Map<number, Linha>();
+/**
+ * As linhas de um mapa financeiro, indexadas pelo fim do período.
+ *
+ * `granularidade` decide a chave: no anual é o **ano**, porque um exercício
+ * reexpresso volta a aparecer com outra data de fecho e são o mesmo ano; no
+ * trimestral tem de ser a **data**, senão os quatro trimestres de 2025 colapsam
+ * todos num só e a série fica com um ponto por ano onde devia ter quatro.
+ *
+ * Fica sempre o primeiro de cada chave: o Yahoo devolve do mais recente para o
+ * mais antigo, e o mais recente é o que vale.
+ */
+function porPeriodo(linhas: unknown, granularidade: "ano" | "trimestre"): Map<string, Linha> {
+  const m = new Map<string, Linha>();
   if (!Array.isArray(linhas)) return m;
   for (const l of linhas) {
     if (!l || typeof l !== "object") continue;
-    const a = ano((l as Linha).endDate);
-    // Fica o primeiro de cada ano: o Yahoo devolve do mais recente para o mais
-    // antigo, e um exercício reexpresso aparece duas vezes.
-    if (a !== null && !m.has(a)) m.set(a, l as Linha);
+    const fim = dia((l as Linha).endDate);
+    if (!fim) continue;
+    const chave = granularidade === "ano" ? fim.slice(0, 4) : fim;
+    if (!m.has(chave)) m.set(chave, l as Linha);
   }
   return m;
+}
+
+const MESES_CURTOS = [
+  "jan", "fev", "mar", "abr", "mai", "jun",
+  "jul", "ago", "set", "out", "nov", "dez",
+];
+
+/** "2025-09-27" dá "2025" no anual e "set/25" no trimestral. Ver `rotulo`. */
+function rotuloDoPeriodo(fim: string, granularidade: "ano" | "trimestre"): string {
+  if (granularidade === "ano") return fim.slice(0, 4);
+  const mes = MESES_CURTOS[Number(fim.slice(5, 7)) - 1] ?? fim.slice(5, 7);
+  return `${mes}/${fim.slice(2, 4)}`;
+}
+
+/**
+ * Uma série de períodos, com os rácios de cada um.
+ *
+ * É a mesma leitura para o anual e para o trimestral — e tem de ser a mesma, e
+ * não uma cópia: uma segunda cópia deste bloco significava que o dia em que o
+ * `capitalExpenditures` mudasse de sinal só uma das duas séries ficava certa, e
+ * as duas continuavam a desenhar-se com o mesmo ar de facto.
+ */
+function lerSerie(
+  dres: unknown,
+  bals: unknown,
+  cfs: unknown,
+  granularidade: "ano" | "trimestre",
+): AnoFundamental[] {
+  const receitas = porPeriodo(dres, granularidade);
+  const balancos = porPeriodo(bals, granularidade);
+  const fluxos = porPeriodo(cfs, granularidade);
+
+  const chaves = [...new Set([...receitas.keys(), ...balancos.keys(), ...fluxos.keys()])].sort();
+
+  return chaves.map((chave) => {
+    const dre = receitas.get(chave) ?? {};
+    const bal = balancos.get(chave) ?? {};
+    const cf = fluxos.get(chave) ?? {};
+    const fim = dia(dre.endDate) ?? dia(bal.endDate) ?? dia(cf.endDate);
+
+    const receita = num(dre.totalRevenue);
+    const bruto = num(dre.grossProfit);
+    const operacional = num(dre.operatingIncome);
+    const liquido = num(dre.netIncome);
+    // `ebit` só vem em algumas respostas; o resultado operacional é o mesmo
+    // conceito para este efeito e vem sempre.
+    const ebit = num(dre.ebit) ?? operacional;
+
+    const ativo = num(bal.totalAssets);
+    const passivoCorrente = num(bal.totalCurrentLiabilities);
+    const ativoCorrente = num(bal.totalCurrentAssets);
+    const capital = num(bal.totalStockholderEquity);
+    const dividaCurta = num(bal.shortLongTermDebt);
+    const dividaLonga = num(bal.longTermDebt);
+    const dividaTotal =
+      dividaCurta === null && dividaLonga === null ? null : (dividaCurta ?? 0) + (dividaLonga ?? 0);
+
+    const operacoes = num(cf.totalCashFromOperatingActivities);
+    // O investimento em ativo fixo vem **negativo** no Yahoo. Somar é subtrair.
+    const capex = num(cf.capitalExpenditures);
+    const fcf = operacoes === null ? null : operacoes + (capex ?? 0);
+
+    const capitalEmpregue =
+      ativo === null || passivoCorrente === null ? null : ativo - passivoCorrente;
+
+    return {
+      ano: Number(chave.slice(0, 4)),
+      rotulo: rotuloDoPeriodo(fim ?? chave, granularidade),
+      fim: fim ?? null,
+      receitaBilioes: mM(receita),
+      margemBrutaPct: razaoPct(bruto, receita),
+      margemOperacionalPct: razaoPct(operacional, receita),
+      margemLiquidaPct: razaoPct(liquido, receita),
+      rocePct: razaoPct(ebit, capitalEmpregue),
+      roePct: razaoPct(liquido, capital),
+      dividaSobreCapitalPct: razaoPct(dividaTotal, capital),
+      liquidezCorrente:
+        ativoCorrente === null || passivoCorrente === null || passivoCorrente <= 0
+          ? null
+          : Math.round((ativoCorrente / passivoCorrente) * 100) / 100,
+      fcfBilioes: mM(fcf),
+      margemFcfPct: razaoPct(fcf, receita),
+    };
+  });
 }
 
 /**
@@ -237,6 +359,7 @@ export function parseFundamentais(texto: string): Fundamentais {
     dividaBilioes: null,
     caixaBilioes: null,
     historico: [],
+    trimestral: [],
     medias: {
       rocePct: null,
       margemOperacionalPct: null,
@@ -285,61 +408,18 @@ export function parseFundamentais(texto: string): Fundamentais {
         ? (fin.financialCurrency as string).toUpperCase()
         : null;
 
-  const receitas = porAno(r.incomeStatementHistory?.incomeStatementHistory);
-  const balancos = porAno(r.balanceSheetHistory?.balanceSheetStatements);
-  const fluxos = porAno(r.cashflowStatementHistory?.cashflowStatements);
-
-  const anos = [...new Set([...receitas.keys(), ...balancos.keys(), ...fluxos.keys()])].sort(
-    (a, b) => a - b,
+  const historico = lerSerie(
+    r.incomeStatementHistory?.incomeStatementHistory,
+    r.balanceSheetHistory?.balanceSheetStatements,
+    r.cashflowStatementHistory?.cashflowStatements,
+    "ano",
   );
-
-  const historico: AnoFundamental[] = anos.map((a) => {
-    const dre = receitas.get(a) ?? {};
-    const bal = balancos.get(a) ?? {};
-    const cf = fluxos.get(a) ?? {};
-
-    const receita = num(dre.totalRevenue);
-    const bruto = num(dre.grossProfit);
-    const operacional = num(dre.operatingIncome);
-    const liquido = num(dre.netIncome);
-    // `ebit` só vem em algumas respostas; o resultado operacional é o mesmo
-    // conceito para este efeito e vem sempre.
-    const ebit = num(dre.ebit) ?? operacional;
-
-    const ativo = num(bal.totalAssets);
-    const passivoCorrente = num(bal.totalCurrentLiabilities);
-    const ativoCorrente = num(bal.totalCurrentAssets);
-    const capital = num(bal.totalStockholderEquity);
-    const dividaCurta = num(bal.shortLongTermDebt);
-    const dividaLonga = num(bal.longTermDebt);
-    const dividaTotal =
-      dividaCurta === null && dividaLonga === null ? null : (dividaCurta ?? 0) + (dividaLonga ?? 0);
-
-    const operacoes = num(cf.totalCashFromOperatingActivities);
-    // O investimento em ativo fixo vem **negativo** no Yahoo. Somar é subtrair.
-    const capex = num(cf.capitalExpenditures);
-    const fcf = operacoes === null ? null : operacoes + (capex ?? 0);
-
-    const capitalEmpregue =
-      ativo === null || passivoCorrente === null ? null : ativo - passivoCorrente;
-
-    return {
-      ano: a,
-      receitaBilioes: mM(receita),
-      margemBrutaPct: razaoPct(bruto, receita),
-      margemOperacionalPct: razaoPct(operacional, receita),
-      margemLiquidaPct: razaoPct(liquido, receita),
-      rocePct: razaoPct(ebit, capitalEmpregue),
-      roePct: razaoPct(liquido, capital),
-      dividaSobreCapitalPct: razaoPct(dividaTotal, capital),
-      liquidezCorrente:
-        ativoCorrente === null || passivoCorrente === null || passivoCorrente <= 0
-          ? null
-          : Math.round((ativoCorrente / passivoCorrente) * 100) / 100,
-      fcfBilioes: mM(fcf),
-      margemFcfPct: razaoPct(fcf, receita),
-    };
-  });
+  const trimestral = lerSerie(
+    r.incomeStatementHistoryQuarterly?.incomeStatementHistory,
+    r.balanceSheetHistoryQuarterly?.balanceSheetStatements,
+    r.cashflowStatementHistoryQuarterly?.cashflowStatements,
+    "trimestre",
+  );
 
   const medias: MediasHistoricas = {
     rocePct: media(historico.map((h) => h.rocePct)),
@@ -394,6 +474,7 @@ export function parseFundamentais(texto: string): Fundamentais {
     dividaBilioes: mM(divida),
     caixaBilioes: mM(caixa),
     historico,
+    trimestral,
     medias,
     estimativas: {
       crescimento1aPct: tendencia("+1y"),
@@ -401,6 +482,53 @@ export function parseFundamentais(texto: string): Fundamentais {
     },
     datas,
     emFalta,
+  };
+}
+
+/** O que uma série fez entre a primeira e a última leitura que tem. */
+export interface TendenciaSerie {
+  primeiro: number;
+  ultimo: number;
+  /** Variação absoluta, nas unidades da própria série. */
+  variacao: number;
+  /**
+   * A mesma variação em percentagem, **quando ela quer dizer alguma coisa**.
+   *
+   * `null` quando o ponto de partida não é positivo. Uma margem que vai de −5%
+   * para 3% melhorou 8 pontos; a divisão dá −160%, um número com sinal ao
+   * contrário do que aconteceu. É a mesma recusa que o histórico do património
+   * já faz com um líquido negativo.
+   */
+  variacaoPct: number | null;
+  /** Quantas leituras entraram — as que faltam não contam nem se inventam. */
+  pontos: number;
+  /** Quantas leituras a fonte não trouxe, para o ecrã o poder dizer. */
+  buracos: number;
+}
+
+/**
+ * A tendência de uma série de indicadores.
+ *
+ * **Compara a primeira leitura com a última, e não com o que lá devia estar.**
+ * Se faltar o ano do meio, ele não é interpolado: a variação é entre os dois
+ * extremos que existem mesmo, e o número de buracos vai à parte para quem lê
+ * saber sobre quanta coisa é que a conclusão assenta.
+ *
+ * `null` com menos de duas leituras: uma tendência de um ponto não é tendência.
+ */
+export function tendenciaDaSerie(valores: readonly (number | null)[]): TendenciaSerie | null {
+  const presentes = valores.filter((v): v is number => v !== null);
+  if (presentes.length < 2) return null;
+  const primeiro = presentes[0]!;
+  const ultimo = presentes[presentes.length - 1]!;
+  const variacao = Math.round((ultimo - primeiro) * 1000) / 1000;
+  return {
+    primeiro,
+    ultimo,
+    variacao,
+    variacaoPct: primeiro > 0 ? pct1(((ultimo - primeiro) / primeiro) * 100) : null,
+    pontos: presentes.length,
+    buracos: valores.length - presentes.length,
   };
 }
 

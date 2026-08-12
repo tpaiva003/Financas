@@ -5,6 +5,7 @@ import {
   cenariosDoHistorico,
   moedasBatem,
   parseFundamentais,
+  tendenciaDaSerie,
   urlDosFundamentais,
 } from "./fundamentais";
 
@@ -240,6 +241,138 @@ describe("parseFundamentais — o que se recusa a calcular", () => {
     );
     expect(f.historico).toHaveLength(1);
     expect(f.historico[0]!.margemLiquidaPct).toBe(10);
+  });
+});
+
+/**
+ * Os trimestres. Quatro pontos anuais escondem uma margem que virou há dois
+ * trimestres, e é para isso que esta série existe.
+ */
+describe("parseFundamentais — a série trimestral", () => {
+  const trimestres = (meses: number[]) =>
+    meses.map((m, i) => ({
+      endDate: dia(2025, m, 30),
+      totalRevenue: { raw: (20 + i) * 1_000_000_000 },
+      operatingIncome: { raw: (5 + i) * 1_000_000_000 },
+      netIncome: { raw: (4 + i) * 1_000_000_000 },
+    }));
+
+  const RESP = JSON.stringify({
+    quoteSummary: {
+      result: [
+        {
+          price: { longName: "Empresa de Ensaio" },
+          incomeStatementHistoryQuarterly: {
+            incomeStatementHistory: trimestres([3, 6, 9, 12]),
+          },
+        },
+      ],
+    },
+  });
+
+  /**
+   * O teste que falha contra o código antigo — e falharia contra a versão
+   * ingénua desta mudança. Indexar os trimestres pelo ano, como o anual faz de
+   * propósito, colapsava os quatro trimestres de 2025 num só: a série ficava
+   * com um ponto onde devia ter quatro, e ninguém desconfiava, porque um
+   * gráfico com um ponto lê-se como "esta empresa só reportou uma vez".
+   */
+  it("quatro trimestres do mesmo ano dão quatro pontos", () => {
+    const f = parseFundamentais(RESP);
+    expect(f.trimestral).toHaveLength(4);
+    expect(f.trimestral.map((t) => t.rotulo)).toEqual([
+      "mar/25",
+      "jun/25",
+      "set/25",
+      "dez/25",
+    ]);
+  });
+
+  it("vem do mais antigo para o mais recente, como o anual", () => {
+    const f = parseFundamentais(RESP);
+    const fins = f.trimestral.map((t) => t.fim);
+    expect([...fins].sort()).toEqual(fins);
+  });
+
+  /**
+   * A sazonalidade não é desempenho. Um trimestre de Natal a seguir a um de
+   * janeiro dava um "crescimento" que é só o calendário — por isso nada do que
+   * decide o DCF pode vir daqui.
+   */
+  it("os trimestres não entram nas médias nem nos cenários", () => {
+    const f = parseFundamentais(RESP);
+    expect(f.medias.anos).toBe(0);
+    expect(f.medias.crescimentoReceitaPct).toBeNull();
+    expect(cenariosDoHistorico(f.medias)).toBeNull();
+  });
+
+  it("sem módulos trimestrais a série fica vazia, e não rebenta", () => {
+    expect(parseFundamentais(RESPOSTA).trimestral).toEqual([]);
+  });
+
+  /** O anual continua a dedupar por ano: um exercício reexpresso é o mesmo ano. */
+  it("o anual junta dois fechos do mesmo ano num só", () => {
+    const f = parseFundamentais(
+      JSON.stringify({
+        quoteSummary: {
+          result: [
+            {
+              incomeStatementHistory: {
+                incomeStatementHistory: [
+                  { endDate: dia(2024, 12, 31), totalRevenue: { raw: 100_000_000_000 } },
+                  { endDate: dia(2024, 9, 30), totalRevenue: { raw: 90_000_000_000 } },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(f.historico).toHaveLength(1);
+    expect(f.historico[0]!.rotulo).toBe("2024");
+  });
+});
+
+describe("MODULOS_FUNDAMENTAIS", () => {
+  it("pede os trimestres no mesmo pedido", () => {
+    expect(MODULOS_FUNDAMENTAIS).toContain("incomeStatementHistoryQuarterly");
+    expect(MODULOS_FUNDAMENTAIS).toContain("balanceSheetHistoryQuarterly");
+    expect(MODULOS_FUNDAMENTAIS).toContain("cashflowStatementHistoryQuarterly");
+  });
+});
+
+describe("tendenciaDaSerie", () => {
+  it("compara a primeira leitura com a última", () => {
+    const t = tendenciaDaSerie([10, 12, 15])!;
+    expect(t.primeiro).toBe(10);
+    expect(t.ultimo).toBe(15);
+    expect(t.variacao).toBe(5);
+    expect(t.variacaoPct).toBe(50);
+    expect(t.buracos).toBe(0);
+  });
+
+  /**
+   * Uma margem que vai de −5% para 3% melhorou oito pontos. A divisão dá −160%
+   * — um número com o sinal ao contrário do que aconteceu, e que ninguém
+   * confere porque uma percentagem não se confere contra nada.
+   */
+  it("não dá percentagem a partir de um ponto de partida negativo", () => {
+    const t = tendenciaDaSerie([-5, 3])!;
+    expect(t.variacao).toBe(8);
+    expect(t.variacaoPct).toBeNull();
+  });
+
+  it("um buraco no meio não é interpolado, é contado", () => {
+    const t = tendenciaDaSerie([10, null, 20])!;
+    expect(t.pontos).toBe(2);
+    expect(t.buracos).toBe(1);
+    expect(t.ultimo).toBe(20);
+  });
+
+  it("uma leitura só não é tendência nenhuma", () => {
+    expect(tendenciaDaSerie([10])).toBeNull();
+    expect(tendenciaDaSerie([null, 10, null])).toBeNull();
+    expect(tendenciaDaSerie([])).toBeNull();
   });
 });
 

@@ -38,7 +38,15 @@ import {
   type Trade,
   duplicadosDeAtivos,
   datasAProximar,
+  FOCOS,
+  contaNoFoco,
+  focoDe,
+  focoValido,
+  focoVazioPorExtenso,
+  snapshotsDoFoco,
+  type FocoId,
 } from "@/lib/domain";
+import { FocoPatrimonio } from "@/components/FocoPatrimonio";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
@@ -76,7 +84,14 @@ export type PatrimonioView = "resumo" | "ativos" | "dividas" | "fire";
  * São perguntas diferentes e não se leem bem à mistura: quanto tenho ao todo,
  * o que tenho, o que devo, e para onde isto vai dar.
  */
-export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
+export async function PatrimonioContent({
+  view,
+  foco: focoBruto,
+}: {
+  view: PatrimonioView;
+  /** O foco vindo do endereço, ainda por validar. Só o resumo o usa. */
+  foco?: string;
+}) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
@@ -168,6 +183,26 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
     return base;
   });
   const net = buildNetWorth(assets);
+
+  /**
+   * O foco do resumo: tudo, ou só uma parte do património.
+   *
+   * **O `net` de cima fica intocado de propósito.** É ele que vai à fotografia
+   * do dia e é ele que as outras vistas usam. Gravar no histórico o líquido de
+   * uma vista filtrada seria escrever no passado que naquele dia a pessoa não
+   * tinha casa — e o histórico não se corrige depois, porque um saldo não se
+   * reconstrói. O foco vive só no que se desenha.
+   *
+   * As dívidas seguem os `kinds` de cada foco: em "Investimentos" o crédito à
+   * habitação não entra, porque não há ali nada que ele financie.
+   */
+  const foco: FocoId = view === "resumo" ? focoValido(focoBruto) : "tudo";
+  const netDoFoco = (id: FocoId) =>
+    id === "tudo" ? net : buildNetWorth(assets.filter((a) => contaNoFoco(a.kind, id)));
+  const netFoco = netDoFoco(foco);
+  const valoresPorFoco = Object.fromEntries(
+    FOCOS.map((f) => [f.id, netDoFoco(f.id).netCents]),
+  ) as Record<FocoId, number>;
 
   // Gasto anual sugerido para o FIRE: a partir das despesas reais do ambiente,
   // média dos meses com movimento, para não contar meses vazios como zero.
@@ -316,6 +351,15 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
   const rates = summariseRates(assets, today);
+  /**
+   * Os juros seguem o foco no resumo.
+   *
+   * Deixá-los fora do filtro punha "Pagas 4 200 € de juros" por baixo de um
+   * total de investimentos que não tem dívida nenhuma lá dentro — e a leitura
+   * óbvia seria que os juros saem daquele número.
+   */
+  const ratesFoco =
+    foco === "tudo" ? rates : summariseRates(assets.filter((a) => contaNoFoco(a.kind, foco)), today);
 
   /**
    * A fotografia de hoje, e o histórico para o gráfico.
@@ -331,12 +375,22 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
    */
   const historico = await (async () => {
     if (view !== "resumo") return null;
+    // A fotografia gravada é sempre a do património INTEIRO. Ver `foco`.
     const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
     const completo = await getNetWorthHistoryCompleto(ctx.space.id, today);
-    const series = buildNetWorthSeries(completo);
+    /**
+     * O gráfico segue o foco, e os pontos que não sabem repartir-se saem.
+     *
+     * As fotografias antigas — e todas as reconstruídas — só guardaram o
+     * total. Reparti-lo pelas proporções de hoje desenhava uma linha de
+     * investimentos que nunca existiu. Contam-se e dizem-se por baixo.
+     */
+    const { snapshots: doFoco, semReparticao } = snapshotsDoFoco(completo, foco);
+    const series = buildNetWorthSeries(doFoco);
     return {
       captura,
       series,
+      semReparticao,
       /**
        * Os índices são calculados sobre os PONTOS DA SÉRIE, não sobre os
        * snapshots em bruto.
@@ -380,32 +434,52 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
 
       {view === "resumo" ? (
       <>
+      <FocoPatrimonio atual={foco} valores={valoresPorFoco} />
+
       <section className="card p-6">
-        <p className="eyebrow">Património líquido</p>
+        <p className="eyebrow">
+          {foco === "tudo" ? "Património líquido" : focoDe(foco).label}
+        </p>
         <p
           className={`mt-2 font-display text-5xl font-semibold tracking-tightest tnum ${
-            net.netCents < 0 ? "text-debt" : ""
+            netFoco.netCents < 0 ? "text-debt" : ""
           }`}
         >
-          {formatCents(net.netCents)}
+          {formatCents(netFoco.netCents)}
         </p>
+        {netFoco.assets.length === 0 ? (
+          <p className="mt-2 text-sm text-fg-muted">{focoVazioPorExtenso(foco)}</p>
+        ) : (
         <p className="mt-2 text-sm text-fg-muted">
-          {formatCents(net.totalAssetsCents)} em bens
-          {net.totalLiabilitiesCents > 0
-            ? `, menos ${formatCents(net.totalLiabilitiesCents)} de dívidas`
+          {formatCents(netFoco.totalAssetsCents)} em bens
+          {netFoco.totalLiabilitiesCents > 0
+            ? `, menos ${formatCents(netFoco.totalLiabilitiesCents)} de dívidas`
             : ""}
           .
         </p>
+        )}
+        {/* Uma vista parcial tem de se anunciar. O número grande é o mesmo tipo
+            de número do total, e quem chega a esta página por um link já com
+            foco não tem como saber que está a ver uma parte. */}
+        {foco !== "tudo" ? (
+          <p className="mt-1 text-xs text-fg-faint">
+            É uma parte do teu património, não o total. Ao todo tens{" "}
+            <Link href="/patrimonio" className="text-fg-muted underline-offset-4 hover:underline">
+              {formatCents(net.netCents)}
+            </Link>
+            .
+          </p>
+        ) : null}
 
-        {net.investmentCostCents > 0 ? (
+        {netFoco.investmentCostCents > 0 ? (
           <p className="mt-3 text-sm">
             Investimentos:{" "}
-            <span className={net.investmentGainCents >= 0 ? "text-credit" : "text-debt"}>
-              {net.investmentGainCents >= 0 ? "+" : ""}
-              {formatCents(net.investmentGainCents)}
+            <span className={netFoco.investmentGainCents >= 0 ? "text-credit" : "text-debt"}>
+              {netFoco.investmentGainCents >= 0 ? "+" : ""}
+              {formatCents(netFoco.investmentGainCents)}
             </span>{" "}
             <span className="text-fg-faint">
-              sobre {formatCents(net.investmentCostCents)} de custo das posições
+              sobre {formatCents(netFoco.investmentCostCents)} de custo das posições
               abertas
             </span>
           </p>
@@ -421,16 +495,16 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
           se podia era chamar "investido" às duas e deixar quem lê a achar que
           um dos ecrãs está avariado.
         */}
-        {net.investmentCostCents > 0 ? (
+        {netFoco.investmentCostCents > 0 ? (
           <p className="mt-1 text-xs text-fg-faint">
             É o custo do que ainda tens. Em Ativos, o &ldquo;investido&rdquo; é
             outra conta: todo o dinheiro que alguma vez entrou, incluindo o das
             posições já vendidas.
           </p>
         ) : null}
-        {net.investmentsMissingPrice > 0 ? (
+        {netFoco.investmentsMissingPrice > 0 ? (
           <p className="mt-1 text-xs text-fg-faint">
-            {net.investmentsMissingPrice} investimento(s) sem preço atual. Enquanto
+            {netFoco.investmentsMissingPrice} investimento(s) sem preço atual. Enquanto
             faltar, contam pelo que custaram e ficam de fora do ganho, para o
             número não mentir.
           </p>
@@ -438,19 +512,35 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
       </section>
 
       {historico ? (
-        <NetWorthChart
-          series={historico.series}
-          captura={historico.captura}
-          indices={historico.indices}
-        />
+        <div className="space-y-2">
+          <NetWorthChart
+            series={historico.series}
+            captura={historico.captura}
+            indices={historico.indices}
+          />
+          {/* O buraco explicado. Sem isto, escolher "Investimentos" fazia o
+              gráfico encolher para dois pontos sem razão à vista — e um gráfico
+              que encolhe sozinho lê-se como avaria. */}
+          {historico.semReparticao > 0 ? (
+            <p className="text-xs text-fg-faint">
+              {historico.semReparticao === 1
+                ? "Há uma fotografia mais antiga que"
+                : `Há ${historico.semReparticao} fotografias mais antigas que`}{" "}
+              só guardou o total, sem o repartir por tipo de bem, por isso{" "}
+              {historico.semReparticao === 1 ? "fica" : "ficam"} de fora deste
+              gráfico. A repartição passou a ser guardada e daqui para a frente
+              a linha enche-se sozinha.
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
-      {net.byKind.length > 0 ? (
+      {netFoco.byKind.length > 0 ? (
         <section className="card p-5">
           <p className="eyebrow mb-3">Onde está</p>
           <ul className="space-y-3">
-            {net.byKind.map((k) => {
-              const max = Math.max(...net.byKind.map((x) => x.totalCents), 1);
+            {netFoco.byKind.map((k) => {
+              const max = Math.max(...netFoco.byKind.map((x) => x.totalCents), 1);
               return (
                 <li key={k.kind}>
                   <div className="mb-1 flex items-center justify-between gap-3 text-sm">
@@ -470,18 +560,18 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
         </section>
       ) : null}
 
-      {rates.annualInterestCents > 0 || rates.annualDebtInterestCents > 0 ? (
+      {ratesFoco.annualInterestCents > 0 || ratesFoco.annualDebtInterestCents > 0 ? (
         <section className="card p-5">
           <p className="eyebrow mb-2">Juros, num ano</p>
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-            {rates.annualInterestCents > 0 ? (
+            {ratesFoco.annualInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Recebes <span className="text-credit">{formatCents(rates.annualInterestCents)}</span>
+                Recebes <span className="text-credit">{formatCents(ratesFoco.annualInterestCents)}</span>
               </p>
             ) : null}
-            {rates.annualDebtInterestCents > 0 ? (
+            {ratesFoco.annualDebtInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Pagas <span className="text-debt">{formatCents(rates.annualDebtInterestCents)}</span>
+                Pagas <span className="text-debt">{formatCents(ratesFoco.annualDebtInterestCents)}</span>
               </p>
             ) : null}
           </div>

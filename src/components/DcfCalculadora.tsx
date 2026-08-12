@@ -30,6 +30,7 @@ import { PreencherAtivoDoDcf } from "./PreencherAtivoDoDcf";
 import { GuardarAvaliacao } from "./GuardarAvaliacao";
 import { BuscarFundamentais } from "./BuscarFundamentais";
 import { HistoricoGrafico } from "./HistoricoGrafico";
+import { SeriesFundamentais } from "./SeriesFundamentais";
 
 /** Em milhares de milhões, que é como estes números vêm num relatório. */
 function bilioesParaCents(v: string): number {
@@ -202,16 +203,25 @@ export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
           <Campo label="Caixa e equivalentes (mM)" valor={caixa} onChange={setCaixa} placeholder="10,422" />
           <div className="flex h-full flex-col">
             <p className="label">Dívida líquida (mM)</p>
+            {/*
+              A nota desceu para debaixo da grelha, e não é arrumação.
+
+              Os outros dois campos encostam-se ao fundo da coluna com
+              `mt-auto`; esta tinha uma legenda POR BAIXO da caixa, e era ela
+              que ficava encostada ao fundo — a caixa da dívida líquida subia
+              uma linha inteira e ficava desalinhada das outras duas, na única
+              linha do formulário onde os três valores se leem em conjunto.
+            */}
             <p className="input mt-auto flex items-center font-mono text-sm text-fg-muted">
               {divida.trim() || caixa.trim()
                 ? (dividaLiquidaCents / 100 / 1_000_000_000).toFixed(3).replace(".", ",")
                 : "—"}
             </p>
-            <p className="mt-1 text-xs text-fg-faint">
-              Calculada, não escrita: dívida menos caixa.
-            </p>
           </div>
         </div>
+        <p className="-mt-1 text-xs text-fg-faint">
+          A dívida líquida é calculada, não escrita: dívida menos caixa.
+        </p>
 
         {contas && !moedasBatem(contas) ? (
           <p
@@ -327,6 +337,14 @@ export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
       </section>
 
       {contas && contas.historico.length > 0 ? <Historial contas={contas} /> : null}
+
+      {/* As séries por tema, a seguir ao historial. O historial responde a "o
+          que é que esta empresa fez"; isto responde a "para onde é que cada
+          indicador está a ir", que é uma pergunta diferente e precisa de ver a
+          série inteira de cada um em vez de uma métrica de cada vez. */}
+      {contas && (contas.historico.length >= 2 || contas.trimestral.length >= 2) ? (
+        <SeriesFundamentais anual={contas.historico} trimestral={contas.trimestral} />
+      ) : null}
 
       {avaliacao && "erro" in avaliacao ? (
         <p role="alert" className="rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm leading-snug text-fg-muted">

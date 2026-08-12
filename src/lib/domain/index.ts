@@ -45,3 +45,4 @@ export * from "./duplicados";
 export * from "./datas-mercado";
 export * from "./capital-em-divida";
 export * from "./imovel-liquido";
+export * from "./foco-patrimonio";
