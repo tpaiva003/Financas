@@ -3,20 +3,85 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-12 (funil com empresas, anexos e resumo por IA;
-> o 404 das contas).
+> Última atualização: 2026-08-12 (foco do património por tipo de bem; séries
+> temporais no DCF; as contas do Yahoo confirmadas a funcionar).
 
 ---
 
-## 0. Sessão de 2026-08-11 (tarde) — avaliar empresas
+## 0. Sessão de 2026-08-12 (noite) — foco do património e séries no DCF
+
+**As contas do Yahoo funcionam em produção.** O Tiago confirmou-o com a
+Alphabet preenchida de ponta a ponta (fluxo livre, ações, preço, dívida, caixa
+e a dívida líquida derivada). O 404 era mesmo só a tradução do símbolo, e o
+botão das **datas de mercado** usa o mesmo caminho — se um passa, o outro passa.
+
+### O que se fez
+
+- **Caixas de foco no resumo do património** (`/patrimonio?foco=…`): Tudo,
+  Investimentos, Imóveis, Liquidez. Filtram o número grande, o gráfico, a
+  repartição "Onde está" e os juros do ano. Cada caixa mostra o seu próprio
+  líquido, para a comparação que motiva o filtro — quanto disto é casa e quanto
+  é carteira — se fazer sem carregar em nada.
+- **Séries temporais no DCF**, em acordeão e por tema (crescimento,
+  rentabilidade, solidez). Cada indicador leva o seu desenho ao lado dos seus
+  números e a tendência entre a primeira e a última leitura. O mesmo pedido ao
+  Yahoo passou a trazer também os **três mapas por trimestre**, sem custo extra.
+- **Desalinhamento da dívida líquida** na calculadora: a legenda por baixo da
+  caixa era o que ficava encostado ao fundo da coluna, e a caixa subia uma linha
+  em relação às outras duas — na única linha do formulário onde os três valores
+  se leem em conjunto.
+
+### Quatro decisões que não são óbvias
+
+1. **A fotografia gravada no histórico é sempre a do património inteiro.**
+   Gravar o líquido de uma vista filtrada escrevia no passado que naquele dia a
+   pessoa não tinha casa — e um saldo não se reconstrói depois.
+2. **Os pontos antigos que só guardaram o total saem do gráfico** em vez de
+   serem repartidos pelas proporções de hoje. O ecrã diz quantos ficaram de
+   fora; uma linha inventada tem ar de facto.
+3. **As dívidas só descontam nos focos que as incluem** (Tudo e Imóveis). Num
+   foco de investimentos o crédito à habitação não tem nada que subtrair, e
+   subtraí-lo dava um líquido negativo que não corresponde a decisão nenhuma.
+4. **Nada do que decide o DCF vem dos trimestres.** As médias, o CAGR e os
+   cenários continuam a sair dos exercícios anuais, porque um trimestre
+   comparado com o anterior mede sazonalidade tanto como desempenho. O ecrã
+   di-lo por palavras a quem escolhe a vista trimestral.
+
+### Três armadilhas fechadas com teste
+
+- **Os trimestres indexam-se pela data, não pelo ano.** Indexá-los pelo ano —
+  que é o que o anual faz de propósito, para juntar um exercício reexpresso —
+  colapsava os quatro trimestres de 2025 num ponto só. E um gráfico com um ponto
+  lê-se como "esta empresa só reportou uma vez".
+- **A tendência recusa dar percentagem a partir de um ponto de partida
+  negativo.** Uma margem que vai de −5% para 3% melhorou oito pontos; a divisão
+  dava −160%, com o sinal ao contrário do que aconteceu.
+- **O leitor de períodos é um só** para o anual e o trimestral. Uma segunda
+  cópia significava que o dia em que o `capitalExpenditures` mudasse de sinal só
+  uma das séries ficava certa — e as duas continuavam a desenhar-se com o mesmo
+  ar de facto.
+
+### Por fazer nesta frente
+
+- **Análise por setor** (pedida pelo Tiago: "análise dos ativos por setor, por
+  evolução das empresas, por reforços"). Precisa de uma coluna `sector` no bem,
+  alimentada pelo módulo `assetProfile` do Yahoo — que é o mesmo `quoteSummary`
+  agora confirmado a funcionar, por isso o caminho está aberto. Migração 0041.
+- **Comparação com o setor** no DCF — a última coluna da folha do Tiago. Médias
+  setoriais a sério não existem numa fonte gratuita; a alternativa honesta é
+  comparar com os próprios investimentos do mesmo setor, o que só faz sentido
+  depois de existir a coluna acima.
+
+---
+
+## 0b. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
 **Migrações todas corridas até à 0039**, confirmado pelo Tiago a 2026-08-12.
 
-**Por confirmar em produção** (nada disto foi testável a partir da caixa de
-desenvolvimento, porque o proxy bloqueia o Yahoo e a chave da Anthropic não está
-lá): o botão das contas (`quoteSummary`), o gráfico do historial que depende
-dele, o resumo por IA dos anexos, e o botão das datas de mercado — que usa o
-mesmo caminho das contas, por isso os dois caem ou passam juntos.
+**Confirmado em produção a 2026-08-12:** o botão das contas (`quoteSummary`) e,
+com ele, o gráfico do historial. **Continua por confirmar** o resumo por IA dos
+anexos — nada disto era testável a partir da caixa de desenvolvimento, porque o
+proxy bloqueia o Yahoo e a chave da Anthropic não está lá.
 
 **Copiar as migrações do GitHub pela vista "raw"**: a página renderizada pode
 colar lixo no início do ficheiro (`#FF00FF`), e o erro que sai daí é um

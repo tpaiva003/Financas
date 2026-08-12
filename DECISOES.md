@@ -1904,3 +1904,100 @@ seguinte por uma semana.
 Escrever `null` por cima quando a fonte não responde transformava um problema de
 rede numa empresa que aparentemente deixou de pagar dividendo. Fica a data
 anterior, com a idade que tem.
+
+---
+
+## Foco do património por tipo de bem (2026-08-12)
+
+### O património de quem tem casa é quase todo casa
+
+Uma carteira de investimentos a subir 8% num ano desaparece no desenho ao lado de
+um imóvel que vale cinco vezes mais e não se mexe. A pergunta "como está a correr
+a parte investida?" ficava sem resposta num ecrã que tem os dados todos para a
+dar. As caixas do topo escolhem o que se conta — Tudo, Investimentos, Imóveis,
+Liquidez — e o foco vai no endereço (`?foco=investimento`), por isso sobrevive a
+um recarregamento e funciona sem JavaScript.
+
+Escolheu-se **ligações e não botões com estado no cliente**: um seletor de
+cliente teria de voltar ao servidor à mesma para refazer as contas — ganhava-se
+uma animação e perdia-se o endereço.
+
+### O filtro muda o que se desenha e nunca o que se grava
+
+A fotografia diária do património continua a ser a do **património inteiro**,
+mesmo quando o ecrã está a mostrar só os investimentos. Gravar o líquido de uma
+vista filtrada escrevia no passado que naquele dia a pessoa não tinha casa — e,
+ao contrário das despesas, um saldo não se reconstrói depois.
+
+### Um ponto que não sabe repartir-se sai do gráfico
+
+As fotografias guardam o valor por tipo de bem num `jsonb`, mas as antigas — e
+todas as reconstruídas — só guardaram o total. Repartir esse total pelas
+proporções de hoje desenharia uma linha de investimentos que nunca existiu, com
+o ar de facto que uma linha desenhada tem. O ponto desaparece e o ecrã diz
+quantos ficaram de fora, para o buraco se explicar em vez de se esconder.
+
+### As dívidas só descontam nos focos que as incluem
+
+Em "Imóveis" o crédito à habitação entra, porque o que interessa a quem escolhe
+esse foco é o líquido da casa e não o valor bruto de uma casa hipotecada. Em
+"Investimentos" não entra: não há ali nada que ele financie, e subtraí-lo dava um
+"líquido" negativo que não corresponde a decisão nenhuma. Os juros do ano seguem
+a mesma regra — "Pagas 4 200 € de juros" por baixo de um total de investimentos
+lia-se como se os juros saíssem daquele número.
+
+### Cada caixa mostra o seu próprio número
+
+Uma fila de rótulos obrigava a carregar em cada um para descobrir quanto vale.
+Com o valor à vista, a comparação que motiva o filtro — quanto disto é casa e
+quanto é carteira — faz-se sem carregar em nada. E uma vista parcial anuncia-se:
+quem chega por um link já com foco não tem como saber que está a ver uma parte.
+
+---
+
+## Séries temporais no DCF (2026-08-12)
+
+### Uma tabela com dez indicadores não mostra uma direcção
+
+O que se procura no historial de uma empresa não é um número, é uma direcção: a
+margem está a abrir ou a fechar, a dívida está a subir ou a descer. Numa tabela
+isso lê-se, mas só por quem se lembrar de percorrer a linha com os olhos e
+guardar quatro números de cabeça. Por isso cada indicador ganhou o seu desenho ao
+lado dos seus números, agrupado por tema (crescimento, rentabilidade, solidez) e
+em acordeão para caber num telemóvel.
+
+Os números vão **ao lado** do desenho e não em vez dele: uma linha com o eixo
+cortado exagera o movimento, e uma tendência de "+3 pontos" pode ser um degrau ou
+um regresso ao que era.
+
+### Os trimestres vieram no mesmo pedido, e não decidem nada
+
+O `quoteSummary` aceita os módulos trimestrais na mesma lista, sem custo extra.
+Quatro pontos anuais escondem uma margem que virou há dois trimestres, e essa
+resolução faz falta. Mas **as médias, o CAGR e os cenários continuam a sair só
+dos exercícios anuais**: um trimestre comparado com o anterior mede sazonalidade
+tanto como desempenho, e um trimestre de Natal a seguir a um de janeiro "cresce"
+sozinho. Quem escolhe a vista trimestral é avisado disso por palavras.
+
+### Os trimestres são rotulados pelo mês em que acabam, não por "T1…T4"
+
+O ano fiscal da Apple acaba em setembro e o primeiro trimestre dela fecha em
+dezembro. Chamar-lhe "T1" quando o calendário diz T4, ou "T4" quando a empresa
+lhe chama T1, engana das duas maneiras. O mês de fecho não precisa de convenção
+nenhuma para se ler.
+
+### Uma percentagem só quando o ponto de partida é positivo
+
+É a mesma recusa que o histórico do património já faz com um líquido negativo.
+Uma margem que vai de −5% para 3% melhorou oito pontos; a divisão dá −160%, com o
+sinal ao contrário do que aconteceu, e uma percentagem não se confere contra
+nada. Nesses casos mostra-se a variação em pontos percentuais.
+
+### Um leitor de períodos, não dois
+
+O anual e o trimestral passam pela mesma função. Uma segunda cópia significava
+que, no dia em que o `capitalExpenditures` mudasse de sinal ou o Yahoo trocasse
+um nome de campo, só uma das séries ficava certa — e as duas continuavam a
+desenhar-se com o mesmo ar de facto. A única diferença é a chave: o anual indexa
+por ano (para juntar um exercício reexpresso), o trimestral por data (senão os
+quatro trimestres de 2025 colapsam num ponto só).
