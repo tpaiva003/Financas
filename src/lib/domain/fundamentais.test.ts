@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  MODULOS_FUNDAMENTAIS,
   cagrPct,
   cenariosDoHistorico,
   moedasBatem,
   parseFundamentais,
+  urlDosFundamentais,
 } from "./fundamentais";
 
 const dia = (a: number, m: number, d: number) => ({ raw: Date.UTC(a, m - 1, d) / 1000 });
@@ -294,3 +296,40 @@ const vaziasMedias = {
   crescimentoReceitaPct: null,
   anos: 0,
 };
+
+describe("urlDosFundamentais", () => {
+  /**
+   * O bug que isto fecha. `googl.us` é a convenção interna desta app e não é um
+   * ticker que exista em lado nenhum: o Yahoo devolvia 404 a tudo, e um 404
+   * lê-se como "esta empresa não existe" — quando o que não existia era o nome
+   * que lhe estávamos a chamar.
+   */
+  it("traduz o símbolo interno para o que a fonte conhece", () => {
+    expect(urlDosFundamentais("googl.us")).toContain("/quoteSummary/GOOGL?");
+    expect(urlDosFundamentais("googl.us")).not.toContain("googl.us");
+  });
+
+  it("traduz as praças europeias, e não as passa a maiúsculas à sorte", () => {
+    // Lisboa é `.LS` no Yahoo. `EDP.PT` não existe — foi a falha mais cara da
+    // lista numa app portuguesa.
+    expect(urlDosFundamentais("edp.pt")).toContain("/quoteSummary/EDP.LS?");
+    expect(urlDosFundamentais("imae.nl")).toContain("/quoteSummary/IMAE.AS?");
+    expect(urlDosFundamentais("vusa.uk")).toContain("/quoteSummary/VUSA.L?");
+  });
+
+  it("leva os módulos todos e o crumb quando o há", () => {
+    const semCrumb = urlDosFundamentais("msft.us");
+    expect(semCrumb).toContain("modules=");
+    expect(semCrumb).not.toContain("crumb=");
+    expect(urlDosFundamentais("msft.us", "aBc123")).toContain("crumb=aBc123");
+  });
+
+  it("cada módulo que a leitura precisa vai no pedido", () => {
+    const url = urlDosFundamentais("msft.us");
+    for (const m of MODULOS_FUNDAMENTAIS) {
+      // Sem isto, tirar um módulo da lista deixava o campo a `null` para sempre
+      // e o ecrã dizia só "faltou" — sem ninguém perceber que nunca foi pedido.
+      expect(decodeURIComponent(url)).toContain(m);
+    }
+  });
+});

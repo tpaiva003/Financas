@@ -20,10 +20,10 @@
  */
 
 import {
-  MODULOS_FUNDAMENTAIS,
   parseFundamentais,
   symbolCandidates,
   normalizeSymbol,
+  urlDosFundamentais,
   type Fundamentais,
 } from "@/lib/domain";
 
@@ -35,13 +35,6 @@ export interface FundamentaisResult {
   simbolo: string | null;
   dados: Fundamentais | null;
   problem: string | null;
-}
-
-function urlResumo(simbolo: string, crumb: string | null): string {
-  const s = encodeURIComponent(simbolo);
-  const p = new URLSearchParams({ modules: MODULOS_FUNDAMENTAIS.join(","), lang: "en-US" });
-  if (crumb) p.set("crumb", crumb);
-  return `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${s}?${p}`;
 }
 
 async function pedir(
@@ -115,8 +108,10 @@ async function tentar(
   simbolo: string,
   sessao: { cookie: string; crumb: string } | null,
 ): Promise<{ dados: Fundamentais | null; motivo: string | null; precisaCrumb: boolean }> {
+  // `urlDosFundamentais` traduz o símbolo interno para o que a fonte conhece.
+  // Sem isso, `googl.us` ia em cru e o Yahoo respondia 404 a tudo.
   const res = await pedir(
-    urlResumo(simbolo, sessao?.crumb ?? null),
+    urlDosFundamentais(simbolo, sessao?.crumb ?? null),
     sessao?.cookie ?? null,
     "application/json",
     true,

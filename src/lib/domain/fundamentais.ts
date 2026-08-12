@@ -23,7 +23,7 @@
  * Lógica pura, sem acesso a dados.
  */
 
-import { moedaDeSubunidade } from "./quotes";
+import { forSource, moedaDeSubunidade } from "./quotes";
 
 /** Um ano de contas, com os rácios já calculados. */
 export interface AnoFundamental {
@@ -110,6 +110,26 @@ export const MODULOS_FUNDAMENTAIS = [
   "earningsTrend",
   "calendarEvents",
 ] as const;
+
+/**
+ * O endereço das contas de uma empresa.
+ *
+ * **O símbolo tem de ser traduzido, e foi isto que faltou.** `googl.us` é a
+ * convenção **interna** desta app — não é um ticker que exista em lado nenhum. O
+ * Yahoo quer `GOOGL`, e Lisboa é `.LS` e não `.PT`. O serviço das cotações já
+ * traduzia (`forSource`); o das contas pedia o símbolo em cru e levava com 404
+ * em tudo. E um 404 lê-se como "esta empresa não existe", quando o que não
+ * existia era o nome que lhe estávamos a chamar.
+ *
+ * Vive no domínio, e não no serviço, exactamente para haver um teste que
+ * confirme que a tradução acontece antes de o pedido sair.
+ */
+export function urlDosFundamentais(simbolo: string, crumb?: string | null): string {
+  const paraAFonte = forSource(simbolo, "yahoo");
+  const p = new URLSearchParams({ modules: MODULOS_FUNDAMENTAIS.join(","), lang: "en-US" });
+  if (crumb) p.set("crumb", crumb);
+  return `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(paraAFonte)}?${p}`;
+}
 
 /* -------------------------------------------------------------------------- */
 
