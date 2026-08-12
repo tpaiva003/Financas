@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
-import { DcfCalculadora } from "@/components/DcfCalculadora";
+import { getRepository } from "@/lib/data";
+import { DcfCalculadora, type VindoDoFunil } from "@/components/DcfCalculadora";
 
 export const metadata = { title: "Avaliação · Rachar" };
 export const dynamic = "force-dynamic";
+
+/** Um valor em cêntimos, em milhares de milhões, como o formulário o escreve. */
+function mM(cents: number | null): number {
+  return cents === null ? 0 : Math.round((cents / 100 / 1_000_000_000) * 1000) / 1000;
+}
 
 /**
  * Avaliar uma empresa antes de a comprar.
@@ -15,23 +21,49 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: { id?: string; nome?: string; simbolo?: string };
+  searchParams?: { id?: string };
 }) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   /**
-   * Vindo do funil, o ecrã abre já com o que se sabe da empresa.
+   * Vindo do funil, o ecrã abre já com tudo o que se sabe da empresa.
    *
-   * O `id` viaja no endereço para o estudo ser gravado **naquela linha** em vez
-   * de criar um segundo cartão da mesma empresa. Não é uma credencial: a ação
-   * de gravar confronta-o com o ambiente antes de escrever, e um id de outro
-   * ambiente é recusado lá — aqui só serve para preencher um campo escondido.
+   * **Só o id viaja no endereço; o resto é lido aqui.** Um DCF tem onze
+   * pressupostos: enfiá-los no URL dava um endereço ilegível e — pior — deixava
+   * fabricar um estudo com os números que se quisesse, à espera que alguém
+   * carregasse em guardar sem reparar. O id é confrontado com o ambiente antes
+   * de se ler seja o que for, e a ação de gravar volta a confrontá-lo.
    */
-  const doFunil = {
-    id: searchParams?.id?.trim() || null,
-    nome: searchParams?.nome?.trim() || "",
-    simbolo: searchParams?.simbolo?.trim() || "",
+  const id = searchParams?.id?.trim() || null;
+  const guardada = id
+    ? (await getRepository().listValuations(ctx.space.id).catch(() => [])).find((v) => v.id === id)
+    : undefined;
+
+  const doFunil: VindoDoFunil = {
+    id: guardada?.id ?? null,
+    nome: guardada?.name ?? "",
+    simbolo: guardada?.symbol ?? "",
+    notas: guardada?.notes ?? "",
+    // Ou o estudo está inteiro, ou não existe — o `check` da 0038 garante-o do
+    // lado da base de dados, e este `if` diz o mesmo do lado do ecrã.
+    estudo:
+      guardada && guardada.fcfCents !== null && guardada.shares !== null
+        ? {
+            fcfBilioes: mM(guardada.fcfCents),
+            acoesBilioes: Math.round((guardada.shares / 1_000_000_000) * 1000) / 1000,
+            dividaLiquidaBilioes: mM(guardada.netDebtCents),
+            descontoPct: guardada.discountPct ?? 8.5,
+            perpetuoPct: guardada.perpetualPct ?? 2,
+            anos: guardada.years ?? 10,
+            margemPct: guardada.marginPct ?? 30,
+            precoUnidade:
+              guardada.priceAtStudyCents === null
+                ? null
+                : Math.round(guardada.priceAtStudyCents) / 100,
+            cenarios: guardada.scenarios,
+          }
+        : null,
   };
 
   return (
@@ -60,6 +92,22 @@ export default async function Page({
         taxa de desconto em um ponto percentual muda o valor por ação em dezenas
         de por cento. É por isso que aparece um intervalo e não um número.
       </p>
+
+      {/*
+        Quando isto é uma reavaliação, diz-se de quando são os números que estão
+        nos campos. Sem essa linha, um formulário preenchido lê-se como dados de
+        agora — e os pressupostos de há seis meses passavam por actuais.
+      */}
+      {guardada?.valuedAt ? (
+        <p className="rounded-xl border border-hair bg-panel2/40 px-4 py-3 text-xs leading-snug text-fg-muted">
+          Os campos estão como os deixaste no estudo de{" "}
+          <strong className="font-medium text-fg">
+            {new Date(`${guardada.valuedAt}T00:00:00Z`).toLocaleDateString("pt-PT")}
+          </strong>
+          . Muda o que mudou e guarda outra vez — o estudo antigo fica lá, com a
+          data dele.
+        </p>
+      ) : null}
 
       <DcfCalculadora doFunil={doFunil} />
     </div>

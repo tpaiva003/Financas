@@ -95,12 +95,14 @@ export function FunilAvaliacoes({
  *
  * O `id` vai junto para o estudo ser gravado **nesta linha** em vez de criar um
  * segundo cartão da mesma empresa — que era a app a duplicar o que a pessoa
- * acabou de ligar.
+ * acabou de ligar. E é por ele que o servidor vai buscar os pressupostos do
+ * último estudo: reavaliar é comparar com o que se assumiu da última vez, não
+ * reescrever onze campos de memória.
  */
 function linkParaAvaliar(a: AvaliacaoNoFunil): string {
-  const p = new URLSearchParams({ id: a.id, nome: a.nome });
-  if (a.simbolo) p.set("simbolo", a.simbolo);
-  return `/patrimonio/dcf?${p}`;
+  // Só o id: o nome, o símbolo e os pressupostos são lidos no servidor a partir
+  // dele. Ver o comentário em `VindoDoFunil`.
+  return `/patrimonio/dcf?id=${encodeURIComponent(a.id)}`;
 }
 
 function Cartao({

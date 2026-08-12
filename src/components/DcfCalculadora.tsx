@@ -42,32 +42,75 @@ function num(v: string): number {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
+/**
+ * O que o funil manda para cá.
+ *
+ * **Vem do servidor, lido pelo id, e não do endereço.** Um DCF tem onze
+ * pressupostos; enfiá-los no URL dava um endereço ilegível e — pior — deixava
+ * qualquer pessoa fabricar um estudo com os números que quisesse, à espera que
+ * alguém carregasse em guardar sem reparar. Aqui só o id viaja, e a página
+ * confronta-o com o ambiente antes de ler seja o que for.
+ */
 export interface VindoDoFunil {
   /** A linha do funil a preencher, quando isto veio de lá. */
   id: string | null;
   nome: string;
   simbolo: string;
+  /**
+   * Os pressupostos do último estudo, quando o há.
+   *
+   * Sem isto, "Reavaliar" abria um formulário vazio e obrigava a reescrever
+   * onze campos — e quem os reescreve de memória não está a rever um estudo,
+   * está a fazer outro. Uma reavaliação é uma comparação com o que se assumiu
+   * da última vez.
+   */
+  estudo?: {
+    fcfBilioes: number;
+    acoesBilioes: number;
+    dividaLiquidaBilioes: number;
+    descontoPct: number;
+    perpetuoPct: number;
+    anos: number;
+    margemPct: number;
+    precoUnidade: number | null;
+    cenarios: CenarioDcf[] | null;
+  } | null;
+  notas?: string;
+}
+
+/** Em português: 8.5 escreve-se 8,5. */
+function txt(v: number | null | undefined): string {
+  return v === null || v === undefined ? "" : String(v).replace(".", ",");
 }
 
 export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
+  const e = doFunil?.estudo ?? null;
+
   const [nome, setNome] = useState(doFunil?.nome ?? "");
   const [simbolo, setSimbolo] = useState(doFunil?.simbolo ?? "");
 
   // Dados da empresa, em milhares de milhões.
-  const [fcf, setFcf] = useState("");
-  const [acoes, setAcoes] = useState("");
-  const [divida, setDivida] = useState("");
-  const [caixa, setCaixa] = useState("");
-  const [preco, setPreco] = useState("");
+  const [fcf, setFcf] = useState(txt(e?.fcfBilioes));
+  const [acoes, setAcoes] = useState(txt(e?.acoesBilioes));
+  /**
+   * O estudo guardado tem a dívida **líquida**; o formulário tem dívida e caixa
+   * em separado, e deriva a líquida delas. Reconstrói-se pondo tudo na dívida e
+   * a caixa a zero: o número que entra na conta é o mesmo, e os dois campos
+   * continuam editáveis se alguém quiser voltar a separá-los. Inventar uma
+   * repartição que não foi gravada era mostrar dois números que ninguém escreveu.
+   */
+  const [divida, setDivida] = useState(txt(e?.dividaLiquidaBilioes));
+  const [caixa, setCaixa] = useState(e ? "0" : "");
+  const [preco, setPreco] = useState(txt(e?.precoUnidade));
 
   // Parâmetros.
-  const [margem, setMargem] = useState("30");
-  const [desconto, setDesconto] = useState("8,5");
-  const [perpetuo, setPerpetuo] = useState("2");
-  const [anos, setAnos] = useState("10");
+  const [margem, setMargem] = useState(e ? txt(e.margemPct) : "30");
+  const [desconto, setDesconto] = useState(e ? txt(e.descontoPct) : "8,5");
+  const [perpetuo, setPerpetuo] = useState(e ? txt(e.perpetuoPct) : "2");
+  const [anos, setAnos] = useState(e ? txt(e.anos) : "10");
 
-  const [cenarios, setCenarios] = useState<CenarioDcf[]>(CENARIOS_POR_OMISSAO);
-  const [notas, setNotas] = useState("");
+  const [cenarios, setCenarios] = useState<CenarioDcf[]>(e?.cenarios ?? CENARIOS_POR_OMISSAO);
+  const [notas, setNotas] = useState(doFunil?.notas ?? "");
 
   /** As contas que a fonte trouxe, para o historial e os avisos. */
   const [contas, setContas] = useState<Fundamentais | null>(null);
