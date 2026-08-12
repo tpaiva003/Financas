@@ -341,6 +341,34 @@ describe("MODULOS_FUNDAMENTAIS", () => {
   });
 });
 
+describe("parseFundamentais — o perfil da empresa", () => {
+  const comPerfil = (perfil: unknown) =>
+    parseFundamentais(JSON.stringify({ quoteSummary: { result: [{ assetProfile: perfil }] } }));
+
+  it("lê o setor e a indústria", () => {
+    const f = comPerfil({ sector: "Technology", industry: "Software—Infrastructure" });
+    expect(f.setor).toBe("Technology");
+    expect(f.industria).toBe("Software—Infrastructure");
+  });
+
+  /**
+   * Uma cadeia vazia guardada como está abria um grupo sem nome no gráfico da
+   * carteira, indistinguível de um dado que nunca veio.
+   */
+  it("uma cadeia vazia não é um setor", () => {
+    expect(comPerfil({ sector: "   ", industry: "" }).setor).toBeNull();
+    expect(comPerfil({}).setor).toBeNull();
+  });
+
+  it("um ETF sem perfil nenhum não rebenta", () => {
+    expect(parseFundamentais(RESPOSTA).setor).toBeNull();
+  });
+
+  it("pede o perfil no mesmo pedido", () => {
+    expect(MODULOS_FUNDAMENTAIS).toContain("assetProfile");
+  });
+});
+
 describe("tendenciaDaSerie", () => {
   it("compara a primeira leitura com a última", () => {
     const t = tendenciaDaSerie([10, 12, 15])!;

@@ -96,6 +96,15 @@ export interface Fundamentais {
   /** Dívida total (curto mais longo prazo), em milhares de milhões. */
   dividaBilioes: number | null;
   caixaBilioes: number | null;
+  /**
+   * Setor e indústria, como a fonte lhes chama (em inglês).
+   *
+   * Ficam em bruto de propósito: a tradução vive em `setorPorExtenso`, e um
+   * nome que a fonte estreie tem de chegar ao ecrã como está em vez de cair
+   * numa fatia "Outros" onde ninguém dá por ele.
+   */
+  setor: string | null;
+  industria: string | null;
   /** Exercícios anuais, do mais antigo para o mais recente. */
   historico: AnoFundamental[];
   /**
@@ -136,6 +145,8 @@ export const MODULOS_FUNDAMENTAIS = [
   "cashflowStatementHistoryQuarterly",
   "earningsTrend",
   "calendarEvents",
+  // O setor e a indústria, para a carteira saber a que está exposta.
+  "assetProfile",
 ] as const;
 
 /**
@@ -190,6 +201,16 @@ function pct1(v: number | null): number | null {
 function razaoPct(numerador: number | null, denominador: number | null): number | null {
   if (numerador === null || denominador === null || denominador <= 0) return null;
   return pct1((numerador / denominador) * 100);
+}
+
+/**
+ * Um campo de texto, ou `null`.
+ *
+ * Uma cadeia vazia não é um setor: guardada como está, abria um grupo sem nome
+ * no gráfico da carteira, indistinguível de um dado que não veio.
+ */
+function palavra(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
 /** Só a data, do carimbo de tempo que o Yahoo usa. */
@@ -358,6 +379,8 @@ export function parseFundamentais(texto: string): Fundamentais {
     acoesBilioes: null,
     dividaBilioes: null,
     caixaBilioes: null,
+    setor: null,
+    industria: null,
     historico: [],
     trimestral: [],
     medias: {
@@ -388,6 +411,7 @@ export function parseFundamentais(texto: string): Fundamentais {
   const price: Linha = r.price ?? {};
   const stats: Linha = r.defaultKeyStatistics ?? {};
   const fin: Linha = r.financialData ?? {};
+  const perfil: Linha = r.assetProfile ?? r.summaryProfile ?? {};
 
   // A moeda da cotação vem em bruto e pode ser `GBp`: pence, não libras. É o
   // mesmo cem-vezes que já custou caro nas cotações, e a única diferença entre
@@ -473,6 +497,8 @@ export function parseFundamentais(texto: string): Fundamentais {
     acoesBilioes: mM(acoes),
     dividaBilioes: mM(divida),
     caixaBilioes: mM(caixa),
+    setor: palavra(perfil.sector),
+    industria: palavra(perfil.industry),
     historico,
     trimestral,
     medias,

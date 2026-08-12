@@ -71,6 +71,23 @@ export async function atualizarDatasDeMercado(
         // O carimbo só se escreve quando a consulta correu: senão, uma fonte em
         // baixo adiava a tentativa seguinte por uma semana.
         marketDatesAt: agora.toISOString(),
+        /**
+         * O setor vem de borla nesta mesma resposta — o `assetProfile` vai no
+         * mesmo pedido — e por isso aproveita-se em vez de se gastar outra ida
+         * à fonte para o ir buscar.
+         *
+         * **Só onde está vazio.** Um setor escrito à mão nunca é reescrito por
+         * esta passagem: é o invariante das entradas manuais, que não são
+         * reclassificadas automaticamente. E o `profileAt` acompanha o que se
+         * escreveu, para não carimbar uma consulta que não mexeu em nada.
+         */
+        ...(a.sector
+          ? {}
+          : {
+              sector: r.dados.setor,
+              industry: r.dados.industria,
+              profileAt: agora.toISOString(),
+            }),
       });
       gravados += 1;
     } catch {

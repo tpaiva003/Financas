@@ -278,6 +278,22 @@ export interface Asset {
    * fui perguntar" — e o ecrã diria a mesma coisa nos dois casos: nada.
    */
   marketDatesAt?: string | null;
+  /**
+   * Setor e indústria da empresa, como a fonte lhes chama (em inglês).
+   *
+   * A tradução para português vive no domínio (`setorPorExtenso`), e não aqui:
+   * um nome novo da fonte tem de chegar ao ecrã como está em vez de cair numa
+   * fatia "Outros" onde ninguém dá por ele.
+   */
+  sector?: string | null;
+  industry?: string | null;
+  /**
+   * Quando é que o perfil foi consultado.
+   *
+   * A mesma razão do `marketDatesAt`: sem isto não se distingue "a fonte não
+   * sabe o setor deste ETF" de "ainda não fui perguntar".
+   */
+  profileAt?: string | null;
   updatedAt?: string | null;
 }
 

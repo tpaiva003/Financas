@@ -10,6 +10,7 @@ import {
   type Trade,
 } from "@/lib/domain";
 import { getNetWorthHistoryCompleto } from "@/lib/services/networth-history-service";
+import { AnaliseSetores } from "@/components/AnaliseSetores";
 
 /**
  * Analisar o património: o que cresceu, quando, e de onde veio.
@@ -31,6 +32,7 @@ export async function AnalisePatrimonioContent() {
   const repo = getRepository();
   const hoje = new Date().toISOString().slice(0, 10);
   const historico = await getNetWorthHistoryCompleto(ctx.space.id, hoje).catch(() => null);
+  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
   const movimentos = await repo.listAssetTrades(ctx.space.id).catch(() => []);
   const splits = await repo.listAssetSplits(ctx.space.id).catch(() => []);
 
@@ -39,8 +41,18 @@ export async function AnalisePatrimonioContent() {
   const porBem = new Map<string, Trade[]>();
   for (const t of movimentos) porBem.set(t.assetId, [...(porBem.get(t.assetId) ?? []), t as Trade]);
   const ajustados: Trade[] = [];
+  /**
+   * Os mesmos movimentos, indexados por bem. A leitura por setor tem de contar
+   * a mesma história que o resto da app — duas contagens diferentes da mesma
+   * posição em dois ecrãs fazem quem vê os dois concluir, com razão, que um
+   * deles está avariado. Enche-se aqui porque `aplicarSplits` devolve
+   * movimentos de domínio, que já não sabem a que bem pertencem.
+   */
+  const ajustadosPorBem = new Map<string, Trade[]>();
   for (const [assetId, lista] of porBem) {
-    ajustados.push(...aplicarSplits(lista, splits.filter((s) => s.assetId === assetId)));
+    const doBem = aplicarSplits(lista, splits.filter((s) => s.assetId === assetId));
+    ajustadosPorBem.set(assetId, doBem);
+    ajustados.push(...doBem);
   }
 
   const serie = historico ? buildNetWorthSeries(historico) : null;
@@ -192,6 +204,14 @@ export async function AnalisePatrimonioContent() {
           </section>
         </>
       )}
+
+      {/*
+        Fora do ramo de cima de propósito: a exposição por setor lê-se com uma
+        carteira e zero meses de histórico. Escondê-la enquanto não houvesse
+        dois meses medidos era esconder a única leitura desta página que não
+        precisa de esperar por nada.
+      */}
+      <AnaliseSetores stored={bens} tradesByAsset={ajustadosPorBem} />
     </div>
   );
 }

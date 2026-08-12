@@ -1457,6 +1457,9 @@ export class SupabaseRepository implements Repository {
     if (patch.dividendDate !== undefined) row.dividend_date = patch.dividendDate;
     if (patch.exDividendDate !== undefined) row.ex_dividend_date = patch.exDividendDate;
     if (patch.marketDatesAt !== undefined) row.market_dates_at = patch.marketDatesAt;
+    if (patch.sector !== undefined) row.sector = patch.sector;
+    if (patch.industry !== undefined) row.industry = patch.industry;
+    if (patch.profileAt !== undefined) row.profile_at = patch.profileAt;
     if (patch.financesAssetId !== undefined) row.finances_asset_id = patch.financesAssetId;
     if (patch.contractedAmountCents !== undefined) {
       row.contracted_amount_cents = patch.contractedAmountCents;
@@ -2511,6 +2514,9 @@ function rowToAsset(r: any): Asset {
     dividendDate: r.dividend_date ? String(r.dividend_date).slice(0, 10) : null,
     exDividendDate: r.ex_dividend_date ? String(r.ex_dividend_date).slice(0, 10) : null,
     marketDatesAt: r.market_dates_at ?? null,
+    sector: r.sector ?? null,
+    industry: r.industry ?? null,
+    profileAt: r.profile_at ?? null,
     sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,
   };

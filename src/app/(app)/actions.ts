@@ -15,6 +15,7 @@ import { buildImportPreview, commitImport, ImportError } from "@/lib/services/im
 import { buscarEuribor } from "@/lib/services/euribor-service";
 import { buscarFundamentais } from "@/lib/services/fundamentais-service";
 import { atualizarDatasDeMercado } from "@/lib/services/datas-service";
+import { atualizarSetores } from "@/lib/services/setores-service";
 import { descobrirMarcas } from "@/lib/services/marca-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
@@ -3275,6 +3276,41 @@ export async function descobrirMarcasAction(
         ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível — esses ficam com as iniciais.`
         : `${gravadas} com logo.`,
   };
+}
+
+/**
+ * Ir buscar o setor dos investimentos que ainda não o têm.
+ *
+ * Um lote de cada vez, e diz sempre quantos ficaram para trás: um resultado que
+ * só conta os acertos lê-se como "está tudo tratado", e não está.
+ */
+export async function descobrirSetoresAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+
+  const r = await atualizarSetores(ctx.space.id).catch(() => null);
+  if (!r) return { error: "Não consegui falar com a fonte dos dados. Tenta daqui a pouco." };
+  if (r.consultados === 0) {
+    return { ok: true, message: "Já perguntei por todos os que têm símbolo." };
+  }
+
+  revalidatePath("/patrimonio");
+  revalidatePath("/relatorios/patrimonio");
+
+  const partes: string[] = [`${r.gravados} com setor`];
+  // Um fundo sem setor na fonte não é uma falha, e dizer-lhe "falhou" mandava
+  // alguém procurar um problema que não existe.
+  if (r.semSetorNaFonte > 0) {
+    partes.push(
+      `${r.semSetorNaFonte} sem classificação na fonte (é o normal nos fundos e ETF)`,
+    );
+  }
+  if (r.falhados > 0) partes.push(`${r.falhados} sem resposta, que se repetem à próxima`);
+
+  return { ok: true, message: `${partes.join("; ")}.` };
 }
 
 // ---- Fundamentais de uma empresa --------------------------------------------
