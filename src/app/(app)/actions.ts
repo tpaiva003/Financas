@@ -1743,6 +1743,21 @@ export async function saveAssetAction(
      */
     financesAssetId:
       kind === "divida" ? String(formData.get("financesAssetId") ?? "").trim() || null : null,
+    /**
+     * O montante contratado, só nas dívidas.
+     *
+     * **Não substitui o `value`**, que continua a ser o que falta pagar. Serve
+     * para a app poder calcular o segundo a partir do primeiro quando ninguém o
+     * souber de cabeça — e a escolha de o usar é de quem preenche, num botão.
+     * Ver `capital-em-divida.ts`.
+     */
+    contractedAmountCents:
+      kind === "divida"
+        ? (() => {
+            const v = parseNumber(formData.get("contractedAmount"));
+            return v === null ? null : toCents(v);
+          })()
+        : null,
   };
 
   // O bem financiado tem de ser mesmo deste ambiente, e não pode ser o próprio

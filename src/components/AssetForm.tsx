@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { saveAssetAction, type ActionState } from "@/app/(app)/actions";
 import {
@@ -38,6 +38,8 @@ export interface AssetFormValues {
   /** Quem tem o resto, quando é alguém do ambiente. */
   coOwnerMemberId?: string | null;
   financesAssetId?: string | null;
+  /** Crédito: o montante contratado. Não é o que falta pagar. */
+  contractedAmountCents?: number | null;
   /** Crédito: a data do último pagamento. */
   maturityDate?: string | null;
   /** Crédito com períodos de taxa. Já validado — quem monta isto usa `parseCreditTerms`. */
@@ -57,6 +59,14 @@ export interface AssetFormValues {
 function decimal(cents?: number | null): string {
   if (cents === null || cents === undefined) return "";
   return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+/** O inverso do `decimal`: "1234,56" dá 123456. `null` quando não é número. */
+function paraCentimos(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t.replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
 function plain(n?: number | null): string {
@@ -134,6 +144,31 @@ export function AssetForm({
 
   const [doContrato, setDoContrato] = useState<{ r: ContratoRevisto; n: number } | null>(null);
   const chave = doContrato ? `contrato-${doContrato.n}` : "base";
+
+  /**
+   * Os dois números de uma dívida, controlados — e só estes dois.
+   *
+   * O resto do formulário é não controlado de propósito (ver a `chave`). Estes
+   * são a excepção porque o cálculo a partir do contrato precisa de os ler e de
+   * escrever num deles; fazer isso por DOM seria uma gambiarra, e passar o
+   * formulário todo a controlado era duplicar em estado vinte campos por causa
+   * de dois.
+   */
+  const [contratado, setContratado] = useState(decimal(asset?.contractedAmountCents));
+  const [emDivida, setEmDivida] = useState(decimal(asset?.valueCents));
+
+  // O contrato lido preenche estes dois como preenche os outros.
+  useEffect(() => {
+    if (!doContrato) return;
+    const c = doContrato.r.capitalCents;
+    if (c !== null) {
+      setContratado(decimal(c));
+      // O capital do contrato é o que se pediu, não o que falta. Vai aos dois
+      // campos porque num crédito acabado de assinar são o mesmo número — e o
+      // botão de calcular corrige o segundo assim que houver meses pagos.
+      setEmDivida(decimal(c));
+    }
+  }, [doContrato]);
   const contrato = doContrato?.r ?? null;
 
   const form = (
@@ -221,14 +256,20 @@ export function AssetForm({
               {isDebt ? "Quanto falta pagar" : isImovel ? "Valor atual (opcional)" : "Valor atual"}
             </label>
             <input
-              key={chave}
               id={`asset-value-${uid}`}
               name="value"
               inputMode="decimal"
-              defaultValue={decimal(contrato?.capitalCents ?? asset?.valueCents)}
+              value={emDivida}
+              onChange={(e) => setEmDivida(e.target.value)}
               placeholder="0,00"
               className="input"
             />
+            {isDebt ? (
+              <p className="mt-1 text-xs text-fg-faint">
+                Se não souberes de cabeça, preenche o contrato aqui ao lado e em
+                baixo — a app calcula-o.
+              </p>
+            ) : null}
           </div>
           <div>
             <label className="label" htmlFor={`asset-date-${uid}`}>
@@ -243,7 +284,34 @@ export function AssetForm({
               onChange={(e) => setDataCompra(e.target.value)}
               className="input"
             />
+            {isDebt ? (
+              <p className="mt-1 text-xs text-fg-faint">
+                O dia da escritura. É a partir dele que se contam as prestações
+                já pagas.
+              </p>
+            ) : null}
           </div>
+
+          {isDebt ? (
+            <div>
+              <label className="label" htmlFor={`asset-contracted-${uid}`}>
+                Montante contratado (opcional)
+              </label>
+              <input
+                id={`asset-contracted-${uid}`}
+                name="contractedAmount"
+                inputMode="decimal"
+                value={contratado}
+                onChange={(e) => setContratado(e.target.value)}
+                placeholder="0,00"
+                className="input"
+              />
+              <p className="mt-1 text-xs text-fg-faint">
+                O que pediste emprestado, não o que falta. Com ele, a data de
+                início e a taxa, a app calcula o capital em dívida de hoje.
+              </p>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -408,6 +476,9 @@ export function AssetForm({
               maturityDate={contrato?.maturityDate ?? asset?.maturityDate}
               terms={contrato?.terms ?? asset?.creditTerms}
               abrirComoMista={tipoTaxa === "mista"}
+              contratadoCents={paraCentimos(contratado)}
+              contractStart={dataCompra}
+              aoCalcular={(cents) => setEmDivida(decimal(cents))}
             />
           ) : null}
         </div>

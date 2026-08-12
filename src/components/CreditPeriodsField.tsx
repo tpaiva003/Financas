@@ -26,10 +26,14 @@ import {
   INDEXANTES,
   PERIODO_TIPO_LABELS,
   addMonths,
+  capitalEmDividaEm,
+  formatCents,
   tipoDoCredito,
   type CreditTerms,
   type Indexante,
+  type IndexanteRates,
   type PeriodoTipo,
+  type RatePeriod,
 } from "@/lib/domain";
 import { buscarEuriborAction } from "@/app/(app)/actions";
 
@@ -45,6 +49,55 @@ interface Linha {
 function plain(n?: number | null): string {
   if (n === null || n === undefined) return "";
   return String(n).replace(".", ",");
+}
+
+/** "3,4" dá 3.4. `null` quando não é número — e um período sem taxa não conta. */
+function numero(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * As linhas do ecrã como o domínio as quer.
+ *
+ * Deita fora as que ainda não estão preenchidas em vez de as completar com
+ * zeros: uma taxa de 0% inventada dá um plano de amortização inteiro sem juros,
+ * que é um número errado com ar de conta feita.
+ */
+function linhasParaPeriodos(linhas: Linha[]): RatePeriod[] {
+  const out: RatePeriod[] = [];
+  for (const l of linhas) {
+    if (!l.startsOn) continue;
+    if (l.kind === "fixa") {
+      const taxa = numero(l.ratePct);
+      if (taxa === null) continue;
+      out.push({ startsOn: l.startsOn, kind: "fixa", ratePct: taxa, indexante: null, spreadPct: null });
+      continue;
+    }
+    if (!l.indexante) continue;
+    const spread = numero(l.spreadPct);
+    if (spread === null) continue;
+    out.push({
+      startsOn: l.startsOn,
+      kind: "variavel",
+      ratePct: null,
+      indexante: l.indexante,
+      spreadPct: spread,
+    });
+  }
+  return out;
+}
+
+/** Os valores dos indexantes escritos no ecrã, como o domínio os quer. */
+function taxasParaRates(taxas: Record<string, string>): IndexanteRates {
+  const r: IndexanteRates = {};
+  for (const [k, v] of Object.entries(taxas)) {
+    const n = numero(v);
+    if (n !== null) r[k as Indexante] = n;
+  }
+  return r;
 }
 
 function hoje(): string {
@@ -97,11 +150,20 @@ export function CreditPeriodsField({
    * era prometer uma coisa e não a cumprir.
    */
   abrirComoMista = false,
+  /** O montante do contrato, para se poder calcular o que falta pagar. */
+  contratadoCents = null,
+  /** O dia da escritura. */
+  contractStart = "",
+  /** Escreve o capital em dívida no campo lá de cima. */
+  aoCalcular,
 }: {
   uid: string;
   maturityDate?: string | null;
   terms?: CreditTerms | null;
   abrirComoMista?: boolean;
+  contratadoCents?: number | null;
+  contractStart?: string;
+  aoCalcular?: (cents: number) => void;
 }) {
   const iniciais = linhasDe(terms);
   const [ativo, setAtivo] = useState(iniciais.length > 0 || abrirComoMista);
@@ -372,6 +434,102 @@ export function CreditPeriodsField({
           degrau na prestação, e sem ela não há plano nenhum.
         </p>
       </div>
+
+      {aoCalcular ? (
+        <CapitalPeloContrato
+          contratadoCents={contratadoCents}
+          contractStart={contractStart}
+          maturityDate={maturidade}
+          periods={linhasParaPeriodos(linhas)}
+          indexanteRates={taxasParaRates(taxas)}
+          aoCalcular={aoCalcular}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * O capital em dívida calculado a partir do contrato.
+ *
+ * **Sugere e não escreve sozinho.** O número entra no património líquido e no
+ * plano de amortização; pô-lo lá nas costas de quem está a preencher seria
+ * decidir por essa pessoa. Ela vê o valor, vê que é uma estimativa, e carrega
+ * se quiser.
+ *
+ * **E diz o que não sabe.** A conta não sabe de amortizações antecipadas, de
+ * meses de carência nem de comissões. O valor do banco, quando existe, ganha
+ * sempre — e o ecrã tem de o dizer, senão uma simulação passa por extracto.
+ */
+function CapitalPeloContrato({
+  contratadoCents,
+  contractStart,
+  maturityDate,
+  periods,
+  indexanteRates,
+  aoCalcular,
+}: {
+  contratadoCents: number | null;
+  contractStart: string;
+  maturityDate: string;
+  periods: RatePeriod[];
+  indexanteRates: IndexanteRates;
+  aoCalcular: (cents: number) => void;
+}) {
+  const hojeIso = hoje();
+  const r =
+    contratadoCents && contractStart && maturityDate && periods.length > 0
+      ? capitalEmDividaEm({
+          principalCents: contratadoCents,
+          contractStart,
+          maturityDate,
+          periods,
+          indexanteRates,
+          atDate: hojeIso,
+        })
+      : null;
+
+  if (!r) {
+    return (
+      <p className="mt-4 text-xs leading-snug text-fg-faint">
+        Com o montante contratado, a data de início, a maturidade e a taxa, a app
+        calcula aqui o que falta pagar hoje.
+      </p>
+    );
+  }
+
+  if ("erro" in r) {
+    return (
+      <p className="mt-4 text-xs leading-snug text-fg-faint">
+        Ainda não dá para calcular o capital em dívida: {r.erro.toLowerCase()}
+      </p>
+    );
+  }
+
+  const { balanceCents, mesesPagos, jurosPagosCents, prestacaoCents } = r.ok;
+
+  return (
+    <div className="mt-4 rounded-xl border border-hair bg-panel2/40 p-3">
+      <p className="label mb-1">Pelo contrato, faltariam</p>
+      <p className="font-display text-2xl font-semibold tracking-tight tnum">
+        {formatCents(balanceCents)}
+      </p>
+      <p className="mt-1 text-xs leading-snug text-fg-muted">
+        Ao fim de {mesesPagos} {mesesPagos === 1 ? "prestação" : "prestações"}, com{" "}
+        {formatCents(jurosPagosCents)} de juros já pagos. A prestação em vigor
+        daria {formatCents(prestacaoCents)}.
+      </p>
+      <p className="mt-1.5 text-xs leading-snug text-fg-faint">
+        É uma simulação: não sabe de amortizações antecipadas, carências nem
+        comissões. Se tiveres o mapa de responsabilidades do banco, esse ganha.
+      </p>
+      <button
+        type="button"
+        onClick={() => aoCalcular(balanceCents)}
+        className="btn-secondary mt-2 text-xs"
+      >
+        Usar em &ldquo;quanto falta pagar&rdquo;
+      </button>
     </div>
   );
 }
