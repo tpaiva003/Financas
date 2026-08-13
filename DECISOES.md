@@ -2137,3 +2137,61 @@ um total mais pequeno do que o real com ar de facto é pior do que um traço.
 Uma funcionalidade com dez mil linhas num único ambiente e outra com dez linhas
 em cinco ambientes: a segunda é a que está a pegar. Ordenar por registos punha a
 primeira em primeiro lugar e mandava manter o que só uma pessoa usa.
+
+---
+
+## Um lote não se faz como se faz um pedido (2026-08-13)
+
+### O que aconteceu
+
+O botão "Ir buscar setores" foi carregado e **não gravou nada**. Nem meio, nem
+um: zero linhas. Na base de dados, quarenta investimentos com símbolo e nenhum
+com `profile_at` — ou seja, nem sequer foram perguntados.
+
+A causa: `atualizarSetores` percorria doze investimentos chamando
+`buscarFundamentais` exactamente como o botão de **uma** empresa o chama. E essa
+função, por chamada, abre uma **sessão anónima nova** no Yahoo (mais dois
+pedidos), tenta **todas as formas do ticker** (até quatro) e dá **doze segundos**
+de tolerância a cada pedido. Doze investimentos davam mais de cem chamadas e
+minutos de espera dentro de uma função que vive segundos. Morria antes da
+primeira escrita.
+
+### Uma função de rede não é reutilizável em lote só porque compila
+
+Os parâmetros que fazem sentido para um pedido — tolerância generosa, tentar
+todas as variantes, sessão fresca — são exactamente os que rebentam um lote. A
+assinatura não muda, o `tsc` não se queixa, e o comportamento passa de bom a
+inutilizável. `buscarFundamentais` passou a aceitar sessão, tolerância e número
+de variantes; o lote passa os seus, o botão de uma empresa continua a não passar
+nada.
+
+### Um trabalho em lote tem de caber no tempo que tem
+
+E quando não cabe, **acaba por decisão própria**: grava o que fez e diz o que
+ficou. O relógio verifica-se **antes** de começar mais um — entrar num pedido de
+cinco segundos com dois de orçamento é como não ter relógio. O oposto é ser
+interrompido a meio e não deixar nem escrita nem explicação, que foi o que
+aconteceu.
+
+### O que ficou por fazer vai sempre na mensagem
+
+Um lote que trata oito de quarenta e diz só "8 com setor" lê-se como "está
+tratado" — e quem lê fica a olhar para uma tabela meia por classificar sem
+perceber que só tem de carregar outra vez.
+
+E `consultados` deixou de ser o comprimento da lista: com o relógio a cortar a
+passagem a meio, contava como consultados os que nunca chegaram a ser
+perguntados.
+
+### O teste passou dos dois lados à primeira, e não valia nada
+
+O mock do Yahoo devolvia 200 logo à primeira tentativa. Nesse caminho a sessão
+nunca é pedida — por isso a versão avariada também abria uma sessão só, e o teste
+passava contra ela. Só depois de o mock responder **401 sem `crumb`**, como o
+Yahoo a sério responde, é que o teste começou a medir alguma coisa: nove sessões
+contra uma. É a regra do `CLAUDE.md` a apanhar-me a mim.
+
+### A mesma correção foi aplicada às datas de mercado
+
+Tinham o mesmo padrão e a mesma bomba-relógio, só que disfarçada: correm uma vez
+por semana por símbolo, por isso raramente juntavam uma dúzia de cada vez.

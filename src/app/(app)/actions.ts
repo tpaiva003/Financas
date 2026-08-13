@@ -3309,6 +3309,20 @@ export async function descobrirSetoresAction(
     );
   }
   if (r.falhados > 0) partes.push(`${r.falhados} sem resposta, que se repetem à próxima`);
+  /**
+   * O que ficou por fazer, sempre à vista.
+   *
+   * Um lote que trata oito de quarenta e diz só "8 com setor" lê-se como "está
+   * tratado" — e a pessoa fica a olhar para uma tabela meia por classificar sem
+   * perceber que só tem de carregar outra vez.
+   */
+  if (r.porFazer > 0) {
+    partes.push(
+      r.faltouTempo
+        ? `faltam ${r.porFazer}, que não coube no tempo desta passagem — carrega outra vez`
+        : `faltam ${r.porFazer} para a próxima passagem — carrega outra vez`,
+    );
+  }
 
   return { ok: true, message: `${partes.join("; ")}.` };
 }

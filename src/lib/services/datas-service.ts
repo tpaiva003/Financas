@@ -18,7 +18,15 @@
 
 import { getRepository } from "@/lib/data";
 import { precisaDeDatas } from "@/lib/domain";
-import { buscarFundamentais } from "./fundamentais-service";
+import {
+  TIMEOUT_EM_LOTE_MS,
+  buscarFundamentais,
+  sessaoAnonima,
+  type SessaoYahoo,
+} from "./fundamentais-service";
+
+/** O tempo que a passagem tem, ao todo. Ver o comentário lá em baixo. */
+const ORCAMENTO_MS = 8_000;
 
 export interface DatasAtualizadas {
   /** Quantos investimentos foram consultados nesta passagem. */
@@ -52,11 +60,31 @@ export async function atualizarDatasDeMercado(
       (options.force || precisaDeDatas(a.marketDatesAt, agora)),
   );
 
+  /**
+   * Uma sessão para a passagem toda, e um tecto de tempo por pedido.
+   *
+   * A primeira versão pedia uma sessão nova por investimento — mais dois
+   * pedidos cada — e dava doze segundos a cada um. Numa carteira com uma dúzia
+   * de posições isso não cabe no tempo de vida da função, e o que se via do
+   * lado de fora era nada feito e nenhuma explicação. Ver o cabeçalho do
+   * `setores-service`, onde a mesma coisa aconteceu a sério.
+   */
+  const sessao: SessaoYahoo | null = await sessaoAnonima().catch(() => null);
+  const ate = Date.now() + ORCAMENTO_MS;
+
   let gravados = 0;
   let falhados = 0;
 
   for (const a of candidatos) {
-    const r = await buscarFundamentais(a.symbol!).catch(() => null);
+    // Antes de entrar em mais um, e não depois: começar um pedido de cinco
+    // segundos com dois de orçamento é como não ter relógio nenhum.
+    if (Date.now() + TIMEOUT_EM_LOTE_MS > ate) break;
+
+    const r = await buscarFundamentais(a.symbol!, {
+      sessao,
+      timeoutMs: TIMEOUT_EM_LOTE_MS,
+      maxCandidatos: 2,
+    }).catch(() => null);
     if (!r?.dados) {
       falhados += 1;
       continue;
@@ -95,5 +123,8 @@ export async function atualizarDatasDeMercado(
     }
   }
 
-  return { consultados: candidatos.length, gravados, falhados };
+  // `gravados + falhados` e não `candidatos.length`: com o relógio a cortar a
+  // passagem a meio, o comprimento da lista contava como consultados os que
+  // nunca chegaram a ser perguntados.
+  return { consultados: gravados + falhados, gravados, falhados };
 }

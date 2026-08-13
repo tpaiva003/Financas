@@ -28,6 +28,15 @@ import {
 } from "@/lib/domain";
 
 const TIMEOUT_MS = 12_000;
+/**
+ * O tecto de tempo quando se percorrem muitos símbolos de seguida.
+ *
+ * Doze segundos por pedido é generoso para quem carregou num botão e está a
+ * olhar para uma empresa. Num lote de doze é o que mata a função inteira antes
+ * de ela gravar o primeiro registo — e o resultado não é "gravei metade", é
+ * "não gravei nada e ninguém sabe porquê".
+ */
+export const TIMEOUT_EM_LOTE_MS = 5_000;
 const AGENTE = "Mozilla/5.0 (compatible; Rachar/1.0; +https://rachar.pt)";
 
 export interface FundamentaisResult {
@@ -48,9 +57,10 @@ async function pedir(
    * sempre, e um 401 permanente lê-se como "esta empresa não existe".
    */
   guardar: boolean,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Response | null> {
   const controlo = new AbortController();
-  const t = setTimeout(() => controlo.abort(), TIMEOUT_MS);
+  const t = setTimeout(() => controlo.abort(), timeoutMs);
   try {
     return await fetch(url, {
       signal: controlo.signal,
@@ -76,7 +86,19 @@ async function pedir(
  * Se qualquer um dos dois falhar, devolve-se `null` e quem chama desiste com uma
  * mensagem, em vez de repetir o pedido que já se sabe que vai dar 401.
  */
-async function sessaoAnonima(): Promise<{ cookie: string; crumb: string } | null> {
+export interface SessaoYahoo {
+  cookie: string;
+  crumb: string;
+}
+
+/**
+ * **Reutiliza-se num lote, e é para isso que está exportada.**
+ *
+ * Uma sessão por símbolo eram mais dois pedidos por investimento. Numa passagem
+ * por doze, isso são vinte e quatro chamadas só para dizer quem somos — e o
+ * Yahoo trava quem lhe bate à porta assim. Uma sessão serve o lote todo.
+ */
+export async function sessaoAnonima(): Promise<SessaoYahoo | null> {
   const inicial = await pedir("https://fc.yahoo.com/", null, "text/html", false);
   const bruto = inicial?.headers.get("set-cookie");
   if (!bruto) return null;
@@ -106,7 +128,8 @@ async function sessaoAnonima(): Promise<{ cookie: string; crumb: string } | null
 /** Uma tentativa num símbolo, já lida. */
 async function tentar(
   simbolo: string,
-  sessao: { cookie: string; crumb: string } | null,
+  sessao: SessaoYahoo | null,
+  timeoutMs: number,
 ): Promise<{ dados: Fundamentais | null; motivo: string | null; precisaCrumb: boolean }> {
   // `urlDosFundamentais` traduz o símbolo interno para o que a fonte conhece.
   // Sem isso, `googl.us` ia em cru e o Yahoo respondia 404 a tudo.
@@ -115,6 +138,7 @@ async function tentar(
     sessao?.cookie ?? null,
     "application/json",
     true,
+    timeoutMs,
   );
   if (!res) return { dados: null, motivo: "não consegui falar com o Yahoo Finance", precisaCrumb: false };
   // 401 e 403 são a falta de `crumb`; 404 é o símbolo que não existe. São
@@ -149,16 +173,37 @@ async function tentar(
  * "MSFT" quer a Microsoft, e a fonte só a encontra por um dos nomes que ela
  * própria usa.
  */
-export async function buscarFundamentais(bruto: string): Promise<FundamentaisResult> {
+export async function buscarFundamentais(
+  bruto: string,
+  opcoes: {
+    /**
+     * Uma sessão já obtida, para não a pedir outra vez.
+     *
+     * Existe por causa dos lotes: sem isto, percorrer doze investimentos eram
+     * mais vinte e quatro chamadas ao Yahoo só para dizer quem somos.
+     */
+    sessao?: SessaoYahoo | null;
+    timeoutMs?: number;
+    /**
+     * Quantas formas do ticker tentar.
+     *
+     * Quem carrega no botão de uma empresa quer que se tente tudo. Num lote, a
+     * quarta tentativa de um símbolo que a fonte não conhece custa o tempo que
+     * o décimo investimento precisava para ser consultado de todo.
+     */
+    maxCandidatos?: number;
+  } = {},
+): Promise<FundamentaisResult> {
   const base = normalizeSymbol(bruto);
   if (!base) return { simbolo: null, dados: null, problem: "Símbolo inválido." };
 
-  const candidatos = symbolCandidates(base);
-  let sessao: { cookie: string; crumb: string } | null = null;
+  const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_MS;
+  const candidatos = symbolCandidates(base).slice(0, opcoes.maxCandidatos ?? Infinity);
+  let sessao: SessaoYahoo | null = opcoes.sessao ?? null;
   const motivos: string[] = [];
 
   for (const c of candidatos) {
-    let r = await tentar(c, sessao);
+    let r = await tentar(c, sessao, timeoutMs);
 
     if (r.precisaCrumb) {
       // Uma só vez por chamada: se a sessão não sair, não é o símbolo seguinte
@@ -172,7 +217,7 @@ export async function buscarFundamentais(bruto: string): Promise<FundamentaisRes
             "O Yahoo Finance pediu uma sessão para devolver as contas e não ma deu. As cotações continuam a funcionar — isto afeta só os dados financeiros. Escreve os campos à mão por agora.",
         };
       }
-      r = await tentar(c, sessao);
+      r = await tentar(c, sessao, timeoutMs);
     }
 
     if (r.dados) return { simbolo: c, dados: r.dados, problem: null };
