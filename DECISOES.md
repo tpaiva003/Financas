@@ -1384,3 +1384,59 @@ Verificado com o JavaScript desligado, não assumido.
    arranque documentado não dava para entrar na app, e sem erro nenhum: o login
    volta ao login. O `.env.example` passa a trazer o URL local, com os valores
    de produção em comentário ao lado.
+
+## As mesmas regras dentro da app — 2026-08-13
+
+Feita a landing, o Tiago apontou o mesmo problema um nível acima: as linhas
+separadoras entre menus, e a app a parecer estanque. Tinha razão, e a app é o
+sítio onde isso custa mais, porque é onde se passa o tempo todo.
+
+O que mudou, pela mesma regra da landing (uma linha só existe se for anatomia
+de um componente, nunca uma divisória entre blocos):
+
+- **`.card` deixa de ter `border`.** O contorno passa para o `box-shadow`, com
+  os mesmos tokens da landing. Um ecrã com oito cartões desenhava oito
+  retângulos a cheio. Como a sombra fica fora da caixa de layout, nada se
+  desalinhou.
+- **Cabeçalho e barra de baixo sem borda.** Ganham fundo e sombra ao sair do
+  topo, com a mesma sentinela observada da landing (`[data-sticky]`), que passou
+  a ser partilhada pelos dois.
+- **Menus suspensos sem fios lá dentro** (`.menu`, `.menu-item`). Separar as
+  opções de um menu com linhas era o que mais depressa dava à app o ar de
+  formulário antigo. Agora separa-as o ar à volta e o realce ao passar por cima.
+- **Pastilhas da secção só com forma quando estão ativas.** Seis pastilhas todas
+  contornadas liam-se como uma fila de caixas vazias.
+- **A linha da despesa (`.row`) fica.** Numa lista densa de valores é ela que
+  diz onde acaba uma linha e começa a outra: isso é anatomia da lista, não uma
+  divisória. Ganhou realce ao passar por cima, para a lista responder em vez de
+  ser um bloco morto.
+
+E o movimento:
+
+- **Entrada de página a cada navegação.** O App Router mantém o layout e troca
+  só os filhos, por isso a animação que lá estava corria uma vez, ao abrir a
+  app, e nunca mais. Com uma `key` pelo caminho volta a correr. São 380ms, curto
+  de propósito: quem regista despesas passa por aqui dezenas de vezes ao dia.
+- **A deriva do fundo passa a valer também dentro da app.** Antes tinha ficado
+  só para a landing; com a app a parecer parada, 2,5% em quarenta segundos é o
+  suficiente para não parecer uma imagem.
+- **A barra de baixo passa a dizer onde se está.** Tinha cinco ícones iguais e
+  nenhum estado ativo: a meio de uma navegação não havia forma de saber em que
+  secção se estava sem ler o título. Usa a mesma regra do topo (`sectionOf`),
+  para os dois menus concordarem, e marca com um ponto, não com um sublinhado.
+
+**As capturas da landing foram refeitas depois disto.** A página mostra a app, a
+app mudou de aspeto, e uma landing com capturas de uma versão que já não existe
+é exatamente o problema que o `npm run shots` veio resolver. Pelo caminho
+percebeu-se que o texto alternativo não pode citar a TIR com decimais: depende
+do dia em que a captura é tirada.
+
+### Fora deste trabalho
+
+A consola de administração (`/plataforma`) fica para uma branch do Tiago. O
+pedido registado, para quando lá se chegar: mais indicadores em gráfico, secções
+em acordeão (indicadores, contas novas, testes de acesso) e tudo dentro da mesma
+página. Nota importante que veio da conversa: **um gráfico de registos por mês
+tem de sair das datas já gravadas** (`app_users.created_at` e `spaces.created_at`
+existem desde a migração inicial), e não de contadores criados de raiz, senão
+nasce vazio e esconde tudo o que aconteceu antes de ele existir.

@@ -149,11 +149,11 @@
   }
 
   /*
-   * O fundo respira, muito devagar, e só na landing.
+   * O fundo respira, muito devagar.
    *
-   * Um gradiente absolutamente parado é metade da sensação de página estanque.
-   * Se o ciclo se notar, está mal. Dentro da app não se mexe nada: ninguém
-   * quer o fundo a andar por trás de uma tabela de despesas.
+   * Um gradiente absolutamente parado é metade da sensação de coisa estanque.
+   * A amplitude é de 2,5% em quarenta segundos: se o ciclo se notar, está mal,
+   * e é a primeira coisa a cair se der solavancos em Android.
    */
   @keyframes drift {
     0%,
@@ -165,9 +165,33 @@
     }
   }
 
-  body:has([data-landing])::before {
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
     animation: drift 40s ease-in-out infinite;
     will-change: transform;
+  }
+
+  /*
+   * Entrada de página, dentro da app.
+   *
+   * O App Router mantém o layout e troca só o conteúdo, por isso sem uma
+   * chave por rota não há transição nenhuma: a página seguinte aparece de
+   * repente, e é isso que dá a sensação de ecrã estático a piscar. Com a
+   * chave, cada navegação sobe seis píxeis em 380ms. Curto de propósito:
+   * quem anda a registar despesas passa por aqui dezenas de vezes ao dia.
+   */
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .page-in {
+    animation: page-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 }
 
@@ -176,8 +200,36 @@
     @apply font-mono text-[11px] uppercase tracking-[0.18em] text-fg-faint;
   }
 
+  /*
+   * Cartão. O contorno vive na sombra, não numa borda.
+   *
+   * Com `border`, um ecrã com oito cartões desenha oito retângulos a cheio e a
+   * app lê-se como uma folha quadriculada. No `box-shadow` o fio fica fora da
+   * caixa de layout (não empurra nada, não soma um píxel a cada lado) e pode
+   * ser mais fraco, porque a sombra por baixo já separa o cartão do fundo.
+   */
   .card {
-    @apply rounded-2xl border border-hair bg-panel/80 backdrop-blur-sm;
+    @apply rounded-2xl bg-panel/80 backdrop-blur-sm;
+    box-shadow: var(--shadow-card), 0 0 0 1px var(--card-ring);
+  }
+
+  /*
+   * Menus suspensos: a mesma superfície, e sem fios lá dentro.
+   *
+   * Separar as opções de um menu com linhas era o que mais depressa dava à app
+   * o ar de formulário antigo. O que separa passa a ser o ar à volta e o
+   * realce ao passar por cima.
+   */
+  .menu {
+    @apply overflow-hidden rounded-xl bg-panel p-1;
+    box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+  }
+  .menu-item {
+    @apply flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-muted transition-colors duration-150 hover:bg-panel2 hover:text-fg;
+  }
+  /* Cabeçalho de um menu (quem está com sessão iniciada, por exemplo). */
+  .menu-head {
+    @apply flex items-center gap-2 rounded-lg px-3 pb-2 pt-2 text-sm text-fg-muted;
   }
 
   .btn {
@@ -213,9 +265,20 @@
     @apply border-hair;
   }
 
-  /* Linha de despesa: estilo lista editorial (hairline em vez de cartões pesados). */
+  /*
+   * Linha de despesa: estilo lista editorial (hairline em vez de cartões
+   * pesados). O fio fica: numa lista densa de valores, é ele que diz onde
+   * acaba uma linha e começa a outra, e isso é anatomia da lista, não uma
+   * divisória entre blocos. Ganha realce ao passar por cima, para a lista
+   * responder ao rato em vez de ficar um bloco morto.
+   */
   .row {
-    @apply flex items-center gap-4 border-b border-hair2 py-3.5 transition-colors;
+    @apply -mx-2 flex items-center gap-4 rounded-lg border-b border-hair2 px-2 py-3.5 transition-colors duration-150;
+  }
+  @media (hover: hover) {
+    .row:hover {
+      background: rgb(var(--c-panel2) / 0.45);
+    }
   }
 
   /* =====================================================================
@@ -305,20 +368,25 @@
   }
 
   /*
-   * Cabeçalho da landing: nasce transparente e ganha fundo ao sair do topo.
-   * O que o separa da página é sombra, nunca uma borda. Bónus: no primeiro
-   * pintar não há `backdrop-filter` nenhum, que é caro em Android.
+   * Cabeçalho colado ao topo, na landing e na app: nasce transparente e ganha
+   * fundo ao sair do topo. O que o separa do conteúdo é sombra, nunca uma
+   * borda. Bónus: no primeiro pintar não há `backdrop-filter` nenhum, que é
+   * caro em Android.
    */
-  header[data-site] {
+  [data-sticky] {
     transition:
       background 260ms ease,
       box-shadow 260ms ease,
       backdrop-filter 260ms ease;
   }
-  :root[data-scrolled] header[data-site] {
+  :root[data-scrolled] header[data-sticky] {
     background: rgb(var(--c-bg) / 0.72);
     backdrop-filter: blur(16px) saturate(140%);
     box-shadow: 0 12px 30px -22px rgba(0, 0, 0, 0.85);
+  }
+  /* A barra de baixo faz o mesmo, com a sombra a subir em vez de descer. */
+  nav[data-sticky] {
+    box-shadow: 0 -12px 30px -22px rgba(0, 0, 0, 0.85);
   }
 
   /* Traço que se desenha ao lado da sobrancelha: acento, não divisória. */
@@ -416,7 +484,11 @@
     opacity: 1 !important;
     transform: none !important;
   }
-  body:has([data-landing])::before {
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
+    animation: none !important;
+  }
+  .page-in {
     animation: none !important;
   }
 }

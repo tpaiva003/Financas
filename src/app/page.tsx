@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ContactForm } from "@/components/ContactForm";
 import { BrandMark } from "@/components/BrandMark";
 import { Reveal } from "@/components/landing/Reveal";
-import { ScrollState } from "@/components/landing/ScrollState";
+import { ScrollState } from "@/components/ScrollState";
 import { HeroScreen } from "@/components/landing/HeroScreen";
 import { PhoneFrame, BrowserFrame, Shot } from "@/components/landing/Frames";
 
@@ -53,7 +53,7 @@ export default function LandingPage() {
 
 function SiteHeader() {
   return (
-    <header data-site className="sticky top-0 z-20">
+    <header data-sticky className="sticky top-0 z-20">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <span className="flex items-center gap-2">
           <BrandMark />
@@ -305,8 +305,11 @@ const PERGUNTAS = [
   },
 ];
 
+// Sem decimais na taxa de propósito: a TIR depende do dia em que a captura é
+// tirada, e um texto alternativo que envelhece a cada `npm run shots` é um
+// texto alternativo que ninguém vai manter certo.
 const ALT_CARTEIRA =
-  "Rentabilidade da carteira: 14 598,96 € investidos valem hoje 15 505,10 €, taxa anual de 11,2%, com a comparação a dizer que no S&P 500 teria 270,53 € a mais e no MSCI World 481,59 € a menos.";
+  "Rentabilidade da carteira: 14 598,96 € investidos valem hoje 15 505,10 €, com uma taxa anual a rondar os 11%, e a comparação a dizer que no S&P 500 teria 270,53 € a mais e no MSCI World 481,59 € a menos.";
 
 function Investimentos() {
   return (

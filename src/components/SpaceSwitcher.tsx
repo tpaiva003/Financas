@@ -44,30 +44,25 @@ export function SpaceSwitcher({
             className="fixed inset-0 z-30 cursor-default"
             onClick={() => setOpen(false)}
           />
-          <div
-            role="menu"
-            className="absolute left-0 z-40 mt-2 w-60 overflow-hidden rounded-xl border border-hair bg-panel shadow-glow"
-          >
-            <p className="eyebrow px-3 pb-1 pt-3">Ambientes</p>
+          <div role="menu" className="menu absolute left-0 z-40 mt-2 w-60">
+            <p className="eyebrow px-3 pb-1.5 pt-2">Ambientes</p>
             {spaces.map((s) => (
               <form action={setCurrentSpaceAction} key={s.id}>
                 <input type="hidden" name="spaceId" value={s.id} />
                 <button
                   type="submit"
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition hover:bg-panel2 ${
-                    s.id === currentId ? "text-fg" : "text-fg-muted"
-                  }`}
+                  className={`menu-item ${s.id === currentId ? "text-fg" : ""}`}
                 >
                   <span className="truncate">{s.name}</span>
                   {s.id === currentId ? <span className="text-credit">✓</span> : null}
                 </button>
               </form>
             ))}
-            <div className="my-1 border-t border-hair2" />
-            <Link href="/ambiente" className="block px-3 py-2 text-sm text-fg-muted hover:bg-panel2" onClick={() => setOpen(false)}>
+            {/* O espaço é que separa os ambientes das ações, não um fio. */}
+            <Link href="/ambiente" className="menu-item mt-1" onClick={() => setOpen(false)}>
               Gerir participantes
             </Link>
-            <Link href="/ambientes/novo" className="block px-3 py-2 text-sm text-fg-muted hover:bg-panel2" onClick={() => setOpen(false)}>
+            <Link href="/ambientes/novo" className="menu-item" onClick={() => setOpen(false)}>
               + Novo ambiente
             </Link>
           </div>

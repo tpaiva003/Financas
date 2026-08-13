@@ -25,10 +25,14 @@ export function SectionNav() {
           <Link
             key={c.href}
             href={c.href}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+            aria-current={active ? "page" : undefined}
+            // Só a página atual leva forma. Seis pastilhas todas contornadas
+            // liam-se como uma fila de caixas vazias, e era mais uma coisa a
+            // desenhar linhas por todo o lado.
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors duration-200 ${
               active
-                ? "border-fg/30 bg-panel2 text-fg"
-                : "border-hair text-fg-muted hover:text-fg"
+                ? "bg-panel2 text-fg"
+                : "text-fg-muted hover:bg-panel2/50 hover:text-fg"
             }`}
           >
             {c.label}
