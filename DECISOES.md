@@ -2063,3 +2063,77 @@ ter sido perguntado.
 Uma carteira com cinquenta investimentos sem setor dava cinquenta idas à rede em
 série dentro de uma função com tempo limitado — que estoirava o prazo e não
 gravava nada. Doze por passagem, com o número que falta no próprio botão.
+
+
+---
+
+## O gráfico que esteve vazio com os dados certos por baixo (2026-08-13)
+
+### O que aconteceu
+
+As barras do "Registos criados por mês" eram um `<span>` com `height` em
+percentagem, dentro de um `<li>` que era item de um `flex` com `items-end`. Com
+`items-end` o item **encolhe para a altura do conteúdo**, e uma percentagem de
+uma altura `auto` resolve para zero. As doze barras tinham zero pixéis. A base de
+dados tinha 191 despesas, 51 ativos e 137 movimentos, todos com `created_at`
+preenchido — o gráfico estava a desenhar os números certos com altura nenhuma.
+
+### Porque é que nada apanhou isto
+
+O `tsc` compila, o `lint` passa, o `build` compila, e os 1013 testes não tocam em
+CSS — não há DOM nos testes desta app. Um gráfico vazio e um gráfico avariado
+eram **indistinguíveis** a olho: os dois mostram uma caixa com rótulos de meses e
+nada por cima.
+
+### As duas defesas que ficaram
+
+1. **A altura vai ao item que tem altura definida**, nunca a um filho de um item
+   encolhido. O `items-end` saiu; o alinhamento ao fundo faz-se com `justify-end`
+   dentro de cada coluna, que não mexe na altura do item.
+2. **Os valores vão escritos por cima das barras.** Se o desenho voltar a
+   colapsar, os números continuam à vista e a avaria denuncia-se sozinha. É a
+   defesa que interessa mesmo: a primeira corrige este bug, a segunda torna
+   impossível o próximo passar despercebido durante semanas.
+
+O mesmo cuidado está na barra das funcionalidades: é largura no elemento de fora,
+e não altura percentual dentro de um item de flex.
+
+---
+
+## A consola da plataforma em acordeão (2026-08-13)
+
+### Oito blocos empilhados obrigam a percorrer sete para chegar a um
+
+Numa consola de administração procura-se quase sempre **uma** coisa. A página
+crescia a cada sessão e para chegar aos ambientes passava-se por cima dos
+números, das contas, do que é usado e dos bancos aprendidos.
+
+`<details>` e não estado no cliente: abre sem JavaScript, a pesquisa da página
+encontra texto lá dentro, e não há nada para hidratar numa página já servida por
+inteiro.
+
+### Cada cabeçalho traz o número que se procuraria lá dentro
+
+Um acordeão em que todos os cabeçalhos se parecem obriga a abrir todos para
+encontrar um — que é exactamente o problema que ele veio resolver.
+
+### O que fica de fora do acordeão, e porquê
+
+Os **KPIs de topo**, porque uma consola em que o primeiro olhar custa um clique
+não serve para o primeiro olhar. E os **avisos** do que não foi possível ler:
+um aviso dentro de uma secção fechada não é um aviso — quem olha para os números
+de cima não tem como saber que um deles veio a menos. (Este bloco chegou a
+perder-se na reorganização, apagado com as secções que substituiu. Foi reposto.)
+
+### "Registos ao todo" ao lado de "Despesas"
+
+A consola dizia "191 despesas" numa app que já tem património, movimentos,
+rendimentos e metas. O número mais visível era o de uma parte só e lia-se como o
+tamanho do todo. Fica `null` — e não zero — quando a leitura das despesas falha:
+um total mais pequeno do que o real com ar de facto é pior do que um traço.
+
+### A adoção mede-se em ambientes, não em registos
+
+Uma funcionalidade com dez mil linhas num único ambiente e outra com dez linhas
+em cinco ambientes: a segunda é a que está a pegar. Ordenar por registos punha a
+primeira em primeiro lugar e mandava manter o que só uma pessoa usa.
