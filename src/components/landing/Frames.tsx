@@ -21,10 +21,13 @@ export function PhoneFrame({
 }) {
   return (
     <div
+      // A carcaça é escura nos dois temas, como um telemóvel a sério. Com o
+      // ecrã claro lá dentro, é ela que faz a imagem ler-se como um aparelho e
+      // não como um retângulo branco colado à página.
       className={`relative aspect-[390/844] rounded-[2.25rem] p-[6px] ${className}`}
       style={{
-        background: "linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.03) 40%)",
-        boxShadow: "var(--shadow-device), 0 0 0 1px var(--card-ring)",
+        background: "linear-gradient(160deg, #3a3a40, #17161a 45%)",
+        boxShadow: "var(--shadow-device), 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
       <div className="screen relative h-full w-full overflow-hidden rounded-[1.9rem]">
@@ -47,22 +50,25 @@ export function BrowserFrame({
 }) {
   return (
     <div
+      // A barra do browser é escura nos dois temas, como a carcaça do
+      // telemóvel. Com o ecrã claro lá dentro, é ela que segura o aparelho na
+      // página: sobre o papel do tema de dia, uma moldura clara à volta de um
+      // ecrã claro desaparecia, e ficava um retângulo branco a flutuar.
       className={`overflow-hidden rounded-2xl ${className}`}
       style={{
-        background: "var(--card-fill)",
-        boxShadow: "var(--shadow-device), 0 0 0 1px var(--card-ring)",
+        background: "linear-gradient(180deg, #2a2a30, #1d1d22)",
+        boxShadow: "var(--shadow-device), 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
       <div className="flex items-center gap-3 px-4 py-2.5">
         <span className="flex gap-1.5" aria-hidden>
-          <span className="h-2 w-2 rounded-full bg-fg-faint/40" />
-          <span className="h-2 w-2 rounded-full bg-fg-faint/40" />
-          <span className="h-2 w-2 rounded-full bg-fg-faint/40" />
+          <span className="h-2 w-2 rounded-full bg-white/20" />
+          <span className="h-2 w-2 rounded-full bg-white/20" />
+          <span className="h-2 w-2 rounded-full bg-white/20" />
         </span>
-        <span className="truncate font-mono text-[10px] tracking-tight text-fg-faint">{url}</span>
+        <span className="truncate font-mono text-[10px] tracking-tight text-white/40">{url}</span>
       </div>
-      {/* Esta linha é anatomia da moldura, não uma divisória entre blocos. */}
-      <div className="screen border-t border-hair2">{children}</div>
+      <div className="screen">{children}</div>
     </div>
   );
 }

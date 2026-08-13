@@ -21,6 +21,13 @@
  *
  * AVISO: só funciona contra o modo mock. As capturas vão para uma página
  * pública e os dados de duas pessoas reais não têm nada que lá estar.
+ *
+ * As capturas são tiradas no TEMA DE DIA. A landing é escura por omissão, e um
+ * ecrã claro dentro de uma moldura destaca-se lá muito mais do que um ecrã
+ * escuro sobre fundo escuro. Se isto mudar, tem de mudar também a classe
+ * `.screen` no globals.css, que pinta o interior das molduras: as duas coisas
+ * têm de contar a mesma história, senão fica uma orla da cor errada à volta da
+ * imagem.
  */
 
 import fs from "node:fs";
@@ -58,18 +65,20 @@ fs.writeFileSync(ficheiroExtrato, EXTRATO);
 const browser = await chromium.launch();
 
 async function entrar(viewport) {
-  // O ecrã da app é sempre escuro nas capturas: as molduras da landing é que
-  // mudam de tema. Ver a classe `.screen` no globals.css.
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme: "dark" });
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme: "light" });
   const p = await ctx.newPage();
   await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  // O tema tem de ficar GRAVADO, não posto no <html> à mão: cada `goto` é um
+  // carregamento inteiro, e o script que corre antes de pintar volta a ler
+  // esta chave. Sem isto, a primeira página saía clara e as seguintes escuras.
+  await p.evaluate(() => localStorage.setItem("rachar-tema", "light"));
   await p.waitForSelector("#email", { state: "visible" });
   await p.waitForTimeout(700); // o formulário é um componente de cliente
   await p.fill("#email", EMAIL);
   await p.fill("#password", PALAVRA);
   await p.click('button[type="submit"]');
   await p.waitForURL("**/dashboard", { timeout: 45_000 });
-  await p.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  await p.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
   return { ctx, p };
 }
 

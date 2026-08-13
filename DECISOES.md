@@ -1348,10 +1348,9 @@ Verificado com o JavaScript desligado, não assumido.
 
 - **São a app a sério**, com os dados de exemplo do modo mock. Nunca dados de
   pessoas reais numa página pública.
-- **O ecrã é sempre de noite, a moldura é que muda de tema** (classe `.screen`).
-  Um telemóvel escuro sobre papel quente é o que um telemóvel é, e uma captura
-  escura a flutuar sem moldura sobre fundo claro fica um buraco no meio da
-  página. Poupa também metade dos ficheiros.
+- **O ecrã é sempre o MESMO tema, a moldura é que muda** (classe `.screen`).
+  Poupa metade dos ficheiros e evita o buraco preto de uma captura escura a
+  flutuar sobre fundo claro. Sobre qual dos temas, ver a entrada de 13/08.
 - **Recorte próprio para telemóvel**: a 390px, um ecrã de 1440px reduzido é um
   borrão cinzento.
 - **O herói não é imagem, é HTML.** O maior elemento da primeira vista passa a
@@ -1440,3 +1439,32 @@ página. Nota importante que veio da conversa: **um gráfico de registos por mê
 tem de sair das datas já gravadas** (`app_users.created_at` e `spaces.created_at`
 existem desde a migração inicial), e não de contadores criados de raiz, senão
 nasce vazio e esconde tudo o que aconteceu antes de ele existir.
+
+## As capturas passam para o tema de dia — 2026-08-13
+
+A primeira versão fixava o interior das molduras no tema de noite, com o
+argumento de que um telemóvel é escuro. O Tiago apontou o que faltava nessa
+conta: **a landing é escura por omissão**, e é assim que quase toda a gente lhe
+chega. Um ecrã escuro dentro de uma moldura escura sobre uma página escura é uma
+mancha que se confunde com o fundo, por muito bem recortada que esteja. Um ecrã
+claro salta à vista.
+
+Passa a haver três peças que têm de contar a mesma história, e é fácil
+desencontrá-las:
+
+1. `scripts/shots.mjs` tira as capturas com o tema de dia.
+2. A classe `.screen` no `globals.css` pinta o interior das molduras com as
+   cores do tema de dia. Se ficar no escuro, aparece uma orla preta à volta de
+   uma imagem clara.
+3. As molduras (`PhoneFrame` e `BrowserFrame`) passam a ser **escuras nos dois
+   temas**. Isto não é enfeite: com o ecrã claro lá dentro, na landing clara uma
+   moldura clara à volta de um ecrã claro desaparecia, e ficava um retângulo
+   branco a flutuar no papel. Com a carcaça escura, o aparelho lê-se como
+   aparelho nos dois temas, e é também o que um telemóvel e uma janela de
+   browser são de verdade.
+
+**A armadilha, que custou uma volta:** pôr `data-theme="light"` no `<html>` pelo
+Playwright não chega. Cada `goto` é um carregamento inteiro, e o script que corre
+antes de pintar volta a ler o `localStorage`. A primeira página saía clara e as
+seguintes escuras. O tema tem de ser **gravado** (`rachar-tema`), não posto à
+mão.

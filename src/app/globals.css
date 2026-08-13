@@ -347,22 +347,31 @@
   }
 
   /*
-   * Um ecrã de telemóvel é escuro mesmo quando a página é clara.
-   * Fixando aqui as cores do tema de noite, as capturas ficam certas nos dois
-   * temas e é só a moldura que muda.
+   * O interior das molduras: a app no TEMA DE DIA, sempre.
+   *
+   * A landing é escura por omissão, e é assim que quase toda a gente lhe chega.
+   * Um ecrã claro dentro de uma moldura salta à vista; um ecrã escuro sobre
+   * fundo escuro é uma mancha que se confunde com a página, por muito bem
+   * recortada que esteja.
+   *
+   * Estas cores são as mesmas do `html[data-theme="light"]`, fixadas aqui para
+   * o interior da moldura não mudar quando a página muda de tema. Têm de
+   * bater certo com o tema em que as capturas são tiradas (ver
+   * `scripts/shots.mjs`): se as duas coisas se desencontrarem, fica uma orla da
+   * cor errada à volta da imagem.
    */
   .screen {
-    color-scheme: dark;
-    --c-bg: 8 8 10;
-    --c-panel: 16 16 18;
-    --c-panel2: 22 22 26;
-    --c-hair: rgba(255, 255, 255, 0.09);
-    --c-hair2: rgba(255, 255, 255, 0.06);
-    --c-fg: 243 242 238;
-    --c-fg-muted: 163 162 156;
-    --c-fg-faint: 109 108 103;
-    --c-credit: 98 209 150;
-    --c-debt: 240 116 111;
+    color-scheme: light;
+    --c-bg: 250 248 244;
+    --c-panel: 255 255 255;
+    --c-panel2: 241 237 229;
+    --c-hair: rgba(23, 22, 26, 0.12);
+    --c-hair2: rgba(23, 22, 26, 0.07);
+    --c-fg: 23 22 26;
+    --c-fg-muted: 93 91 85;
+    --c-fg-faint: 138 136 127;
+    --c-credit: 15 122 69;
+    --c-debt: 192 52 44;
     background: rgb(var(--c-bg));
     color: rgb(var(--c-fg));
   }
