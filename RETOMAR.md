@@ -3,7 +3,7 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-07.
+> Última atualização: 2026-08-13.
 
 ---
 
@@ -20,6 +20,39 @@
 | Camada de IA a mapear colunas na importação | ✅ |
 | Tectos do plano gratuito (`spaces.plan`) + aviso de quanto falta | ✅ |
 | Congelamento a 90 dias e vagas diárias — **domínio puro, código inerte** | ⚠️ ver abaixo |
+
+### Feito na sessão de 13/08 (PR #32, por integrar)
+
+Branch `claude/rachar-landing-page-zdliyf`. Deploy verde, ainda em rascunho.
+
+| | |
+|---|---|
+| Landing reescrita: contava só o dividir contas, agora conta a app toda | ✅ |
+| Capturas de ecrã reais na landing, geradas por `npm run shots` | ✅ |
+| Menos linhas e mais movimento, na landing **e** dentro da app | ✅ |
+| Dados de exemplo para património, investimentos, cotações e rendimentos | ✅ |
+| `README.md` atualizado (dizia "Fase 1" e "dois utilizadores") | ✅ |
+
+**Dois bugs corrigidos pelo caminho, ambos anteriores a esta sessão:**
+
+1. **O middleware barrava páginas que têm de ser públicas.** `/privacidade`,
+   `/termos` e `/recuperar` redirecionavam para o login. As duas primeiras estão
+   no rodapé e **a Google exige-as acessíveis sem sessão para aprovar o ecrã de
+   consentimento do SSO** — ou seja, isto bloqueava o ponto 4 desta lista sem que
+   se soubesse. A terceira é a reposição de palavra-chave, que por definição é
+   para quem não consegue entrar.
+2. **O `.env.example` trazia `AUTH_URL="https://rachar.pt"`.** O README manda
+   copiá-lo e arrancar, e com um URL `https` os cookies de sessão saem `Secure`,
+   que o browser recusa em `http://localhost`. O arranque documentado não dava
+   para entrar na app, e falhava em silêncio.
+
+**Pedido do Tiago que fica para outra branch:** a consola `/plataforma` com mais
+indicadores em gráfico, secções em acordeão e separação entre indicadores, contas
+novas e testes de acesso. Nota que veio da conversa e que vale a pena guardar:
+um gráfico de registos por mês **tem de sair das datas já gravadas**
+(`app_users.created_at` e `spaces.created_at` existem desde a `0001_init`), e não
+de contadores criados de raiz — senão nasce vazio e esconde tudo o que aconteceu
+antes de ele existir, que foi exatamente o que o Tiago viu.
 
 **Código inerte na `main`:** `retentionVerdict` e `decideSignup` existem e estão
 testados, mas **nada os chama**. A migração `0021` está no repositório e **não
@@ -115,6 +148,9 @@ A lógica está feita e testada. Falta ligar tudo. Por ordem de dependência:
 - [ ] **Ligar o `decideSignup` ao registo** — contar contas do dia no callback do
       Auth.js, recusar quando não há vaga e encaminhar para a lista de espera.
 - [ ] **Formulário da lista de espera** — na landing e no ecrã de "não há vagas".
+      **Atenção:** a landing tem hoje um formulário de *contacto*
+      (`landing-actions.ts` → `createContactMessage`), que não é a mesma coisa.
+      Decidir se a lista de espera o substitui ou vive ao lado dele.
 - [ ] **Texto de RGPD** na `/privacidade` (a página existe e fala do mundo antigo,
       de dois utilizadores convidados). Dizer o que se guarda, quanto tempo, o que
       é o congelamento aos 90 dias, e como pedir os dados ou o apagamento.
@@ -151,7 +187,9 @@ confirmam.**
 
 ## 4. Dívidas antigas
 
-- [ ] **SSO Google/Microsoft** — bloqueado à espera de credenciais do Tiago.
+- [ ] **SSO Google/Microsoft** — bloqueado à espera de credenciais do Tiago. A
+      outra metade do bloqueio (as páginas de privacidade e termos abrirem sem
+      sessão, que a Google exige) **já está resolvida**, ver 13/08.
 - [ ] **Fusão de comerciantes e alcunhas** — mencionado, nunca feito.
 
 ---
@@ -185,6 +223,9 @@ Estão em `DECISOES.md` com o contexto todo. Os que mais se repetem:
 6. **Um limite nunca apaga nada.** Impede de criar mais; o que lá está fica.
 7. **Sem taxa de câmbio não se grava preço nenhum.** Dólares gravados como euros
    inflacionam o património sem dar sinal.
+8. **Uma página pública não se assume, verifica-se sem sessão.** O middleware
+   barrava a `/privacidade`, a `/termos` e a `/recuperar` sem que ninguém desse
+   por isso, porque quem testa está quase sempre com sessão iniciada.
 
 ---
 
