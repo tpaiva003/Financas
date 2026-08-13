@@ -17,17 +17,28 @@
  *
  *     npm i -D playwright && npx playwright install chromium
  *
+ * Se a máquina já tiver um Chromium noutro sítio, aponta-lhe com
+ * `SHOTS_CHROMIUM=/caminho/para/chromium npm run shots`.
+ *
  * O `sharp` já é dependência, porque o Next também o usa para otimizar imagens.
  *
  * AVISO: só funciona contra o modo mock. As capturas vão para uma página
  * pública e os dados de duas pessoas reais não têm nada que lá estar.
  *
- * As capturas são tiradas no TEMA DE DIA. A landing é escura por omissão, e um
- * ecrã claro dentro de uma moldura destaca-se lá muito mais do que um ecrã
- * escuro sobre fundo escuro. Se isto mudar, tem de mudar também a classe
- * `.screen` no globals.css, que pinta o interior das molduras: as duas coisas
- * têm de contar a mesma história, senão fica uma orla da cor errada à volta da
- * imagem.
+ * Cada cena é tirada NOS DOIS TEMAS, e a landing mostra sempre **o contrário**
+ * do tema em que o visitante está: página escura, capturas claras; página
+ * clara, capturas escuras. É o que dá contraste máximo em qualquer dos casos,
+ * em vez de escuro sobre escuro (uma mancha) ou branco sobre papel (um
+ * retângulo a flutuar).
+ *
+ * Os ficheiros saem com sufixo `-claro` e `-escuro`, pelo tema DA CAPTURA e não
+ * pelo tema da página onde aparece. A classe `.screen` no globals.css, que
+ * pinta o interior das molduras, tem de inverter da mesma maneira: se as duas
+ * coisas se desencontrarem, fica uma orla da cor errada à volta da imagem.
+ *
+ * O peso no disco duplica, o peso para quem visita não: as capturas do tema que
+ * não está a ser usado ficam em `display: none` e com `loading="lazy"`, e o
+ * browser não vai buscar imagens que nunca chegam a aparecer.
  */
 
 import fs from "node:fs";
@@ -62,23 +73,28 @@ fs.mkdirSync(TEMP, { recursive: true });
 const ficheiroExtrato = path.join(TEMP, "extrato-exemplo.csv");
 fs.writeFileSync(ficheiroExtrato, EXTRATO);
 
-const browser = await chromium.launch();
+// `SHOTS_CHROMIUM` serve para ambientes que já trazem um Chromium instalado
+// noutro sítio (contentores, CI). Sem ela, usa-se o que o Playwright descarrega.
+const browser = await chromium.launch(
+  process.env.SHOTS_CHROMIUM ? { executablePath: process.env.SHOTS_CHROMIUM } : {},
+);
 
-async function entrar(viewport) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme: "light" });
+/** `tema` é "light" ou "dark", como a app os guarda. */
+async function entrar(viewport, tema) {
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme: tema });
   const p = await ctx.newPage();
   await p.goto(`${BASE}/login`, { waitUntil: "networkidle" });
   // O tema tem de ficar GRAVADO, não posto no <html> à mão: cada `goto` é um
   // carregamento inteiro, e o script que corre antes de pintar volta a ler
-  // esta chave. Sem isto, a primeira página saía clara e as seguintes escuras.
-  await p.evaluate(() => localStorage.setItem("rachar-tema", "light"));
+  // esta chave. Sem isto, a primeira página saía num tema e as seguintes noutro.
+  await p.evaluate((t) => localStorage.setItem("rachar-tema", t), tema);
   await p.waitForSelector("#email", { state: "visible" });
   await p.waitForTimeout(700); // o formulário é um componente de cliente
   await p.fill("#email", EMAIL);
   await p.fill("#password", PALAVRA);
   await p.click('button[type="submit"]');
   await p.waitForURL("**/dashboard", { timeout: 45_000 });
-  await p.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  await p.evaluate((t) => document.documentElement.setAttribute("data-theme", t), tema);
   return { ctx, p };
 }
 
@@ -116,43 +132,50 @@ async function preVisualizarImport(p) {
   await p.waitForTimeout(1200);
 }
 
-// ---------------------------------------------------------------- desktop
-{
-  const { ctx, p } = await entrar({ width: 1440, height: 900 });
+const TEMAS = [
+  { tema: "light", sufixo: "claro" },
+  { tema: "dark", sufixo: "escuro" },
+];
 
-  await preVisualizarImport(p);
-  // A prova está nas linhas já classificadas, não no cabeçalho do passo 2.
-  await ancorar(p, "COMPRA 4471 CONTINENTE", 210);
-  await recortar(p, p.getByText("Selecionar todas").first(), path.join(TEMP, "importar-d.png"), { folga: 26 });
+for (const { tema, sufixo } of TEMAS) {
+  // ------------------------------------------------------------- desktop
+  {
+    const { ctx, p } = await entrar({ width: 1440, height: 900 }, tema);
 
-  await p.goto(`${BASE}/patrimonio/ativos`, { waitUntil: "networkidle" });
-  const carteira = await ancorar(p, "Rentabilidade da carteira", 44);
-  await recortar(p, carteira, path.join(TEMP, "carteira-d.png"), { folga: 30 });
+    await preVisualizarImport(p);
+    // A prova está nas linhas já classificadas, não no cabeçalho do passo 2.
+    await ancorar(p, "COMPRA 4471 CONTINENTE", 210);
+    await recortar(p, p.getByText("Selecionar todas").first(), path.join(TEMP, `importar-d-${sufixo}.png`), { folga: 26 });
 
-  await p.goto(`${BASE}/relatorios`, { waitUntil: "networkidle" });
-  const grafico = await ancorar(p, "Evolução mensal", 44);
-  await recortar(p, grafico, path.join(TEMP, "analise-d.png"), { folga: 30 });
+    await p.goto(`${BASE}/patrimonio/ativos`, { waitUntil: "networkidle" });
+    const carteira = await ancorar(p, "Rentabilidade da carteira", 44);
+    await recortar(p, carteira, path.join(TEMP, `carteira-d-${sufixo}.png`), { folga: 30 });
 
-  await ctx.close();
-}
+    await p.goto(`${BASE}/relatorios`, { waitUntil: "networkidle" });
+    const grafico = await ancorar(p, "Evolução mensal", 44);
+    await recortar(p, grafico, path.join(TEMP, `analise-d-${sufixo}.png`), { folga: 30 });
 
-// --------------------------------------------------------------- telemóvel
-{
-  const { ctx, p } = await entrar({ width: 390, height: 844 });
+    await ctx.close();
+  }
 
-  await preVisualizarImport(p);
-  await ancorar(p, "COMPRA 4471 CONTINENTE", 150);
-  await p.screenshot({ path: path.join(TEMP, "importar-m.png") });
+  // ------------------------------------------------------------ telemóvel
+  {
+    const { ctx, p } = await entrar({ width: 390, height: 844 }, tema);
 
-  await p.goto(`${BASE}/patrimonio/ativos`, { waitUntil: "networkidle" });
-  await ancorar(p, "Rentabilidade da carteira", 120);
-  await p.screenshot({ path: path.join(TEMP, "carteira-m.png") });
+    await preVisualizarImport(p);
+    await ancorar(p, "COMPRA 4471 CONTINENTE", 150);
+    await p.screenshot({ path: path.join(TEMP, `importar-m-${sufixo}.png`) });
 
-  await p.goto(`${BASE}/relatorios`, { waitUntil: "networkidle" });
-  await ancorar(p, "Evolução mensal", 120);
-  await p.screenshot({ path: path.join(TEMP, "analise-m.png") });
+    await p.goto(`${BASE}/patrimonio/ativos`, { waitUntil: "networkidle" });
+    await ancorar(p, "Rentabilidade da carteira", 120);
+    await p.screenshot({ path: path.join(TEMP, `carteira-m-${sufixo}.png`) });
 
-  await ctx.close();
+    await p.goto(`${BASE}/relatorios`, { waitUntil: "networkidle" });
+    await ancorar(p, "Evolução mensal", 120);
+    await p.screenshot({ path: path.join(TEMP, `analise-m-${sufixo}.png`) });
+
+    await ctx.close();
+  }
 }
 
 await browser.close();
@@ -170,12 +193,14 @@ async function gravar(origem, nome, largura) {
   console.log(`${nome}.webp  ${kb} KB${kb > 90 ? "  <-- ACIMA DO ORÇAMENTO" : ""}`);
 }
 
-await gravar("importar-d.png", "importar-desktop", 1480);
-await gravar("carteira-d.png", "carteira-desktop", 1480);
-await gravar("analise-d.png", "analise-desktop", 1480);
-await gravar("importar-m.png", "importar-mobile", 780);
-await gravar("carteira-m.png", "carteira-mobile", 780);
-await gravar("analise-m.png", "analise-mobile", 780);
+for (const { sufixo } of TEMAS) {
+  await gravar(`importar-d-${sufixo}.png`, `importar-desktop-${sufixo}`, 1480);
+  await gravar(`carteira-d-${sufixo}.png`, `carteira-desktop-${sufixo}`, 1480);
+  await gravar(`analise-d-${sufixo}.png`, `analise-desktop-${sufixo}`, 1480);
+  await gravar(`importar-m-${sufixo}.png`, `importar-mobile-${sufixo}`, 780);
+  await gravar(`carteira-m-${sufixo}.png`, `carteira-mobile-${sufixo}`, 780);
+  await gravar(`analise-m-${sufixo}.png`, `analise-mobile-${sufixo}`, 780);
+}
 
 fs.rmSync(TEMP, { recursive: true, force: true });
 console.log("Capturas prontas em public/landing.");

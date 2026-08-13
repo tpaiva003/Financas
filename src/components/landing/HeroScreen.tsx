@@ -10,8 +10,8 @@ import { useEffect, useState } from "react";
  * duzentos kilobytes), fica nítido em qualquer ecrã, e permite mexer.
  *
  * O que demonstra é o invariante que mais custa explicar por palavras: **quem
- * pagou é independente de como se divide**. O Tiago pagou o jantar todo nos
- * dois casos; o que muda ao carregar nos botões é só quanto é que a Clara lhe
+ * pagou é independente de como se divide**. O André pagou o jantar todo nos
+ * dois casos; o que muda ao carregar nos botões é só quanto é que a Maria lhe
  * deve. Uma frase não faz isto em oitocentos milissegundos.
  *
  * Anda sozinho uma vez, ao fim de 1,8s, e fica quieto a seguir. Repetir em
@@ -22,7 +22,7 @@ const TOTAL_CENTS = 5240;
 
 type Divisao = "meias" | "60/40";
 
-/** Quota do Tiago em cada divisão. O resto é da Clara. */
+/** Quota do André em cada divisão. O resto é da Maria. */
 const QUOTA: Record<Divisao, number> = { meias: 0.5, "60/40": 0.6 };
 
 function euros(cents: number): string {
@@ -44,8 +44,8 @@ export function HeroScreen() {
     setDivisao(d);
   };
 
-  const tiagoCents = Math.round(TOTAL_CENTS * QUOTA[divisao]);
-  const claraCents = TOTAL_CENTS - tiagoCents;
+  const andreCents = Math.round(TOTAL_CENTS * QUOTA[divisao]);
+  const mariaCents = TOTAL_CENTS - andreCents;
 
   return (
     <div className="flex h-full flex-col px-5 pb-5 pt-9 text-left">
@@ -59,7 +59,7 @@ export function HeroScreen() {
       <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
         Quem pagou
       </p>
-      <p className="mt-1.5 text-sm text-fg">Tiago, por inteiro</p>
+      <p className="mt-1.5 text-sm text-fg">André, por inteiro</p>
 
       <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
         Como se divide
@@ -89,7 +89,7 @@ export function HeroScreen() {
       <div
         className="mt-5 flex h-1.5 overflow-hidden rounded-full bg-panel2"
         role="img"
-        aria-label={`Tiago ${Math.round(QUOTA[divisao] * 100)}%, Clara ${Math.round(
+        aria-label={`André ${Math.round(QUOTA[divisao] * 100)}%, Maria ${Math.round(
           (1 - QUOTA[divisao]) * 100,
         )}%`}
       >
@@ -101,8 +101,8 @@ export function HeroScreen() {
       </div>
 
       <div className="mt-3 space-y-0">
-        <Linha nome="Tiago" valor={euros(tiagoCents)} />
-        <Linha nome="Clara" valor={euros(claraCents)} />
+        <Linha nome="André" valor={euros(andreCents)} />
+        <Linha nome="Maria" valor={euros(mariaCents)} />
       </div>
 
       {/*
@@ -114,9 +114,9 @@ export function HeroScreen() {
           Fica a dever
         </p>
         <p className="mt-1 text-sm text-fg">
-          Clara a Tiago{" "}
+          Maria a André{" "}
           <span className="font-mono tnum text-credit transition-colors duration-300">
-            {euros(claraCents)}
+            {euros(mariaCents)}
           </span>
         </p>
       </div>

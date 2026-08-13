@@ -33,10 +33,20 @@ export function seedSpaces(): Space[] {
   ];
 }
 
+/**
+ * Os participantes de exemplo chamam-se **André e Maria**, não Tiago e Clara.
+ *
+ * Estes nomes aparecem nas capturas de ecrã da landing, que é uma página
+ * pública: pôr lá os nomes dos donos da app é dar a entender que se está a ver
+ * a casa deles. Os ids continuam `tiago`/`clara` de propósito, porque são a
+ * fonte de verdade na base de dados de produção (`app_users.id`,
+ * `expenses.payer_id`) e renomeá-los partia as linhas que já lá estão. Ver
+ * `lib/users.ts`.
+ */
 export function seedMembers(): Member[] {
   return [
-    { id: TIAGO, spaceId: DEFAULT_SPACE, name: "Tiago", linkedUserId: TIAGO, email: "tiago@example.com" },
-    { id: CLARA, spaceId: DEFAULT_SPACE, name: "Clara", linkedUserId: CLARA, email: "clara@example.com" },
+    { id: TIAGO, spaceId: DEFAULT_SPACE, name: "André", linkedUserId: TIAGO, email: "andre@example.com" },
+    { id: CLARA, spaceId: DEFAULT_SPACE, name: "Maria", linkedUserId: CLARA, email: "maria@example.com" },
   ];
 }
 

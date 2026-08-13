@@ -347,18 +347,16 @@
   }
 
   /*
-   * O interior das molduras: a app no TEMA DE DIA, sempre.
+   * O interior das molduras mostra sempre O CONTRÁRIO do tema da página.
    *
-   * A landing é escura por omissão, e é assim que quase toda a gente lhe chega.
-   * Um ecrã claro dentro de uma moldura salta à vista; um ecrã escuro sobre
-   * fundo escuro é uma mancha que se confunde com a página, por muito bem
-   * recortada que esteja.
+   * Página escura, ecrã claro. Página clara, ecrã escuro. É o que dá contraste
+   * máximo nos dois casos: escuro sobre escuro é uma mancha que se confunde com
+   * a página, e branco sobre papel é um retângulo a flutuar.
    *
-   * Estas cores são as mesmas do `html[data-theme="light"]`, fixadas aqui para
-   * o interior da moldura não mudar quando a página muda de tema. Têm de
-   * bater certo com o tema em que as capturas são tiradas (ver
-   * `scripts/shots.mjs`): se as duas coisas se desencontrarem, fica uma orla da
-   * cor errada à volta da imagem.
+   * Isto tem de bater certo com as capturas, que são tiradas nos dois temas e
+   * trocadas pelas mesmas regras (ver `scripts/shots.mjs` e `[data-shot]` mais
+   * abaixo). Se as duas coisas se desencontrarem, fica uma orla da cor errada à
+   * volta da imagem.
    */
   .screen {
     color-scheme: light;
@@ -374,6 +372,38 @@
     --c-debt: 192 52 44;
     background: rgb(var(--c-bg));
     color: rgb(var(--c-fg));
+  }
+
+  html[data-theme="light"] .screen {
+    color-scheme: dark;
+    --c-bg: 8 8 10;
+    --c-panel: 16 16 18;
+    --c-panel2: 22 22 26;
+    --c-hair: rgba(255, 255, 255, 0.09);
+    --c-hair2: rgba(255, 255, 255, 0.06);
+    --c-fg: 243 242 238;
+    --c-fg-muted: 163 162 156;
+    --c-fg-faint: 109 108 103;
+    --c-credit: 98 209 150;
+    --c-debt: 240 116 111;
+  }
+
+  /*
+   * A captura certa para o tema em que a página está.
+   *
+   * `claro` e `escuro` dizem respeito ao tema DA CAPTURA, não ao da página: a
+   * clara aparece na página escura, e vice-versa. A que não se vê fica em
+   * `display: none` e com `loading="lazy"`, e o browser não a chega a
+   * transferir. Duplica o peso no disco, não o peso de quem visita.
+   */
+  [data-shot="escuro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="claro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="escuro"] {
+    display: block;
   }
 
   /*

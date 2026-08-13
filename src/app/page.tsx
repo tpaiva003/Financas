@@ -3,6 +3,7 @@ import { ContactForm } from "@/components/ContactForm";
 import { BrandMark } from "@/components/BrandMark";
 import { Reveal } from "@/components/landing/Reveal";
 import { ScrollState } from "@/components/ScrollState";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { HeroScreen } from "@/components/landing/HeroScreen";
 import { PhoneFrame, BrowserFrame, Shot } from "@/components/landing/Frames";
 
@@ -37,6 +38,7 @@ export default function LandingPage() {
       <SiteHeader />
       <Hero />
       <Problema />
+      <OQueSeOuve />
       <OQueFaz />
       <ProvaImportar />
       <Investimentos />
@@ -65,6 +67,11 @@ function SiteHeader() {
         <div className="flex items-center gap-2">
           <a href="#o-que-faz" className="btn-ghost hidden sm:inline-flex">O que faz</a>
           <a href="#contacto" className="btn-ghost hidden sm:inline-flex">Falar connosco</a>
+          {/*
+            O mesmo botão da app, e a mesma preferência guardada: quem escolher
+            o tema de dia aqui entra na app já com ele.
+          */}
+          <ThemeToggle />
           <Link href="/login" className="btn-secondary">Entrar</Link>
         </div>
       </div>
@@ -171,6 +178,83 @@ function Problema() {
   );
 }
 
+/**
+ * As frases que se ouvem quando a conversa chega ao dinheiro.
+ *
+ * Não são testemunhos, e a página diz isso por escrito. Um testemunho inventado
+ * é mentira, e numa app que trata do dinheiro das pessoas a mentira sai cara.
+ * Estas frases não precisam de dono: quem as reconhece, reconhece-as por já as
+ * ter dito. Cada uma leva a resposta ao lado, porque identificar-se com um
+ * problema sem ver a saída deixa a pessoa pior do que estava.
+ *
+ * A última é a mais importante. O concorrente desta app não é o Tricount, é
+ * adiar.
+ */
+const OUVE_SE = [
+  {
+    frase: "Não sei bem para onde é que o meu dinheiro está a ir.",
+    resposta:
+      "Ao fim do mês, por categoria e por sítio onde se gastou. As dezenas de formas de escrever “Continente” contam como uma só.",
+  },
+  {
+    frase: "Ganho bem, mas ao fim do mês não sobra nada.",
+    resposta:
+      "Com o que entra e o que sai lado a lado, a taxa de poupança deixa de ser uma sensação e passa a ser um número.",
+  },
+  {
+    frase: "Um de nós paga sempre mais. Nunca sabemos ao certo quanto.",
+    resposta:
+      "O saldo diz quem deve a quem, e abre-se até à despesa que o explica. Sem ninguém ter de andar a apontar.",
+  },
+  {
+    frase: "Tenho dinheiro em dois bancos, um depósito e uma corretora. Não faço ideia de quanto tenho.",
+    resposta: "Tudo somado num sítio só, menos o que se deve. No fim dá um número.",
+  },
+  {
+    frase: "Ando a investir há dois anos e não sei se estou a ganhar ou a perder.",
+    resposta:
+      "A rentabilidade do teu dinheiro, contando as datas em que ele entrou, e a comparação justa com o índice.",
+  },
+  {
+    frase: "Um dia trato disto.",
+    resposta:
+      "É esse dia que isto encurta. Carregas o extrato e ficas com meses em ordem numa tarde, não num fim de semana.",
+  },
+];
+
+function OQueSeOuve() {
+  return (
+    <section className="wash relative isolate py-20 sm:py-28">
+      <div className="mx-auto max-w-4xl px-6">
+        <Reveal>
+          <p className="eyebrow eyebrow-tick">O que se ouve</p>
+          <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+            Se já disseste alguma destas, isto é para ti.
+          </h2>
+          <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fg-muted text-pretty">
+            Não são testemunhos e não têm dono: são as frases que aparecem sempre
+            que a conversa chega ao dinheiro, e que também já dissemos.
+          </p>
+        </Reveal>
+
+        <Reveal group as="ul" className="mt-12 space-y-9">
+          {OUVE_SE.map((q) => (
+            <li key={q.frase} className="max-w-2xl">
+              <p className="font-display text-xl font-medium leading-snug tracking-tight text-fg text-balance sm:text-2xl">
+                &ldquo;{q.frase}&rdquo;
+              </p>
+              <p className="mt-2.5 flex gap-3 text-[15px] leading-relaxed text-fg-muted text-pretty">
+                <span aria-hidden className="mt-2.5 h-px w-4 shrink-0 bg-credit/60" />
+                <span>{q.resposta}</span>
+              </p>
+            </li>
+          ))}
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 const AREAS_DETALHE = [
   {
     k: "Dividir",
@@ -266,7 +350,7 @@ function ProvaImportar() {
           <div className="md:hidden">
             <PhoneFrame className="mx-auto max-w-[17rem]">
               <Shot
-                src="/landing/importar-mobile.webp"
+                base="/landing/importar-mobile"
                 alt={ALT_IMPORTAR}
                 width={780}
                 height={1688}
@@ -275,7 +359,7 @@ function ProvaImportar() {
           </div>
           <BrowserFrame url="rachar.pt/importar" className="hidden md:block">
             <Shot
-              src="/landing/importar-desktop.webp"
+              base="/landing/importar-desktop"
               alt={ALT_IMPORTAR}
               width={1480}
               height={924}
@@ -347,7 +431,7 @@ function Investimentos() {
           <div className="md:hidden">
             <PhoneFrame className="mx-auto max-w-[17rem]">
               <Shot
-                src="/landing/carteira-mobile.webp"
+                base="/landing/carteira-mobile"
                 alt={ALT_CARTEIRA}
                 width={780}
                 height={1688}
@@ -356,7 +440,7 @@ function Investimentos() {
           </div>
           <BrowserFrame url="rachar.pt/patrimonio/ativos" className="hidden md:block">
             <Shot
-              src="/landing/carteira-desktop.webp"
+              base="/landing/carteira-desktop"
               alt={ALT_CARTEIRA}
               width={1480}
               height={924}
@@ -467,7 +551,7 @@ function ProvaAnalise() {
           <div className="md:hidden">
             <PhoneFrame className="mx-auto max-w-[17rem]">
               <Shot
-                src="/landing/analise-mobile.webp"
+                base="/landing/analise-mobile"
                 alt={ALT_ANALISE}
                 width={780}
                 height={1688}
@@ -476,7 +560,7 @@ function ProvaAnalise() {
           </div>
           <BrowserFrame url="rachar.pt/relatorios" className="hidden md:block">
             <Shot
-              src="/landing/analise-desktop.webp"
+              base="/landing/analise-desktop"
               alt={ALT_ANALISE}
               width={1480}
               height={924}

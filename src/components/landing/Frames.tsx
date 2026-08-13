@@ -74,34 +74,47 @@ export function BrowserFrame({
 }
 
 /**
- * Uma captura de ecrã da app.
+ * Uma captura de ecrã da app, nas duas versões.
  *
- * `loading="lazy"` em todas: nenhuma está acima da dobra (o herói é HTML), e
- * assim o browser também não vai buscar a versão que está escondida no
- * tamanho de ecrã atual.
+ * A página mostra sempre o contrário do tema em que está: escura por fora,
+ * clara por dentro, e vice-versa. As duas versões vão as duas para o HTML e é o
+ * CSS que esconde a que não serve (ver `[data-shot]` no globals.css).
+ *
+ * Podia parecer desperdício mandar as duas. Não é: `loading="lazy"` numa imagem
+ * que está em `display: none` nunca chega a ser transferida, porque nunca entra
+ * na vista. Quem visita paga uma; quem troca de tema paga a outra nesse
+ * momento, uma vez.
+ *
+ * O `base` é o caminho sem sufixo, por exemplo `/landing/carteira-desktop`.
  */
 export function Shot({
-  src,
+  base,
   alt,
   width,
   height,
   className = "",
 }: {
-  src: string;
+  base: string;
   alt: string;
   width: number;
   height: number;
   className?: string;
 }) {
   return (
-    <Image
-      src={src}
-      alt={alt}
-      width={width}
-      height={height}
-      loading="lazy"
-      sizes="(max-width: 767px) 90vw, 740px"
-      className={`h-auto w-full ${className}`}
-    />
+    <>
+      {(["claro", "escuro"] as const).map((tema) => (
+        <Image
+          key={tema}
+          data-shot={tema}
+          src={`${base}-${tema}.webp`}
+          alt={alt}
+          width={width}
+          height={height}
+          loading="lazy"
+          sizes="(max-width: 767px) 90vw, 740px"
+          className={`h-auto w-full ${className}`}
+        />
+      ))}
+    </>
   );
 }

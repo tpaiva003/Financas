@@ -1468,3 +1468,58 @@ Playwright não chega. Cada `goto` é um carregamento inteiro, e o script que co
 antes de pintar volta a ler o `localStorage`. A primeira página saía clara e as
 seguintes escuras. O tema tem de ser **gravado** (`rachar-tema`), não posto à
 mão.
+
+## Tema à escolha, capturas ao contrário, e as frases que se ouvem — 2026-08-13
+
+Três coisas pedidas pelo Tiago, e a terceira mexe com a honestidade da página.
+
+### O visitante escolhe o tema, e as capturas invertem
+
+A landing passa a ter o mesmo botão de tema da app, com a mesma preferência
+guardada: quem escolher o tema de dia na página entra na app já com ele.
+
+E as capturas mostram sempre **o contrário** do tema em que o visitante está:
+página escura, capturas claras; página clara, capturas escuras. É o que dá
+contraste máximo nos dois casos, em vez de escuro sobre escuro (uma mancha que
+se confunde com a página) ou branco sobre papel (um retângulo a flutuar).
+
+Isto obriga três peças a contarem a mesma história, e é fácil desencontrá-las:
+o `scripts/shots.mjs` tira cada cena nos dois temas (sufixos `-claro` e
+`-escuro`, pelo tema **da captura**), a classe `.screen` inverte da mesma
+maneira, e o seletor `[data-shot]` esconde a que não serve.
+
+**O peso no disco duplica, o peso de quem visita não.** Uma imagem em
+`display: none` com `loading="lazy"` nunca entra na vista e nunca é
+transferida. Quem troca de tema paga a outra nesse momento, uma vez. São ~237 KB
+por visita, dentro do orçamento de sempre.
+
+### As frases que se ouvem, e o que elas NÃO são
+
+Secção nova, logo a seguir ao problema, com seis frases do género "não sei bem
+para onde é que o meu dinheiro está a ir". Duas regras:
+
+1. **Não são testemunhos, e a página diz isso por escrito.** Um testemunho
+   inventado é mentira, e numa app que trata do dinheiro das pessoas a mentira
+   sai cara. Estas frases não precisam de dono: quem as reconhece, reconhece-as
+   por já as ter dito. Assumir isso à frente é mais forte do que fingir
+   depoimentos, porque quem lê já desconfia de páginas cheias de caras a sorrir.
+2. **Cada frase leva a resposta ao lado.** Identificar-se com um problema sem
+   ver a saída deixa a pessoa pior do que estava.
+
+A última é a que interessa: *"Um dia trato disto."* O concorrente desta app não
+é o Tricount, é adiar.
+
+### Os nomes dos exemplos passam a André e Maria
+
+Os participantes de exemplo chamavam-se Tiago e Clara, que são os donos da app.
+Numa página pública isso dá a entender que se está a ver a casa deles.
+
+**Os ids continuam `tiago`/`clara`** de propósito: são a fonte de verdade na
+base de dados de produção (`app_users.id`, `expenses.payer_id`) e renomeá-los
+partia as linhas que já lá estão. Só mudam os nomes e os emails dos
+participantes de exemplo, que é o que aparece nas capturas.
+
+Fica por resolver, e é irrelevante para a página pública: em modo de exemplo, o
+nome da **conta com sessão iniciada** continua a vir do `lib/users.ts` e a dizer
+"Tiago". Não aparece em captura nenhuma (o nome vive dentro do menu "Mais", que
+está fechado), e mexer nisso era mexer na identidade de produção.
