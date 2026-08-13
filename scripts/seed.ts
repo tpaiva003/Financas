@@ -4,7 +4,8 @@
  *
  * Uso:
  *   1) Configura .env.local com NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.
- *   2) Aplica as migrações (supabase/migrations/0001_init.sql).
+ *   2) Aplica TODAS as migrações de supabase/migrations, por ordem. São 23, não
+ *      só a 0001 — as despesas dependem de tabelas criadas na 0003.
  *   3) npm run seed
  *
  * Em modo "mock" (sem Supabase) NÃO é preciso seed: o repositório em memória já
@@ -15,8 +16,11 @@ import { createClient } from "@supabase/supabase-js";
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
+  DEFAULT_SPACE,
   seedExpenses,
+  seedMembers,
   seedSettlements,
+  seedSpaces,
 } from "../src/lib/data/seed-data";
 
 // Carrega .env.local (Node >= 20.12 / 22).
@@ -54,6 +58,36 @@ async function main() {
   ];
   await upsert("app_users", users, "id");
 
+  /**
+   * O ambiente e os participantes, que faltavam.
+   *
+   * Desde a migração `0003` que `expenses.payer_id` e `settlements.from_user_id`
+   * apontam para `members(id)`, e não para `app_users(id)`. Este script saltava
+   * a tabela `members` por inteiro, por isso numa base de dados nova rebentava
+   * na chave estrangeira antes de semear uma única despesa — e a `0003` só
+   * consegue converter os utilizadores em participantes se já lá estiverem
+   * alguns, o que numa instalação de raiz não acontece.
+   */
+  console.log("→ A semear o ambiente…");
+  await upsert(
+    "spaces",
+    seedSpaces().map((s) => ({ id: s.id, name: s.name, created_by: s.createdBy })),
+    "id",
+  );
+
+  console.log("→ A semear participantes…");
+  await upsert(
+    "members",
+    seedMembers().map((m) => ({
+      id: m.id,
+      space_id: m.spaceId,
+      name: m.name,
+      linked_user_id: m.linkedUserId ?? null,
+      email: m.email ?? null,
+    })),
+    "id",
+  );
+
   console.log("→ A semear categorias…");
   await upsert(
     "categories",
@@ -77,6 +111,7 @@ async function main() {
 
   console.log("→ A semear despesas de exemplo…");
   const expenses = seedExpenses().map((e) => ({
+    space_id: e.spaceId ?? DEFAULT_SPACE,
     uid: e.uid,
     description: e.description,
     amount_cents: e.amountCents,
@@ -92,10 +127,46 @@ async function main() {
     visible_to_partner: e.visibleToPartner ?? false,
     created_by: e.createdBy,
   }));
-  await upsert("expenses", expenses, "uid");
+  await upsert("expenses", expenses, "space_id,uid");
+
+  /**
+   * Um crédito à habitação misto, para a página das Dívidas não abrir vazia.
+   *
+   * É o caso que o cálculo de taxa única não sabe fazer: três anos fixa e
+   * depois Euribor 6M + spread até 2056, com a prestação a ser recalculada na
+   * mudança. Números redondos e inventados — nada aqui é de ninguém.
+   */
+  console.log("→ A semear um crédito à habitação de exemplo…");
+  await upsert(
+    "assets",
+    [
+      {
+        id: "ast_seed_habitacao",
+        space_id: DEFAULT_SPACE,
+        name: "Crédito à habitação",
+        kind: "divida",
+        value_cents: 150_000_00,
+        maturity_date: "2056-01-01",
+        credit_terms: {
+          periods: [
+            { startsOn: "2026-01-01", kind: "fixa", ratePct: 3.3 },
+            {
+              startsOn: "2029-01-01",
+              kind: "variavel",
+              indexante: "euribor6m",
+              spreadPct: 0.9,
+            },
+          ],
+          indexanteRates: { euribor6m: 2.1 },
+        },
+      },
+    ],
+    "id",
+  );
 
   console.log("→ A semear acertos de exemplo…");
   const settlements = seedSettlements().map((s) => ({
+    space_id: s.spaceId ?? DEFAULT_SPACE,
     from_user_id: s.fromUserId,
     to_user_id: s.toUserId,
     amount_cents: s.amountCents,

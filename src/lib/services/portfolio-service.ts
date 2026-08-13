@@ -59,6 +59,14 @@ export interface PortfolioReturn {
   firstDate: string | null;
   /** Investimentos sem preço atual: o valor de hoje está incompleto. */
   missingPrice: number;
+  /**
+   * Quais são, com nome e id.
+   *
+   * A contagem sozinha era um beco: "8 investimentos sem preço atual" e nenhuma
+   * forma de saber quais, numa carteira de cinquenta. Quem lê isto quer
+   * resolvê-lo, e para isso precisa de lá chegar.
+   */
+  semPreco: { id: string; name: string }[];
   benchmarks: BenchmarkResult[];
 }
 
@@ -88,6 +96,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   let investedCents = 0;
   let currentValueCents = 0;
   let missingPrice = 0;
+  const semPreco: { id: string; name: string }[] = [];
   let firstDate: string | null = null;
 
   for (const a of investments) {
@@ -103,6 +112,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     investedCents += position.investedCents;
     if (a.unitPriceCents === null || a.unitPriceCents === undefined) {
       missingPrice++;
+      semPreco.push({ id: a.id, name: a.name });
       currentValueCents += position.costCents;
     } else {
       currentValueCents += Math.round(position.quantity * a.unitPriceCents);
@@ -149,12 +159,34 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
         series.quotes.map((q) => ({ date: q.date, closeCents: q.closeCents })),
       );
       const comparison = simulateBenchmark(flows, prices, currentValueCents, today);
+
+      /**
+       * Porque é que não há comparação, dito com precisão.
+       *
+       * São dois motivos diferentes e a diferença importa a quem lê: sem
+       * cotação de hoje é temporário e resolve-se sozinho; uma série que começa
+       * depois do primeiro reforço nunca vai poder comparar este período, e a
+       * pessoa merece saber que é esse o caso e não uma falha passageira.
+       */
+      let problem: string | null = null;
+      if (!comparison) {
+        const inicioSerie = series.quotes[0]?.date ?? null;
+        const primeiroReforco = flows
+          .map((f) => f.date)
+          .sort()
+          .at(0);
+        problem =
+          inicioSerie && primeiroReforco && primeiroReforco < inicioSerie
+            ? `O índice só tem cotações desde ${inicioSerie} e o primeiro reforço é de ${primeiroReforco}. Comparar deixaria de fora parte do dinheiro e inflacionava o resultado.`
+            : "Não há cotação na data de hoje para comparar.";
+      }
+
       return {
         id: b.id,
         label: b.label,
         description: b.description,
         comparison,
-        problem: comparison ? null : "Não há cotação na data de hoje para comparar.",
+        problem,
         lastDate: series.lastDate,
         symbol: series.symbol,
         currency: usado?.currency ?? null,
@@ -169,6 +201,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     annualPct: xirr(flows, currentValueCents, today),
     firstDate,
     missingPrice,
+    semPreco,
     benchmarks,
   };
 }

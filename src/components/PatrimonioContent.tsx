@@ -9,26 +9,70 @@ import {
   annualInterestCents,
   buildLoan,
   buildNetWorth,
+  buildPosition,
+  movimentosImplausiveis,
+  liquidoPorBem,
+  aplicarSplits,
+  detetarSplits,
+  buildNetWorthSeries,
+  assetTotalValueCents,
+  ownershipShare,
   derivePosition,
   formatCents,
   formatForeignCents,
   formatMonths,
   payoffMonth,
   summariseRates,
+  INDEXANTES,
+  buildCreditoPlano,
+  parseCreditTerms,
+  estimatedPropertyCents,
+  compararComRegistado,
+  tipoDoCredito,
   type AssetKind,
   type AssetView,
+  type CreditoPlano,
+  type LiquidoDoBem,
+  type RatePeriod,
   type RateKind,
   type Trade,
+  duplicadosDeAtivos,
+  datasAProximar,
+  FOCOS,
+  contaNoFoco,
+  focoDe,
+  focoValido,
+  focoVazioPorExtenso,
+  snapshotsDoFoco,
+  type FocoId,
 } from "@/lib/domain";
+import { FocoPatrimonio } from "@/components/FocoPatrimonio";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
+import { AssetAttachments, type AnexoView } from "@/components/AssetAttachments";
 import {
   deleteAssetAction,
   fetchAssetQuoteAction,
+  moverAtivoAction,
   updateAssetPriceAction,
 } from "@/app/(app)/actions";
+import { InvestmentGrid } from "@/components/InvestmentGrid";
 import { RefreshQuotesButton } from "@/components/RefreshQuotesButton";
+import { DescobrirMarcas } from "@/components/DescobrirMarcas";
+import { AssetListSort } from "@/components/AssetListSort";
+import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
+import { AtivosDuplicados } from "@/components/AtivosDuplicados";
+import { DatasAProximar } from "@/components/DatasAProximar";
+import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
+import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
+import {
+  captureNetWorthSnapshot,
+  getNetWorthHistoryCompleto,
+  linhasDeIndice,
+} from "@/lib/services/networth-history-service";
+import { NetWorthChart } from "@/components/NetWorthChart";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
 import { refreshStalePrices } from "@/lib/services/quotes-service";
 
@@ -40,7 +84,14 @@ export type PatrimonioView = "resumo" | "ativos" | "dividas" | "fire";
  * São perguntas diferentes e não se leem bem à mistura: quanto tenho ao todo,
  * o que tenho, o que devo, e para onde isto vai dar.
  */
-export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
+export async function PatrimonioContent({
+  view,
+  foco: focoBruto,
+}: {
+  view: PatrimonioView;
+  /** O foco vindo do endereço, ainda por validar. Só o resumo o usa. */
+  foco?: string;
+}) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
@@ -63,15 +114,95 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   // Movimentos datados: quando existem, são eles que dizem quantas unidades se
   // tem e quanto custaram. A posição escrita à mão fica intocada por baixo.
   const trades = await repo.listAssetTrades(ctx.space.id).catch(() => []);
+  /**
+   * Os desdobramentos, aplicados antes de qualquer conta.
+   *
+   * Tem de ser aqui e não só na ficha de cada investimento: se a ficha
+   * contasse com o desdobramento e esta lista não, os dois ecrãs mostravam
+   * quantidades diferentes para a mesma posição — e quem visse os dois
+   * concluía, com razão, que um deles está avariado.
+   *
+   * O dinheiro não muda com isto. Só as unidades e o custo por unidade.
+   */
+  const splits = await repo.listAssetSplits(ctx.space.id).catch(() => []);
+  const splitsPorBem = new Map<string, typeof splits>();
+  for (const sp of splits) {
+    splitsPorBem.set(sp.assetId, [...(splitsPorBem.get(sp.assetId) ?? []), sp]);
+  }
   const tradesByAsset = new Map<string, Trade[]>();
   for (const t of trades) {
     tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t as Trade]);
   }
+  for (const [assetId, lista] of tradesByAsset) {
+    const doBem = splitsPorBem.get(assetId);
+    if (doBem && doBem.length > 0) tradesByAsset.set(assetId, aplicarSplits(lista, doBem));
+  }
+
+  /**
+   * Os documentos de todos os bens, numa leitura só.
+   *
+   * **A distinção entre "não há" e "não consegui ler" é o ponto todo.** Uma
+   * leitura falhada devolvida como lista vazia diria a quem tem a escritura
+   * anexada que ela desapareceu — o mesmo modo de falha que apagou o património
+   * inteiro do ecrã quando a ordenação foi para o SQL antes da migração. Por
+   * isso o erro vira `null` e desce assim até à linha, que o diz por palavras.
+   *
+   * Só os `pronto`: um anexo que ficou a meio do envio não é um ficheiro.
+   */
+  const anexosTodos = await repo
+    .listAssetAttachments(ctx.space.id)
+    .then((rows) => rows.filter((x) => x.status === "pronto"))
+    .catch(() => null);
+  const anexosPorBem = new Map<string, AnexoView[]>();
+  for (const x of anexosTodos ?? []) {
+    anexosPorBem.set(x.assetId, [
+      ...(anexosPorBem.get(x.assetId) ?? []),
+      { id: x.id, fileName: x.fileName, sizeBytes: x.sizeBytes, createdAt: x.createdAt ?? null },
+    ]);
+  }
+  const anexosDe = (id: string): AnexoView[] | null =>
+    anexosTodos === null ? null : (anexosPorBem.get(id) ?? []);
+  /**
+   * O valor dos imóveis segue o índice da zona desde a escritura.
+   *
+   * **Um valor escrito à mão ganha sempre**: quem conhece a casa sabe mais do
+   * que a mediana do concelho. A conta só entra onde o campo ficou vazio — que
+   * é o caso normal, porque num imóvel o valor de hoje é uma coisa que ninguém
+   * tem, ao contrário do que custou.
+   */
+  const hoje0 = new Date().toISOString().slice(0, 10);
+  const valorDeImovel = await estimarValoresDeImoveis(stored, hoje0).catch(() => new Map());
+
   const assets = stored.map((a) => {
     const d = derivePosition(a, tradesByAsset.get(a.id) ?? []);
-    return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    const base = d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    const estimado = valorDeImovel.get(a.id);
+    if (estimado && (a.valueCents ?? null) === null) {
+      return { ...base, valueCents: estimado.valueCents };
+    }
+    return base;
   });
   const net = buildNetWorth(assets);
+
+  /**
+   * O foco do resumo: tudo, ou só uma parte do património.
+   *
+   * **O `net` de cima fica intocado de propósito.** É ele que vai à fotografia
+   * do dia e é ele que as outras vistas usam. Gravar no histórico o líquido de
+   * uma vista filtrada seria escrever no passado que naquele dia a pessoa não
+   * tinha casa — e o histórico não se corrige depois, porque um saldo não se
+   * reconstrói. O foco vive só no que se desenha.
+   *
+   * As dívidas seguem os `kinds` de cada foco: em "Investimentos" o crédito à
+   * habitação não entra, porque não há ali nada que ele financie.
+   */
+  const foco: FocoId = view === "resumo" ? focoValido(focoBruto) : "tudo";
+  const netDoFoco = (id: FocoId) =>
+    id === "tudo" ? net : buildNetWorth(assets.filter((a) => contaNoFoco(a.kind, id)));
+  const netFoco = netDoFoco(foco);
+  const valoresPorFoco = Object.fromEntries(
+    FOCOS.map((f) => [f.id, netDoFoco(f.id).netCents]),
+  ) as Record<FocoId, number>;
 
   // Gasto anual sugerido para o FIRE: a partir das despesas reais do ambiente,
   // média dos meses com movimento, para não contar meses vazios como zero.
@@ -99,8 +230,182 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
   }
 
   const shown = net.assets.filter((a) => kindsToShow.includes(a.kind));
-  const rates = summariseRates(assets);
+  // Para se poder dizer quem tem a outra parte de um bem comprado a meias. Só
+  // nome e id: o campo não precisa de mais nada de ninguém.
+  const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
+  /**
+   * Investimentos sem símbolo, separados entre os que ainda contam e os que já
+   * não contam.
+   *
+   * Um dizia "11 sem símbolo" e a grelha por baixo mostrava dois, porque nove
+   * eram posições já fechadas que a grelha esconde. Os dois números estavam
+   * certos e juntos mentiam. E a distinção não é só de contagem: pôr o símbolo
+   * numa posição fechada não muda rigorosamente nada — não há unidades para
+   * valorizar — por isso o número que interessa é o das abertas.
+   */
+  const semSimboloTodos = net.assets.filter((a) => a.kind === "investimento" && !stored.find((s) => s.id === a.id)?.symbol);
+  const semSimbolo = semSimboloTodos.filter((a) => (a.quantity ?? 0) > 0).length;
+  const semSimboloFechados = semSimboloTodos.length - semSimbolo;
+  /**
+   * As gralhas dos investimentos, num sítio só.
+   *
+   * **Porque é que isto tem de estar aqui e não só na ficha de cada um.** Uma
+   * carteira importada tem cinquenta produtos. Um movimento com o separador
+   * decimal trocado inflaciona o investido de toda a gente — foi assim que o
+   * chat foi anunciar "1,4 milhões investidos" — e um ativo com mais vendas do
+   * que compras aparece como posição fechada, escondido pelo filtro, sem
+   * ninguém perceber porque é que a NVIDIA desapareceu. Nos dois casos o dono
+   * do problema tinha de o adivinhar e depois abrir cinquenta fichas para o
+   * encontrar.
+   */
+  const tradesRegistados = new Map<string, Trade[]>();
+  for (const t of trades) {
+    tradesRegistados.set(t.assetId, [...(tradesRegistados.get(t.assetId) ?? []), t as Trade]);
+  }
+  const gralhas = stored
+    .filter((a) => a.kind === "investimento")
+    .map((a) => {
+      const movs = (tradesByAsset.get(a.id) ?? []) as Trade[];
+      if (movs.length === 0) return null;
+      const posicao = buildPosition(movs);
+      const implausiveis = movimentosImplausiveis(movs, a.unitPriceCents ?? null);
+      // Os desdobramentos por confirmar entram na mesma lista: são a outra
+      // razão por que um investimento aparece com números impossíveis, e quem
+      // está a olhar para a carteira quer é a lista do que há para tratar.
+      const porConfirmar = detetarSplits((tradesRegistados.get(a.id) ?? []) as Trade[]);
+      if (implausiveis.length === 0 && !posicao.oversold && porConfirmar.length === 0) return null;
+      return {
+        id: a.id,
+        nome: a.name,
+        implausiveis,
+        oversold: posicao.oversold,
+        porConfirmar: porConfirmar.length,
+      };
+    })
+    .filter((g): g is NonNullable<typeof g> => g !== null);
+
+  /**
+   * O líquido de cada bem que tenha crédito ligado.
+   *
+   * A quota já está aplicada nos dois lados — `net.assets` traz o valor com a
+   * fatia deste ambiente — por isso subtrair um do outro mantém a proporção.
+   * Voltar a aplicá-la aqui dava metade de metade, que é o engano que esta app
+   * já cometeu uma vez com as quotas.
+   */
+  const liquidos = liquidoPorBem(
+    net.assets
+      .filter((a) => a.kind !== "divida")
+      .map((a) => ({ id: a.id, name: a.name, valueCents: a.currentValueCents })),
+    net.assets
+      .filter((a) => a.kind === "divida")
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        balanceCents: a.currentValueCents,
+        financesAssetId: stored.find((s) => s.id === a.id)?.financesAssetId ?? null,
+      })),
+  );
+  /** Bens que um crédito pode financiar. As dívidas não financiam dívidas. */
+  const bensFinanciaveis = stored
+    .filter((a) => a.kind !== "divida" && a.kind !== "investimento")
+    .map((a) => ({ id: a.id, name: a.name }));
+
+  const semMarca = stored.filter((a) => a.kind === "investimento" && !a.logoDomain).length;
+
+  /**
+   * Dois registos do mesmo investimento, vindos de importações com nomes
+   * diferentes. Só pelo símbolo — parecença de nomes é um palpite sobre
+   * dinheiro de alguém. Ver `domain/duplicados.ts`.
+   */
+  const duplicados = duplicadosDeAtivos(
+    stored.filter((a) => a.kind === "investimento"),
+    new Map(stored.map((a) => [a.id, (tradesByAsset.get(a.id) ?? []).length])),
+  );
+
+  /**
+   * Resultados e dividendos a caminho, das posições que estão em carteira.
+   *
+   * Lê-se do que está gravado e nunca vai à fonte aqui: uma chamada externa por
+   * investimento ao desenhar a página punha dezenas de pedidos numa função com
+   * tempo limitado. Quem quiser pôr em dia carrega no botão.
+   */
+  const investimentosEmCarteira = stored.filter(
+    (a) => a.kind === "investimento" && (a.quantity ?? 0) > 0,
+  );
+  const datasProximas = datasAProximar(
+    investimentosEmCarteira.map((a) => ({
+      id: a.id,
+      name: a.name,
+      symbol: a.symbol,
+      emCarteira: true,
+      nextEarningsDate: a.nextEarningsDate,
+      exDividendDate: a.exDividendDate,
+      dividendDate: a.dividendDate,
+    })),
+    new Date().toISOString().slice(0, 10),
+  );
+  const datasPorConsultar = investimentosEmCarteira.filter(
+    (a) => a.symbol && !a.marketDatesAt,
+  ).length;
+  const podeSugerir = tickerSuggestAvailable();
+  const podeLerContrato = creditContractExtractAvailable();
   const today = new Date().toISOString().slice(0, 10);
+  const rates = summariseRates(assets, today);
+  /**
+   * Os juros seguem o foco no resumo.
+   *
+   * Deixá-los fora do filtro punha "Pagas 4 200 € de juros" por baixo de um
+   * total de investimentos que não tem dívida nenhuma lá dentro — e a leitura
+   * óbvia seria que os juros saem daquele número.
+   */
+  const ratesFoco =
+    foco === "tudo" ? rates : summariseRates(assets.filter((a) => contaNoFoco(a.kind, foco)), today);
+
+  /**
+   * A fotografia de hoje, e o histórico para o gráfico.
+   *
+   * Grava-se na visita e não num cron: é idempotente (uma por dia e por
+   * ambiente) e poupa mais um segredo, mais uma entrada no `vercel.json` e uma
+   * lista de ambientes a percorrer. O preço são buracos nos períodos em que
+   * ninguém abriu a app — que o gráfico mostra como buracos, sem os preencher.
+   *
+   * A gravação vem primeiro para o ponto de hoje já entrar na série. Nenhuma
+   * das duas pode deitar a página abaixo: antes da migração ser corrida, a
+   * tabela não existe e o gráfico diz apenas que o histórico está a começar.
+   */
+  const historico = await (async () => {
+    if (view !== "resumo") return null;
+    // A fotografia gravada é sempre a do património INTEIRO. Ver `foco`.
+    const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
+    const completo = await getNetWorthHistoryCompleto(ctx.space.id, today);
+    /**
+     * O gráfico segue o foco, e os pontos que não sabem repartir-se saem.
+     *
+     * As fotografias antigas — e todas as reconstruídas — só guardaram o
+     * total. Reparti-lo pelas proporções de hoje desenhava uma linha de
+     * investimentos que nunca existiu. Contam-se e dizem-se por baixo.
+     */
+    const { snapshots: doFoco, semReparticao } = snapshotsDoFoco(completo, foco);
+    const series = buildNetWorthSeries(doFoco);
+    return {
+      captura,
+      series,
+      semReparticao,
+      /**
+       * Os índices são calculados sobre os PONTOS DA SÉRIE, não sobre os
+       * snapshots em bruto.
+       *
+       * A série agrupa por mês; os snapshots são um por dia. Passar os
+       * snapshots dava uma lista de outro comprimento, e o gráfico desenha
+       * cada valor pela sua posição — as linhas saíam alinhadas com meses que
+       * não são os delas, ou não saíam de todo.
+       *
+       * São contexto e nunca podem custar a página: se a fonte de cotações não
+       * responder, o gráfico desenha-se na mesma.
+       */
+      indices: await linhasDeIndice(series.points).catch(() => []),
+    };
+  })();
 
   return (
     <div className="space-y-8">
@@ -129,50 +434,113 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
 
       {view === "resumo" ? (
       <>
+      <FocoPatrimonio atual={foco} valores={valoresPorFoco} />
+
       <section className="card p-6">
-        <p className="eyebrow">Património líquido</p>
+        <p className="eyebrow">
+          {foco === "tudo" ? "Património líquido" : focoDe(foco).label}
+        </p>
         <p
           className={`mt-2 font-display text-5xl font-semibold tracking-tightest tnum ${
-            net.netCents < 0 ? "text-debt" : ""
+            netFoco.netCents < 0 ? "text-debt" : ""
           }`}
         >
-          {formatCents(net.netCents)}
+          {formatCents(netFoco.netCents)}
         </p>
+        {netFoco.assets.length === 0 ? (
+          <p className="mt-2 text-sm text-fg-muted">{focoVazioPorExtenso(foco)}</p>
+        ) : (
         <p className="mt-2 text-sm text-fg-muted">
-          {formatCents(net.totalAssetsCents)} em bens
-          {net.totalLiabilitiesCents > 0
-            ? `, menos ${formatCents(net.totalLiabilitiesCents)} de dívidas`
+          {formatCents(netFoco.totalAssetsCents)} em bens
+          {netFoco.totalLiabilitiesCents > 0
+            ? `, menos ${formatCents(netFoco.totalLiabilitiesCents)} de dívidas`
             : ""}
           .
         </p>
+        )}
+        {/* Uma vista parcial tem de se anunciar. O número grande é o mesmo tipo
+            de número do total, e quem chega a esta página por um link já com
+            foco não tem como saber que está a ver uma parte. */}
+        {foco !== "tudo" ? (
+          <p className="mt-1 text-xs text-fg-faint">
+            É uma parte do teu património, não o total. Ao todo tens{" "}
+            <Link href="/patrimonio" className="text-fg-muted underline-offset-4 hover:underline">
+              {formatCents(net.netCents)}
+            </Link>
+            .
+          </p>
+        ) : null}
 
-        {net.investmentCostCents > 0 ? (
+        {netFoco.investmentCostCents > 0 ? (
           <p className="mt-3 text-sm">
             Investimentos:{" "}
-            <span className={net.investmentGainCents >= 0 ? "text-credit" : "text-debt"}>
-              {net.investmentGainCents >= 0 ? "+" : ""}
-              {formatCents(net.investmentGainCents)}
+            <span className={netFoco.investmentGainCents >= 0 ? "text-credit" : "text-debt"}>
+              {netFoco.investmentGainCents >= 0 ? "+" : ""}
+              {formatCents(netFoco.investmentGainCents)}
             </span>{" "}
             <span className="text-fg-faint">
-              sobre {formatCents(net.investmentCostCents)} investidos
+              sobre {formatCents(netFoco.investmentCostCents)} de custo das posições
+              abertas
             </span>
           </p>
         ) : null}
-        {net.investmentsMissingPrice > 0 ? (
+        {/*
+          Porque é que este número não bate com o "Investido" da página dos
+          ativos, e não é engano de nenhum dos dois.
+
+          Aqui é o CUSTO DO QUE AINDA SE TEM: quantidade vezes custo médio, das
+          posições abertas. Lá é o DINHEIRO QUE JÁ ENTROU, somando todas as
+          compras alguma vez feitas, incluindo as de posições que entretanto se
+          venderam. São perguntas diferentes e as duas fazem falta — o que não
+          se podia era chamar "investido" às duas e deixar quem lê a achar que
+          um dos ecrãs está avariado.
+        */}
+        {netFoco.investmentCostCents > 0 ? (
           <p className="mt-1 text-xs text-fg-faint">
-            {net.investmentsMissingPrice} investimento(s) sem preço atual. Enquanto
+            É o custo do que ainda tens. Em Ativos, o &ldquo;investido&rdquo; é
+            outra conta: todo o dinheiro que alguma vez entrou, incluindo o das
+            posições já vendidas.
+          </p>
+        ) : null}
+        {netFoco.investmentsMissingPrice > 0 ? (
+          <p className="mt-1 text-xs text-fg-faint">
+            {netFoco.investmentsMissingPrice} investimento(s) sem preço atual. Enquanto
             faltar, contam pelo que custaram e ficam de fora do ganho, para o
             número não mentir.
           </p>
         ) : null}
       </section>
 
-      {net.byKind.length > 0 ? (
+      {historico ? (
+        <div className="space-y-2">
+          <NetWorthChart
+            series={historico.series}
+            captura={historico.captura}
+            indices={historico.indices}
+          />
+          {/* O buraco explicado. Sem isto, escolher "Investimentos" fazia o
+              gráfico encolher para dois pontos sem razão à vista — e um gráfico
+              que encolhe sozinho lê-se como avaria. */}
+          {historico.semReparticao > 0 ? (
+            <p className="text-xs text-fg-faint">
+              {historico.semReparticao === 1
+                ? "Há uma fotografia mais antiga que"
+                : `Há ${historico.semReparticao} fotografias mais antigas que`}{" "}
+              só guardou o total, sem o repartir por tipo de bem, por isso{" "}
+              {historico.semReparticao === 1 ? "fica" : "ficam"} de fora deste
+              gráfico. A repartição passou a ser guardada e daqui para a frente
+              a linha enche-se sozinha.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {netFoco.byKind.length > 0 ? (
         <section className="card p-5">
           <p className="eyebrow mb-3">Onde está</p>
           <ul className="space-y-3">
-            {net.byKind.map((k) => {
-              const max = Math.max(...net.byKind.map((x) => x.totalCents), 1);
+            {netFoco.byKind.map((k) => {
+              const max = Math.max(...netFoco.byKind.map((x) => x.totalCents), 1);
               return (
                 <li key={k.kind}>
                   <div className="mb-1 flex items-center justify-between gap-3 text-sm">
@@ -192,18 +560,18 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
         </section>
       ) : null}
 
-      {rates.annualInterestCents > 0 || rates.annualDebtInterestCents > 0 ? (
+      {ratesFoco.annualInterestCents > 0 || ratesFoco.annualDebtInterestCents > 0 ? (
         <section className="card p-5">
           <p className="eyebrow mb-2">Juros, num ano</p>
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-            {rates.annualInterestCents > 0 ? (
+            {ratesFoco.annualInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Recebes <span className="text-credit">{formatCents(rates.annualInterestCents)}</span>
+                Recebes <span className="text-credit">{formatCents(ratesFoco.annualInterestCents)}</span>
               </p>
             ) : null}
-            {rates.annualDebtInterestCents > 0 ? (
+            {ratesFoco.annualDebtInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Pagas <span className="text-debt">{formatCents(rates.annualDebtInterestCents)}</span>
+                Pagas <span className="text-debt">{formatCents(ratesFoco.annualDebtInterestCents)}</span>
               </p>
             ) : null}
           </div>
@@ -290,33 +658,182 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
                   stored.some((s) => s.kind === "investimento" && s.symbol) ? (
                     <RefreshQuotesButton />
                   ) : null}
+                  {/* Só quando há mesmo algum por resolver: um botão que não
+                      tem nada para fazer é ruído numa página cheia. */}
+                  {kind === "investimento" && semMarca > 0 ? <DescobrirMarcas /> : null}
+                  {/* Ordenar as listas que não são a grelha dos investimentos.
+                      Com um bem só não há ordem nenhuma para escolher. */}
+                  {kind !== "investimento" && (byKind.get(kind) ?? []).length > 1 ? (
+                    <AssetListSort listaId={`lista-${kind}`} />
+                  ) : null}
                 </div>
-                <ul className="divide-y divide-hair2">
-                  {(byKind.get(kind) ?? []).map((a) => (
-                    <AssetRow
-                      key={a.id}
-                      asset={a}
-                      // O formulário edita o que está GRAVADO, não a posição
-                      // derivada: senão gravar sem tocar em nada reescrevia a
-                      // entrada manual com os números dos movimentos.
-                      stored={stored.find((s) => s.id === a.id) ?? null}
-                      quoteDate={quoteDateOf.get(a.id) ?? null}
-                      quoteProblem={quoteProblemOf.get(a.id) ?? null}
-                      quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
-                      today={today}
-                      tradeCount={(tradesByAsset.get(a.id) ?? []).length}
-                    />
-                  ))}
-                </ul>
+
+                {/* Antes de tudo o resto: enquanto houver dois registos do
+                    mesmo investimento, os números desta página estão errados,
+                    e nenhum dos outros avisos vale nada em cima disso. */}
+                {kind === "investimento" && duplicados.length > 0 ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <AtivosDuplicados grupos={duplicados} />
+                  </div>
+                ) : null}
+                {/* As datas a caminho, logo a seguir aos duplicados: é a única
+                    coisa desta página com prazo — uma data-ex que passa não
+                    volta. */}
+                {kind === "investimento" && investimentosEmCarteira.length > 0 ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <DatasAProximar datas={datasProximas} porConsultar={datasPorConsultar} />
+                  </div>
+                ) : null}
+                {/* Depois de uma importação ficam dezenas de ativos sem símbolo,
+                    e sem símbolo não há cotação, ganho nem rentabilidade. Só
+                    aparece quando há mesmo algum por resolver. */}
+                {kind === "investimento" && semSimbolo > 0 && podeSugerir ? (
+                  <div className="border-b border-hair2 px-5 pb-4 pt-3">
+                    <p className="mb-2 text-xs text-fg-faint">
+                      {semSimbolo}{" "}
+                      {semSimbolo === 1 ? "investimento aberto está" : "investimentos abertos estão"} sem
+                      símbolo de bolsa, e por isso sem cotação, sem ganho e sem
+                      rentabilidade.
+                      {semSimboloFechados > 0 ? (
+                        <>
+                          {" "}
+                          Há {semSimboloFechados === 1 ? "mais uma posição já fechada" : `mais ${semSimboloFechados} posições já fechadas`}{" "}
+                          sem símbolo, mas a essas o símbolo não muda nada: não
+                          há unidades para valorizar.
+                        </>
+                      ) : null}
+                    </p>
+                    <SuggestMissingSymbols />
+                  </div>
+                ) : null}
+                {/* As gralhas, em cima e por nome. Ver `gralhas`. */}
+                {kind === "investimento" && gralhas.length > 0 ? (
+                  <div
+                    role="alert"
+                    className="space-y-2 border-b border-hair2 bg-debt/5 px-5 pb-4 pt-3"
+                  >
+                    <p className="text-sm font-medium text-fg">
+                      {gralhas.length === 1
+                        ? "Há um investimento por tratar."
+                        : `Há ${gralhas.length} investimentos por tratar.`}
+                    </p>
+                    <p className="text-xs leading-snug text-fg-muted">
+                      Enquanto isto não estiver tratado, o{" "}
+                      <strong className="font-medium text-fg">investido</strong> e o{" "}
+                      <strong className="font-medium text-fg">ganho</strong> desta página
+                      estão errados — e um ativo com mais vendas do que compras
+                      aparece como posição fechada, escondido pelo filtro de
+                      cima. Foi assim que a Google e a NVIDIA desapareceram de
+                      uma carteira que continuava a tê-las.
+                    </p>
+                    <ul className="space-y-1.5 text-xs">
+                      {gralhas.map((g) => (
+                        <li key={g.id}>
+                          <Link
+                            href={`/patrimonio/ativos/${g.id}`}
+                            className="text-fg underline-offset-4 hover:underline"
+                          >
+                            {g.nome}
+                          </Link>
+                          <span className="text-fg-faint">
+                            {" — "}
+                            {g.porConfirmar > 0
+                              ? `${g.porConfirmar === 1 ? "um desdobramento" : `${g.porConfirmar} desdobramentos`} por confirmar`
+                              : null}
+                            {g.porConfirmar > 0 && (g.oversold || g.implausiveis.length > 0) ? "; " : null}
+                            {g.oversold ? "mais vendas do que compras" : null}
+                            {g.oversold && g.implausiveis.length > 0 ? "; " : null}
+                            {g.implausiveis.length > 0
+                              ? g.implausiveis
+                                  .map(
+                                    (m) =>
+                                      `${new Date(`${m.date}T00:00:00Z`).toLocaleDateString("pt-PT")}: ${formatCents(m.implicitoCents)}/un., ${Math.round(m.vezes >= 1 ? m.vezes : 1 / m.vezes)}× ${m.vezes >= 1 ? "acima" : "abaixo"} do normal`,
+                                  )
+                                  .join("; ")
+                              : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {/*
+                  Os investimentos em grelha de cartões; o resto continua em
+                  linha. A diferença não é estética: numa carteira com uma dúzia
+                  de ações o que se faz é PROCURAR uma, e para isso o emblema
+                  com cor própria e o ticker em destaque valem mais do que uma
+                  lista onde todas as linhas se parecem. Uma conta bancária ou
+                  um imóvel não se procuram assim — são poucos e têm nome.
+                */}
+                {kind === "investimento" ? (
+                  <InvestmentGrid
+                    items={(byKind.get(kind) ?? []).map((a) => ({
+                      id: a.id,
+                      name: a.name,
+                      // O símbolo vive no ativo gravado, não na vista
+                      // calculada — e é dele que sai a cor do emblema.
+                      symbol: stored.find((x) => x.id === a.id)?.symbol ?? null,
+                      exchange: stored.find((x) => x.id === a.id)?.exchange ?? null,
+                      temLogo: Boolean(stored.find((x) => x.id === a.id)?.logoDomain),
+                      quantity: a.quantity ?? 0,
+                      unitCostCents: a.unitCostCents ?? null,
+                      unitPriceCents: a.unitPriceCents ?? null,
+                      currentValueCents: a.currentValueCents,
+                      gainCents: a.missingPrice ? null : a.gainCents,
+                      gainPct: a.missingPrice ? null : a.gainPct,
+                      tradeCount: (tradesByAsset.get(a.id) ?? []).length,
+                      quoteDate: quoteDateOf.get(a.id) ?? null,
+                      // Sem isto, o motivo era calculado e deitado fora: o
+                      // bloco que o mostrava vivia no AssetRow, que nunca é
+                      // desenhado para investimentos.
+                      quoteProblem: quoteProblemOf.get(a.id) ?? null,
+                    }))}
+                  />
+                ) : (
+                  <ul id={`lista-${kind}`} className="divide-y divide-hair2">
+                    {(byKind.get(kind) ?? []).map((a, i, lista) => (
+                      <AssetRow
+                        key={a.id}
+                        primeiro={i === 0}
+                        ultimo={i === lista.length - 1}
+                        asset={a}
+                        // O formulário edita o que está GRAVADO, não a posição
+                        // derivada: senão gravar sem tocar em nada reescrevia a
+                        // entrada manual com os números dos movimentos.
+                        stored={stored.find((s) => s.id === a.id) ?? null}
+                        quoteDate={quoteDateOf.get(a.id) ?? null}
+                        quoteProblem={quoteProblemOf.get(a.id) ?? null}
+                        quoteOriginal={quoteOriginalOf.get(a.id) ?? null}
+                        today={today}
+                        tradeCount={(tradesByAsset.get(a.id) ?? []).length}
+                        members={memberOptions}
+                        podeLerContrato={podeLerContrato}
+                        anexos={anexosDe(a.id)}
+                        liquido={liquidos.get(a.id) ?? null}
+                        bensFinanciaveis={bensFinanciaveis}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
             ))
         )}
       </section>
       ) : null}
 
-      {view === "ativos" ? <PortfolioReturnSection spaceId={ctx.space.id} /> : null}
+      {view === "ativos" ? (
+        <PortfolioReturnSection spaceId={ctx.space.id} contaminado={gralhas.length > 0} />
+      ) : null}
 
-      {view === "ativos" || view === "dividas" ? <AssetForm /> : null}
+      {view === "ativos" || view === "dividas" ? (
+        <AssetForm
+          contexto={view === "dividas" ? "dividas" : "ativos"}
+          members={memberOptions}
+          podeLerContrato={podeLerContrato}
+          bensFinanciaveis={bensFinanciaveis}
+        />
+      ) : null}
 
       <Link href="/relatorios" className="inline-block text-sm text-fg-muted hover:text-fg">
         Ver relatórios de despesa
@@ -333,7 +850,14 @@ export async function PatrimonioContent({ view }: { view: PatrimonioView }) {
  * entrado no último mês, e nesse caso os 20% do índice nunca estiveram
  * disponíveis para esse dinheiro.
  */
-async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
+async function PortfolioReturnSection({
+  spaceId,
+  contaminado,
+}: {
+  spaceId: string;
+  /** Há movimentos com valores impossíveis na carteira? Ver em baixo. */
+  contaminado: boolean;
+}) {
   const ret = await buildPortfolioReturn(spaceId).catch(() => null);
   if (!ret) return null;
 
@@ -341,11 +865,53 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
     <section className="card p-6">
       <p className="eyebrow mb-4">Rentabilidade da carteira</p>
 
+      {/*
+        A recusa, e não um aviso ao lado dos números.
+
+        Com um movimento com o separador decimal trocado, esta secção mostrava
+        950 432 € investidos, 270 843 € de valor e uma TIR de +13,3% — três
+        números que se contradizem, e o único que salta à vista é o verde. Uma
+        taxa é a coisa mais fácil de acreditar de toda esta página: não se
+        confere contra nada, e uma pessoa lembra-se dela muito depois de ter
+        esquecido de onde veio.
+
+        A comparação com o índice cai pela mesma razão: aplica ao índice os
+        MESMOS reforços, e se os reforços estão inflacionados o "estás atrás
+        183 293 €" é uma dívida imaginária.
+      */}
+      {contaminado ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-xs leading-snug text-fg-muted"
+        >
+          <p className="text-fg">
+            Não mostro a rentabilidade enquanto houver movimentos com valores
+            impossíveis.
+          </p>
+          <p className="mt-1">
+            Estão listados aqui em baixo, nos investimentos. Um deles chega para
+            inflacionar o investido, e daí sai uma taxa que se contradiz com os
+            números ao lado — mas que ninguém confere, porque uma percentagem
+            não se confere contra nada.
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid gap-5 sm:grid-cols-3">
         <div>
-          <p className="text-xs text-fg-muted">Investido</p>
-          <p className="mt-0.5 font-mono text-lg tnum text-fg">
+          <p className="text-xs text-fg-muted">Dinheiro que entrou</p>
+          <p
+            className={`mt-0.5 font-mono text-lg tnum ${contaminado ? "text-fg-faint line-through" : "text-fg"}`}
+            title={contaminado ? "Inflacionado por movimentos com valores impossíveis." : undefined}
+          >
             {formatCents(ret.investedCents)}
+          </p>
+          {/* Ver a nota no resumo: aqui soma-se TODAS as compras, incluindo as
+              de posições já vendidas. No resumo é o custo do que ainda se tem.
+              Chamar "investido" às duas fazia o resumo e esta página parecerem
+              contradizer-se. */}
+          <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
+            Todas as compras, incluindo as de posições já vendidas.
           </p>
         </div>
         <div>
@@ -361,7 +927,7 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
               ret.annualPct === null ? "text-fg-faint" : ret.annualPct >= 0 ? "text-credit" : "text-debt"
             }`}
           >
-            {ret.annualPct === null
+            {contaminado || ret.annualPct === null
               ? "por calcular"
               : `${ret.annualPct >= 0 ? "+" : ""}${ret.annualPct.toFixed(1).replace(".", ",")}%`}
           </p>
@@ -369,13 +935,37 @@ async function PortfolioReturnSection({ spaceId }: { spaceId: string }) {
       </div>
 
       {ret.missingPrice > 0 ? (
-        <p className="mt-3 text-xs text-fg-faint">
-          {ret.missingPrice} investimento(s) sem preço atual: contam pelo que
-          custaram, por isso o valor de hoje está por baixo do real.
-        </p>
+        <div className="mt-3 text-xs text-fg-faint">
+          <p>
+            {ret.missingPrice === 1
+              ? "Um investimento sem preço atual: conta"
+              : `${ret.missingPrice} investimentos sem preço atual: contam`}{" "}
+            pelo que custaram, por isso o valor de hoje está por baixo do real.
+          </p>
+          {/* Quais são, com link. A contagem sozinha era um beco: numa carteira
+              de cinquenta, "8 sem preço" não diz por onde começar. */}
+          <p className="mt-1">
+            {ret.semPreco.map((a, i) => (
+              <span key={a.id}>
+                {i > 0 ? ", " : ""}
+                <Link
+                  href={`/patrimonio/ativos/${a.id}`}
+                  className="text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+                >
+                  {a.name}
+                </Link>
+              </span>
+            ))}
+            .
+          </p>
+        </div>
       ) : null}
 
-      <div className="mt-6 border-t border-hair pt-5">
+      {/* A comparação com o índice desaparece inteira quando os reforços estão
+          inflacionados: ela aplica ao índice os MESMOS reforços, e "estás atrás
+          183 293 €" a partir de dinheiro que nunca entrou é uma dívida
+          imaginária — pior do que não comparar. */}
+      <div className={`mt-6 border-t border-hair pt-5 ${contaminado ? "hidden" : ""}`}>
         <p className="label mb-1">E se tivesse ido para o índice?</p>
         <p className="mb-4 text-xs text-fg-faint">
           Os mesmos reforços, nas mesmas datas, aplicados a um ETF em euros. É a
@@ -452,6 +1042,110 @@ function formatMonthYear(ym: string | null): string {
   });
 }
 
+/** "2029-01-01" lido como se fala. */
+function formatDia(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("pt-PT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function pct(n: number): string {
+  return `${n.toFixed(2).replace(/0$/, "").replace(/[.,]$/, "").replace(".", ",")}%`;
+}
+
+/**
+ * O plano de um crédito com períodos de taxa.
+ *
+ * O que se procura primeiro é a prestação de hoje, e logo a seguir a pergunta
+ * que a app existe para responder: **quanto vai passar a ser quando a taxa
+ * mudar**. Por isso o degrau vem em cima, antes do resto — é a informação que
+ * um crédito misto tem e um crédito de taxa única não.
+ *
+ * Quando não há plano, mostra-se a razão em vez de nada. "Falta o valor da
+ * Euribor" resolve-se em dez segundos; um espaço em branco não se resolve.
+ */
+function CreditoResumo({
+  plano,
+  periodos,
+}: {
+  plano: CreditoPlano;
+  periodos: RatePeriod[];
+}) {
+  if (plano.problem) {
+    return (
+      <p className="mt-2 text-xs text-fg-faint">
+        Crédito de taxa {tipoDoCredito(periodos) ?? "—"}, sem plano:{" "}
+        <span className="text-fg-muted">{plano.problem}</span>
+      </p>
+    );
+  }
+
+  const atual = plano.tramos[0]!;
+  const sobe =
+    plano.nextPaymentCents !== null && plano.nextPaymentCents > atual.monthlyPaymentCents;
+
+  return (
+    <div className="mt-2 space-y-0.5 text-xs text-fg-muted">
+      <p>
+        <span className="tnum text-fg">{formatCents(atual.monthlyPaymentCents)}</span> por mês
+        {" · "}
+        <span className="tnum">{pct(atual.annualRatePct)}</span>
+        {atual.origem.kind === "variavel" && atual.origem.indexante
+          ? ` (${INDEXANTES[atual.origem.indexante]}${
+              atual.origem.spreadPct ? ` + ${pct(atual.origem.spreadPct)}` : ""
+            })`
+          : " fixa"}
+      </p>
+
+      {/* O degrau. É a única coisa que um crédito misto sabe e um de taxa única
+          não — e é por não a mostrar que a prestação antiga passava por eterna. */}
+      {plano.nextPaymentCents !== null && plano.nextChangeOn ? (
+        <p className={sobe ? "text-debt" : "text-credit"}>
+          Em {formatDia(plano.nextChangeOn)} passa a{" "}
+          <span className="tnum">{formatCents(plano.nextPaymentCents)}</span> por mês,{" "}
+          {sobe ? "mais" : "menos"}{" "}
+          <span className="tnum">
+            {formatCents(Math.abs(plano.nextPaymentCents - atual.monthlyPaymentCents))}
+          </span>
+          .
+        </p>
+      ) : null}
+
+      <p>
+        Último pagamento em{" "}
+        <span className="text-fg">
+          {formatMonthYear(
+            payoffMonth(
+              atual.startsOn,
+              plano.tramos.reduce((s, t) => s + t.months, 0),
+            ),
+          )}
+        </span>
+        {plano.totalInterestCents > 0 ? (
+          <>
+            {", com "}
+            <span className="tnum text-debt">{formatCents(plano.totalInterestCents)}</span> de
+            juros até lá
+          </>
+        ) : null}
+        .
+      </p>
+
+      {/* Um plano que assenta na Euribor de hoje é um cenário. Deixar isto
+          implícito era apresentar uma suposição como se fosse um facto. */}
+      {plano.scenarioFrom ? (
+        <p className="text-fg-faint">
+          A partir de {formatDia(plano.scenarioFrom)} é um cenário: assenta no valor de hoje do
+          indexante, que ninguém sabe qual será.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function AssetRow({
   asset: a,
   stored,
@@ -460,9 +1154,27 @@ function AssetRow({
   quoteOriginal,
   today,
   tradeCount,
+  members,
+  podeLerContrato,
+  primeiro,
+  ultimo,
+  anexos,
+  liquido,
+  bensFinanciaveis,
 }: {
   asset: AssetView;
   stored: Asset | null;
+  members: { id: string; name: string }[];
+  /** `null` quer dizer "não consegui ler", nunca "não há nenhum". */
+  anexos: AnexoView[] | null;
+  /** O líquido deste bem, quando tem crédito ligado. */
+  liquido: LiquidoDoBem | null;
+  bensFinanciaveis: { id: string; name: string }[];
+  /** Há leitura de contratos configurada? */
+  podeLerContrato: boolean;
+  /** Para desligar os botões de mover nas pontas da lista. */
+  primeiro: boolean;
+  ultimo: boolean;
   quoteDate: string | null;
   quoteProblem: string | null;
   /** O fecho na moeda da bolsa, quando não é euro. */
@@ -472,28 +1184,74 @@ function AssetRow({
 }) {
   const isInvestment = a.kind === "investimento";
   const isDebt = a.kind === "divida";
+  // A quota vem do que está gravado, não da vista: a vista já traz o valor com
+  // a quota aplicada, e voltar a aplicá-la aqui contava metade de metade.
+  const quota = ownershipShare(stored ?? {});
+  const quotaLabel = `${String(Math.round(quota * 1000) / 10).replace(".", ",")}%`;
   const rateLabel =
     a.rateKind === "fixa" || a.rateKind === "variavel"
       ? RATE_KIND_LABELS[a.rateKind as RateKind].toLowerCase()
       : null;
 
-  // Só as dívidas têm plano de pagamento; os outros bens com taxa mostram
-  // quanto rendem por ano, que é a mesma informação vista do outro lado.
-  const plan = isDebt
-    ? buildLoan({
-        principalCents: a.currentValueCents,
-        annualRatePct: a.interestRatePct,
-        termMonths: a.termMonths,
-        monthlyPaymentCents: a.monthlyPaymentCents,
+  /**
+   * O crédito com períodos de taxa ganha ao cálculo de taxa única.
+   *
+   * Quando há períodos, é porque alguém escreveu que este crédito muda de taxa
+   * numa data — e nesse caso mostrar a prestação de hoje até 2055 é dizer uma
+   * coisa que se sabe falsa. Os dois nunca aparecem ao mesmo tempo: duas
+   * prestações diferentes lado a lado não informam, confundem.
+   */
+  /**
+   * O imóvel ao preço da zona, quando há área e preço de referência.
+   *
+   * Aparece **ao lado** do valor registado e nunca por cima: a mediana do
+   * concelho não sabe se a casa é num último andar com vista ou num rés do chão
+   * para as traseiras. Compara-se com o valor TOTAL, não com a fatia deste
+   * ambiente — a quota aplica-se igual aos dois lados e não muda a percentagem.
+   */
+  const zonaCents = estimatedPropertyCents({
+    areaM2: stored?.areaM2,
+    priceRefCents: stored?.priceRefCents,
+  });
+  const zona = compararComRegistado(zonaCents, assetTotalValueCents(a));
+
+  const terms = isDebt ? parseCreditTerms(stored?.creditTerms) : null;
+  const credito = terms
+    ? buildCreditoPlano({
+        balanceCents: a.currentValueCents,
+        startDate: today,
+        maturityDate: stored?.maturityDate,
+        periods: terms.periods,
+        indexanteRates: terms.indexanteRates,
       })
     : null;
+
+  // Só as dívidas têm plano de pagamento; os outros bens com taxa mostram
+  // quanto rendem por ano, que é a mesma informação vista do outro lado.
+  const plan =
+    isDebt && !credito
+      ? buildLoan({
+          principalCents: a.currentValueCents,
+          annualRatePct: a.interestRatePct,
+          termMonths: a.termMonths,
+          monthlyPaymentCents: a.monthlyPaymentCents,
+        })
+      : null;
   const yearlyInterest =
     !isDebt && a.interestRatePct
       ? annualInterestCents(a.currentValueCents, a.interestRatePct)
       : 0;
 
   return (
-    <li className="px-5 py-3.5">
+    /* Os `data-*` são o que permite ordenar no cliente sem voltar ao servidor:
+       os valores já estão no HTML, e o seletor só troca os filhos de sítio. A
+       taxa fica em branco quando não há, para não ser lida como zero. */
+    <li
+      className="px-5 py-3.5"
+      data-nome={a.name}
+      data-valor={a.currentValueCents}
+      data-taxa={a.interestRatePct ?? ""}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
         {isInvestment ? (
@@ -534,7 +1292,10 @@ function AssetRow({
               {tradeCount > 0 ? ` · ${tradeCount} mov.` : ""}
             </>
           ) : (
-            a.purchasedAt ?? ""
+            <>
+              {a.purchasedAt ?? ""}
+              {stored?.location ? `${a.purchasedAt ? " · " : ""}${stored.location}` : ""}
+            </>
           )}
         </p>
       </div>
@@ -600,6 +1361,28 @@ function AssetRow({
 
         <div className="text-right">
           <p className="font-mono text-sm tnum text-fg">{formatCents(a.currentValueCents)}</p>
+          {/* Com quota parcial, o número acima é só a tua parte. Dizer de quanto
+              é que ele é parte evita a pergunta "porque é que isto está a
+              menos?" — e evita a resposta errada, que seria alguém corrigir o
+              valor para o dobro e passar a contar a casa toda. */}
+          {quota < 1 ? (
+            <p className="font-mono text-[11px] tnum text-fg-faint">
+              {quotaLabel} de {formatCents(assetTotalValueCents(a))}
+            </p>
+          ) : null}
+          {/* A estimativa da zona, com a diferença em percentagem: é a diferença
+              que faz alguém ir ver o valor, não o valor absoluto. Fica apagada
+              e identificada — é uma referência, não uma avaliação. */}
+          {/* Na mesma base que o número de cima: com quota parcial, aquele é a
+              tua parte, e pôr aqui o valor inteiro da casa ao lado dele fazia
+              parecer que a estimativa era o dobro do que é. A percentagem não
+              muda com a quota — divide-se dos dois lados. */}
+          {zonaCents !== null ? (
+            <p className="font-mono text-[11px] tnum text-fg-faint">
+              zona: {formatCents(Math.round(zonaCents * quota))}
+              {zona ? ` (${zona.ratio >= 1 ? "+" : ""}${Math.round((zona.ratio - 1) * 100)}%)` : ""}
+            </p>
+          ) : null}
           {a.gainCents !== null ? (
             <p className={`font-mono text-[11px] tnum ${a.gainCents >= 0 ? "text-credit" : "text-debt"}`}>
               {a.gainCents >= 0 ? "+" : ""}
@@ -607,6 +1390,35 @@ function AssetRow({
               {a.gainPct !== null ? ` (${a.gainPct >= 0 ? "+" : ""}${Math.round(a.gainPct)}%)` : ""}
             </p>
           ) : null}
+        </div>
+
+        {/* Arrumar a lista pela ordem de quem olha para ela. A de criação, numa
+            carteira importada, é a ordem do ficheiro da corretora. */}
+        <div className="flex items-center">
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="dir" value="cima" />
+            <button
+              type="submit"
+              disabled={primeiro}
+              aria-label={`Mover ${a.name} para cima`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              ↑
+            </button>
+          </form>
+          <form action={moverAtivoAction}>
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="dir" value="baixo" />
+            <button
+              type="submit"
+              disabled={ultimo}
+              aria-label={`Mover ${a.name} para baixo`}
+              className="btn-ghost px-1.5 text-xs disabled:opacity-25"
+            >
+              ↓
+            </button>
+          </form>
         </div>
 
         <form action={deleteAssetAction}>
@@ -618,10 +1430,29 @@ function AssetRow({
       </div>
       </div>
 
+      {credito ? <CreditoResumo plano={credito} periodos={terms!.periods} /> : null}
+
+      {/*
+        Duas razões diferentes para não haver prazo, e a diferença importa a
+        quem lê: numa a dívida cresce, na outra desce tão devagar que não acaba
+        em vida útil nenhuma. Antes esta segunda aparecia como "100 anos" e uma
+        soma de juros — um número inventado com ar de resposta.
+      */}
       {plan && plan.neverPaysOff ? (
         <p className="mt-2 text-xs text-debt">
-          A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
-          {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+          {(plan.monthlyPaymentCents ?? 0) <= (plan.nextInterestCents ?? 0) ? (
+            <>
+              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
+              {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+            </>
+          ) : (
+            <>
+              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} cobre os{" "}
+              {formatCents(plan.nextInterestCents ?? 0)} de juro por pouco e só abate{" "}
+              {formatCents(plan.nextPrincipalCents ?? 0)} por mês: a este ritmo não salda em
+              cem anos.
+            </>
+          )}
         </p>
       ) : null}
 
@@ -690,7 +1521,49 @@ function AssetRow({
         </p>
       ) : null}
 
+      {/*
+        O líquido: o que o bem vale menos o que falta pagar dele.
+        A pergunta que toda a gente faz sobre a sua casa, e que só existia
+        diluída no total do património.
+      */}
+      {liquido ? (
+        <p className="mt-2 text-xs text-fg-muted">
+          Líquido:{" "}
+          <span
+            className={`font-mono tnum ${liquido.liquidoCents >= 0 ? "text-credit" : "text-debt"}`}
+          >
+            {formatCents(liquido.liquidoCents)}
+          </span>{" "}
+          <span className="text-fg-faint">
+            — falta pagar {formatCents(liquido.dividaCents)} em{" "}
+            {liquido.creditos.map((c) => c.name).join(", ")}
+            {liquido.pagoPct !== null ? `. ${liquido.pagoPct}% já é teu` : ""}
+            {liquido.liquidoCents < 0
+              ? ". Deves mais do que ele vale, o que é normal nos primeiros anos"
+              : ""}
+            .
+          </span>
+        </p>
+      ) : null}
+
       {a.notes ? <p className="mt-2 text-xs text-fg-faint">{a.notes}</p> : null}
+
+      {/*
+        Os documentos, fechados por omissão.
+        A escritura de um imóvel e o contrato de um crédito são exatamente os
+        papéis que se procuram uma vez por ano e nunca se sabe onde estão. Ficam
+        aqui, ao lado do registo a que pertencem, mas dobrados: uma lista de
+        bens não é sítio para mostrar ficheiros de todos ao mesmo tempo.
+      */}
+      <details className="mt-2">
+        <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg">
+          Documentos
+          {anexos && anexos.length > 0 ? ` (${anexos.length})` : ""}
+        </summary>
+        <div className="mt-3">
+          <AssetAttachments assetId={a.id} anexos={anexos} />
+        </div>
+      </details>
 
       <details className="mt-2">
         <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg">
@@ -705,6 +1578,9 @@ function AssetRow({
             </p>
           ) : null}
           <AssetForm
+            members={members}
+            podeLerContrato={podeLerContrato}
+            bensFinanciaveis={bensFinanciaveis}
             asset={{
               id: a.id,
               name: a.name,
@@ -714,12 +1590,25 @@ function AssetRow({
               unitPriceCents: a.unitPriceCents,
               valueCents: a.valueCents,
               purchasedAt: a.purchasedAt,
+              areaM2: stored?.areaM2 ?? null,
+              location: stored?.location ?? null,
+              priceRefCents: stored?.priceRefCents ?? null,
+              priceRefSource: stored?.priceRefSource ?? null,
+              priceRefGeocod: stored?.priceRefGeocod ?? null,
+              purchasePriceCents: stored?.purchasePriceCents ?? null,
+              worksCents: stored?.worksCents ?? null,
               notes: a.notes,
               interestRatePct: a.interestRatePct,
               monthlyPaymentCents: a.monthlyPaymentCents,
               termMonths: a.termMonths,
               rateKind: a.rateKind,
+              maturityDate: stored?.maturityDate ?? null,
+              // Já validado: o formulário nunca vê o `jsonb` em cru.
+              creditTerms: terms,
+              ownershipPct: stored?.ownershipPct ?? null,
+              coOwnerMemberId: stored?.coOwnerMemberId ?? null,
               symbol: stored?.symbol ?? null,
+              financesAssetId: stored?.financesAssetId ?? null,
             }}
           />
         </div>

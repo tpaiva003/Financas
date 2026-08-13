@@ -8,6 +8,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { SectionNav } from "@/components/SectionNav";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickAdd } from "@/components/QuickAdd";
+import { ChatDock } from "@/components/ChatDock";
+import { conversaAvailable } from "@/lib/services/conversa-service";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -60,6 +62,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
 
       <QuickAdd />
+
+      {/*
+        No layout de propósito: o layout não é remontado ao mudar de rota, e é
+        isso que faz a conversa sobreviver à navegação. Numa página, cada clique
+        no menu apagava tudo.
+
+        Os submitters não entram: só submetem despesas e não veem o património
+        nem o saldo, que é metade do que o resumo leva.
+      */}
+      {!isSubmitter && conversaAvailable() ? <ChatDock /> : null}
 
       {/* Navegação inferior (mobile). */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">

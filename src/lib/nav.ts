@@ -46,10 +46,18 @@ export const SECTIONS: NavSection[] = [
   {
     href: "/relatorios",
     label: "Análise",
+    /**
+     * Duas famílias de perguntas, e não uma lista de páginas.
+     *
+     * "Em que gasto" e "o que tenho a crescer" são perguntas diferentes, e
+     * estavam todas debaixo de Análise sem distinção — o que fazia a segunda
+     * não existir: quem entrava via só despesas e concluía que era isso.
+     */
     children: [
-      { href: "/relatorios", label: "Resumo" },
+      { href: "/relatorios", label: "Despesas" },
       { href: "/relatorios/categorias", label: "Categorias" },
       { href: "/relatorios/evolucao", label: "Evolução" },
+      { href: "/relatorios/patrimonio", label: "Património" },
     ],
   },
   {
@@ -59,6 +67,8 @@ export const SECTIONS: NavSection[] = [
       { href: "/patrimonio", label: "Resumo" },
       { href: "/patrimonio/ativos", label: "Ativos" },
       { href: "/patrimonio/dividas", label: "Dívidas" },
+      { href: "/patrimonio/dcf", label: "Avaliação" },
+      { href: "/patrimonio/avaliacoes", label: "Funil" },
       { href: "/patrimonio/fire", label: "FIRE" },
       { href: "/patrimonio/importar", label: "Importar" },
     ],
@@ -70,6 +80,9 @@ export function moreLinks(options: { isAdmin: boolean }): NavItem[] {
   const links: NavItem[] = [
     { href: "/acertos", label: "Acertos" },
     { href: "/ambiente", label: "Ambiente" },
+    // Para toda a gente, e não só para quem paga: pedir ajuda não é uma
+    // funcionalidade, é a forma de dizer que alguma coisa está errada.
+    { href: "/ajuda", label: "Ajuda" },
   ];
   if (options.isAdmin) {
     links.push({ href: "/mensagens", label: "Mensagens" });

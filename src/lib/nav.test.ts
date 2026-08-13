@@ -32,9 +32,13 @@ describe("Análise", () => {
   it("está dividida em vistas, em vez de um rolo só", () => {
     const analise = SECTIONS.find((s) => s.label === "Análise")!;
     expect(analise.children?.map((c) => c.label)).toEqual([
-      "Resumo",
+      "Despesas",
       "Categorias",
       "Evolução",
+      // As despesas e o património respondem a perguntas diferentes, e antes
+      // estavam todas debaixo de Análise sem distinção — o que fazia a segunda
+      // não existir: quem entrava via só despesas e concluía que era isso.
+      "Património",
     ]);
   });
 });
@@ -46,6 +50,8 @@ describe("Património", () => {
       "Resumo",
       "Ativos",
       "Dívidas",
+      "Avaliação",
+      "Funil",
       "FIRE",
       "Importar",
     ]);
@@ -103,5 +109,38 @@ describe("moreLinks", () => {
     const links = moreLinks({ isAdmin: true }).map((l) => l.href);
     expect(links).toContain("/plataforma");
     expect(links).toContain("/mensagens");
+  });
+});
+
+/**
+ * O separador raiz de uma secção não pode ficar aceso quando se está numa
+ * página de dentro dela. Acontecia com o "Resumo" do património: em
+ * `/patrimonio/dividas` ficavam dois separadores acesos, e carregar no Resumo
+ * não movia o destaque — lia-se como um botão avariado, quando a navegação
+ * funcionava e era a marcação que mentia.
+ */
+describe("separador raiz de uma secção", () => {
+  /** A mesma regra que o `SectionNav` aplica. */
+  function ativo(childHref: string, sectionHref: string, pathname: string): boolean {
+    return childHref === sectionHref
+      ? pathname === childHref
+      : pathname === childHref || pathname.startsWith(`${childHref}/`);
+  }
+
+  it("o Resumo só está aceso na raiz", () => {
+    expect(ativo("/patrimonio", "/patrimonio", "/patrimonio")).toBe(true);
+    expect(ativo("/patrimonio", "/patrimonio", "/patrimonio/dividas")).toBe(false);
+  });
+
+  it("um separador de dentro continua aceso nas suas subpáginas", () => {
+    expect(ativo("/patrimonio/ativos", "/patrimonio", "/patrimonio/ativos/abc")).toBe(true);
+  });
+
+  it("nunca há dois acesos ao mesmo tempo", () => {
+    const filhos = ["/patrimonio", "/patrimonio/ativos", "/patrimonio/dividas"];
+    for (const pathname of ["/patrimonio", "/patrimonio/dividas", "/patrimonio/ativos/abc"]) {
+      const acesos = filhos.filter((f) => ativo(f, "/patrimonio", pathname));
+      expect(acesos).toHaveLength(1);
+    }
   });
 });

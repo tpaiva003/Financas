@@ -14,7 +14,12 @@
  * pode apontar as colunas à mão e ver o resultado antes de gravar.
  */
 
-import { parseAmountCents, parseDate, type Grid } from "./columns";
+import {
+  detectDecimalSeparator,
+  parseAmountCents,
+  parseDate,
+  type Grid,
+} from "./columns";
 
 export interface TradeMapping {
   headerRow: number;
@@ -32,6 +37,8 @@ export interface TradeMapping {
   fxRateCol: number;
   /** Coluna que diz "compra" ou "venda". -1 quando o sinal da quantidade chega. */
   kindCol: number;
+  /** A bolsa onde o negócio foi feito. -1 se não vier. */
+  exchangeCol?: number;
 }
 
 export type ImportedTradeKind = "compra" | "venda" | "dividendo" | "custo";
@@ -49,6 +56,15 @@ export interface TradeRow {
   /** Moeda da linha, quando não é euro. */
   currency: string | null;
   fxRate: number | null;
+  /**
+   * A bolsa onde o negócio foi feito, como o ficheiro a escreve ("NDQ", "EAM").
+   *
+   * É a pista mais fiável que existe para o símbolo: diz a praça sem se ter de
+   * a adivinhar a partir do nome do produto. Duas empresas com nomes parecidos
+   * em países diferentes são a forma mais fácil de acertar no ticker errado, e
+   * esta coluna resolve isso de graça.
+   */
+  exchange: string | null;
 }
 
 function norm(s: string): string {
@@ -83,6 +99,14 @@ const AMOUNT_HEADERS = [
 ];
 const CURRENCY_HEADERS = ["moeda", "divisa", "currency", "ccy"];
 const FX_HEADERS = ["taxa de cambio", "cambio", "taxa cambial", "exchange rate", "fx rate", "rate"];
+/**
+ * A coluna da bolsa. A Degiro chama-lhe "Bolsa"; outros chamam-lhe "Venue",
+ * "Market" ou "Exchange".
+ */
+const EXCHANGE_HEADERS = [
+  "bolsa", "praca", "mercado", "centro de execucao",
+  "exchange", "venue", "market", "trading venue", "mic",
+];
 const KIND_HEADERS = [
   "tipo", "operacao", "tipo de operacao", "sentido", "natureza",
   "type", "side", "action", "transaction type", "buy sell", "direction",
@@ -164,6 +188,7 @@ export function detectTradeMapping(grid: Grid): TradeMapping | null {
       currencyCol: detectCurrencyCol(grid, r, header, findCol(header, AMOUNT_HEADERS)),
       fxRateCol: findCol(header, FX_HEADERS),
       kindCol: findCol(header, KIND_HEADERS),
+      exchangeCol: findCol(header, EXCHANGE_HEADERS),
     };
   }
   return null;
@@ -216,6 +241,30 @@ function currencyOf(cell: string): string | null {
 export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
   const out: TradeRow[] = [];
 
+  /**
+   * Que separador decimal é que este ficheiro usa, coluna a coluna.
+   *
+   * Sozinho, "493.975" é ambíguo — e a regra portuguesa lê-o como 493 975. Num
+   * ficheiro que escreve os decimais com ponto, isso transforma uma compra de
+   * 493,98 € numa de 493 975,00 €, com o "500.00" da linha ao lado a ser lido
+   * bem. Aconteceu. A coluna inteira desfaz a ambiguidade que um número
+   * sozinho não desfaz.
+   */
+  const daColuna = (col: number): string[] => {
+    if (col < 0) return [];
+    const vs: string[] = [];
+    for (let r = mapping.headerRow + 1; r < grid.length; r++) {
+      const c = grid[r]?.[col];
+      if (c) vs.push(String(c));
+    }
+    return vs;
+  };
+  const sepValor = detectDecimalSeparator([
+    ...daColuna(mapping.amountCol),
+    ...daColuna(mapping.priceCol),
+  ]);
+  const sepQtd = detectDecimalSeparator(daColuna(mapping.quantityCol));
+
   for (let r = mapping.headerRow + 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
     const date = parseDate(row[mapping.dateCol] ?? "");
@@ -224,7 +273,7 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
     const name = (row[mapping.nameCol] ?? "").toString().trim();
     if (!name) continue;
 
-    const rawQty = parseAmountCents(row[mapping.quantityCol] ?? "");
+    const rawQty = parseAmountCents(row[mapping.quantityCol] ?? "", sepQtd);
     // A quantidade passa pelo mesmo leitor dos valores (aguenta "1.234,56"),
     // por isso vem em cêntimos e divide-se de volta.
     const quantity = rawQty === null ? 0 : rawQty / 100;
@@ -235,9 +284,9 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
     );
 
     const unitPriceCents =
-      mapping.priceCol >= 0 ? parseAmountCents(row[mapping.priceCol] ?? "") : null;
+      mapping.priceCol >= 0 ? parseAmountCents(row[mapping.priceCol] ?? "", sepValor) : null;
     const amountCents =
-      mapping.amountCol >= 0 ? parseAmountCents(row[mapping.amountCol] ?? "") : null;
+      mapping.amountCol >= 0 ? parseAmountCents(row[mapping.amountCol] ?? "", sepValor) : null;
 
     // Uma linha sem quantidade e sem valor não é movimento nenhum.
     if (quantity === 0 && (amountCents === null || amountCents === 0)) continue;
@@ -245,6 +294,11 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
     const currency =
       mapping.currencyCol >= 0 ? currencyOf(row[mapping.currencyCol] ?? "") : null;
     const fxRate = mapping.fxRateCol >= 0 ? parseRate(row[mapping.fxRateCol] ?? "") : null;
+    const exchangeCol = mapping.exchangeCol ?? -1;
+    const exchange =
+      exchangeCol >= 0
+        ? (row[exchangeCol] ?? "").toString().trim().slice(0, 24) || null
+        : null;
 
     out.push({
       date,
@@ -255,6 +309,7 @@ export function rowsToTrades(grid: Grid, mapping: TradeMapping): TradeRow[] {
       amountCents: amountCents === null ? null : Math.abs(amountCents),
       currency,
       fxRate,
+      exchange,
     });
   }
 

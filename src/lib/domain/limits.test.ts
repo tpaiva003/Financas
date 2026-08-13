@@ -3,6 +3,7 @@ import {
   SIGNUPS_PER_DAY,
   decideSignup,
   FREE_LIMITS,
+  checkAnexo,
   checkLimit,
   limitsFor,
   planForNewSpace,
@@ -120,5 +121,72 @@ describe("decideSignup", () => {
 
   it("continua fechada mesmo que a contagem passe do tecto", () => {
     expect(decideSignup(SIGNUPS_PER_DAY + 50).allowed).toBe(false);
+  });
+});
+
+describe("checkAnexo", () => {
+  const base = {
+    plan: "full" as const,
+    porBem: 0,
+    bytesNoAmbiente: 0,
+    bytesDoFicheiro: 1024 * 1024,
+    contentType: "application/pdf",
+  };
+
+  it("deixa passar uma escritura em PDF", () => {
+    expect(checkAnexo(base).allowed).toBe(true);
+  });
+
+  /**
+   * Um `.docx` é um contentor que pode trazer macros, e não é o que se guarda
+   * de uma escritura.
+   */
+  it("recusa tipos que não são PDF nem imagem", () => {
+    const r = checkAnexo({
+      ...base,
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    expect(r.allowed).toBe(false);
+    expect(r.message).toContain("PDF");
+  });
+
+  it("recusa um ficheiro acima do tecto, e diz quanto ele tem", () => {
+    const r = checkAnexo({ ...base, bytesDoFicheiro: 12 * 1024 * 1024 });
+    expect(r.allowed).toBe(false);
+    expect(r.message).toContain("12");
+  });
+
+  it("recusa um ficheiro vazio", () => {
+    expect(checkAnexo({ ...base, bytesDoFicheiro: 0 }).allowed).toBe(false);
+  });
+
+  it("o plano gratuito tem menos anexos por bem", () => {
+    expect(checkAnexo({ ...base, plan: "free", porBem: 2 }).allowed).toBe(true);
+    expect(checkAnexo({ ...base, plan: "free", porBem: 3 }).allowed).toBe(false);
+    expect(checkAnexo({ ...base, plan: "full", porBem: 3 }).allowed).toBe(true);
+  });
+
+  it("o plano gratuito tem tecto de espaço no ambiente", () => {
+    const r = checkAnexo({
+      ...base,
+      plan: "free",
+      bytesNoAmbiente: 24 * 1024 * 1024,
+      bytesDoFicheiro: 2 * 1024 * 1024,
+    });
+    expect(r.allowed).toBe(false);
+    expect(r.message).toContain("gratuito");
+  });
+
+  it("o plano pago não tem tecto de espaço", () => {
+    const r = checkAnexo({
+      ...base,
+      plan: "full",
+      bytesNoAmbiente: 500 * 1024 * 1024,
+    });
+    expect(r.allowed).toBe(true);
+  });
+
+  it("nenhum plano passa dos dez por bem — é guarda-corpos, não comércio", () => {
+    expect(checkAnexo({ ...base, plan: "full", porBem: 10 }).allowed).toBe(false);
   });
 });

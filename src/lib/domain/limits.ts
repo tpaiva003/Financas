@@ -170,3 +170,96 @@ export function decideSignup(hojeCount: number): SignupDecision {
       "Por hoje já não há vagas — abrimos poucas contas por dia, de propósito. Deixa o teu email e avisamos-te quando for a tua vez.",
   };
 }
+
+/* ------------------------------------------------------------------------- */
+/* Anexos nos bens                                                            */
+/* ------------------------------------------------------------------------- */
+
+/** Tamanho máximo de um anexo. Uma escritura digitalizada cabe aqui. */
+export const ANEXO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Quantos anexos cabem num bem, em qualquer plano.
+ *
+ * É guarda-corpos e não limite comercial: um ciclo enganado ou um botão
+ * carregado dez vezes não deve encher o armazenamento de ninguém.
+ */
+export const ANEXOS_POR_BEM = 10;
+
+/** No plano gratuito, menos por bem e um tecto de espaço no ambiente. */
+export const FREE_ANEXOS_POR_BEM = 3;
+export const FREE_ANEXOS_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Que ficheiros se aceitam.
+ *
+ * Nada de Office: um `.docx` é um contentor que pode trazer macros, e não é o
+ * que se guarda de uma escritura. PDF e imagens chegam para tudo o que aqui faz
+ * sentido.
+ */
+export const ANEXO_TIPOS = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+] as const;
+
+function mb(bytes: number): string {
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`.replace(".", ",");
+}
+
+/**
+ * Cabe mais um anexo?
+ *
+ * Mesma linguagem do `checkLimit`: diz o que falta e porquê, em vez de recusar
+ * a seco. **Um limite nunca apaga nada** — impede de acrescentar, e o que já lá
+ * está continua lá.
+ */
+export function checkAnexo(input: {
+  plan: SpacePlan;
+  /** Quantos anexos este bem já tem. */
+  porBem: number;
+  /** Quantos bytes de anexos já existem no ambiente. */
+  bytesNoAmbiente: number;
+  bytesDoFicheiro: number;
+  contentType: string;
+}): { allowed: boolean; message: string | null } {
+  const { plan, porBem, bytesNoAmbiente, bytesDoFicheiro, contentType } = input;
+
+  if (!(ANEXO_TIPOS as readonly string[]).includes(contentType)) {
+    return {
+      allowed: false,
+      message: "Só aceito PDF e imagens (JPEG, PNG, WebP, HEIC).",
+    };
+  }
+  if (bytesDoFicheiro <= 0) {
+    return { allowed: false, message: "O ficheiro está vazio." };
+  }
+  if (bytesDoFicheiro > ANEXO_MAX_BYTES) {
+    return {
+      allowed: false,
+      message: `Cada anexo pode ter até ${mb(ANEXO_MAX_BYTES)}, e este tem ${mb(bytesDoFicheiro)}.`,
+    };
+  }
+
+  const tectoPorBem = plan === "free" ? FREE_ANEXOS_POR_BEM : ANEXOS_POR_BEM;
+  if (porBem >= tectoPorBem) {
+    return {
+      allowed: false,
+      message:
+        plan === "free"
+          ? `Cada bem pode ter até ${tectoPorBem} anexos no plano gratuito. Apaga um para acrescentar outro.`
+          : `Cada bem pode ter até ${tectoPorBem} anexos. Apaga um para acrescentar outro.`,
+    };
+  }
+
+  if (plan === "free" && bytesNoAmbiente + bytesDoFicheiro > FREE_ANEXOS_BYTES) {
+    return {
+      allowed: false,
+      message: `O plano gratuito guarda até ${mb(FREE_ANEXOS_BYTES)} de anexos por ambiente, e já lá estão ${mb(bytesNoAmbiente)}.`,
+    };
+  }
+
+  return { allowed: true, message: null };
+}

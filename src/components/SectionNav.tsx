@@ -20,7 +20,19 @@ export function SectionNav() {
   return (
     <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
       {children.map((c) => {
-        const active = pathname === c.href || pathname.startsWith(`${c.href}/`);
+        /**
+         * O separador raiz da secção só está ativo na correspondência exacta.
+         *
+         * Com `startsWith`, o "Resumo" — que aponta para `/patrimonio` — ficava
+         * marcado como ativo em `/patrimonio/dividas`, ao mesmo tempo que o
+         * "Dívidas". Dois separadores acesos ao mesmo tempo, e clicar no
+         * "Resumo" não movia o destaque: lia-se como um botão avariado, quando
+         * a navegação estava a funcionar e era a marcação que mentia.
+         */
+        const raizDaSeccao = c.href === section.href;
+        const active = raizDaSeccao
+          ? pathname === c.href
+          : pathname === c.href || pathname.startsWith(`${c.href}/`);
         return (
           <Link
             key={c.href}

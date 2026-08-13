@@ -1172,3 +1172,1026 @@ pode aparecer por baixo de dados que já lá estavam.
 
 Editar nunca é travado, só criar. Um bem que já existe tem de se poder corrigir
 mesmo com o ambiente cheio — caso contrário o limite passava de tecto a armadilha.
+
+## Crédito à habitação: períodos de taxa em vez de uma taxa
+
+Uma dívida guardava uma taxa e um tipo (fixa/variável). Um crédito à habitação
+português típico não tem uma taxa — tem duas ou três, com datas: "3 anos fixa a
+3,3%, depois Euribor 6M + 0,9% até 2056". Com uma taxa só, a app mostrava até ao
+fim do prazo uma prestação que deixa de ser verdade no dia em que o período fixo
+acaba, e uns juros totais que nunca vão ser esses.
+
+**A prestação recalcula-se em cada mudança**, como o banco faz: anuidade sobre o
+capital que sobra e os meses que faltam **até à maturidade** — não sobre o
+capital inicial nem sobre o prazo original. É isso que cria o degrau. Sem o
+degrau, o resto não valia a pena fazer-se: é a única coisa que um crédito misto
+sabe e um de taxa única não.
+
+**Fixa / mista / variável é um atalho, não um campo.** O Tiago pediu para poder
+"selecionar se é fixo misto ou variável". Os botões montam as linhas típicas de
+cada caso, para não se começar de uma folha em branco — mas o que fica gravado
+são os períodos, e o tipo é lido a partir deles (`tipoDoCredito`). Um campo à
+parte mais tarde ou mais cedo dizia "fixa" num crédito com um período variável lá
+dentro, e ninguém repararia.
+
+**O valor do indexante pergunta-se; não se estima.** A app não tem fonte de
+Euribor, e a Euribor daqui a três anos ninguém sabe. Quem regista escreve o valor
+de hoje, e o plano diz que daí para a frente é um **cenário** feito a esse valor.
+Deixar em branco não dá zero — zero é uma taxa perfeitamente válida, e daria um
+crédito inteiro sem juros que ninguém questionaria. Dá um plano que se recusa a
+existir e diz porquê.
+
+**`jsonb` e não uma tabela.** Os períodos só fazem sentido dentro do crédito a
+que pertencem, são dois ou três, e são sempre lidos e escritos inteiros. Uma
+tabela dava integridade referencial que aqui não paga o que custa. O preço é o
+Postgres devolver o que lá estiver, escrito por outra versão da app ou por
+engano: por isso a leitura passa toda pelo `parseCreditTerms`, que valida campo a
+campo e deita fora o que não percebe. É a mesma lição dos mapeamentos de
+importação — um `as unknown as` daria um plano de amortização com números a sério
+e origem duvidosa.
+
+**Sem maturidade recusa-se, em vez de voltar ao cálculo antigo.** A alternativa
+cómoda era, faltando a data, cair em silêncio na conta de taxa única. Mas quem
+escreveu os períodos disse que este crédito muda de taxa: mostrar-lhe a prestação
+de hoje até 2056 seria responder-lhe uma coisa que se sabe falsa.
+
+**A última prestação salda o crédito.** A anuidade é arredondada ao cêntimo, e ao
+fim de 360 vezes sobra um resto. O `buildLoan` paga-o num mês 361 que o contrato
+não tem — e por isso diz "241 meses" num crédito de 240. Aqui a última prestação
+absorve-o, que é o que o banco faz. O `buildLoan` não foi mexido: é um erro de um
+mês numa data já mostrada, e corrigi-lo mudava números que as pessoas já viram.
+
+## Ler o contrato do crédito: o modelo copia, a conta é que confirma
+
+Registar um crédito à habitação à mão é ir buscar o montante, a data da
+escritura, o prazo e dois ou três períodos de taxa com indexante e spread ao meio
+de trinta páginas escritas para um notário. É chato o suficiente para se fazer de
+qualquer maneira, e um crédito registado de qualquer maneira dá uma prestação
+errada durante trinta anos sem nunca dar erro.
+
+**Ao modelo pede-se que copie, não que calcule.** É-lhe dito explicitamente para
+não somar prazos, não deduzir a data do último pagamento e não estimar a
+prestação — só copiar o que está escrito. A razão é que a prestação copiada é o
+que permite verificar tudo o resto: o `reviewContrato` **recalcula-a** a partir do
+capital, da taxa do primeiro período e do prazo, e compara. Uma vírgula fora do
+sítio na taxa (0,33% em vez de 3,3%) mantém o formato perfeito e números
+plausíveis — e não sobrevive a essa conta. Se o modelo calculasse em vez de
+copiar, a comparação passava a confrontar o modelo consigo próprio e não valia
+nada.
+
+**Uns euros de diferença não são um erro.** A tolerância é 2% (mínimo 2 €), e é
+deliberadamente generosa: arredondamentos e um seguro pequeno na mesma prestação
+cabem lá dentro. Gritar por dois euros ensinava quem confirma a ignorar o aviso, e
+no dia em que ele fosse a sério já não valia nada.
+
+**O que não passa é deitado fora com aviso, nunca corrigido.** Um período com uma
+taxa de 330% desaparece e diz-se que desapareceu. Adivinhar a taxa certa a partir
+de uma taxa errada seria escolher por alguém um número que vai valer trinta anos.
+
+**O valor do indexante que está no contrato não se aproveita.** Está lá quase
+sempre ("Euribor a 6 meses em vigor: 2,532%") e era fácil usá-lo. Não se usa: é o
+valor do dia da escritura, e um plano de amortização construído sobre ele seria um
+cenário com ar de facto. O campo fica vazio de propósito e diz-se porquê.
+
+**O ficheiro não é guardado.** Entra, dá o texto, é lido e desaparece com o
+pedido. Um contrato de crédito tem morada, número fiscal e assinatura; guardá-lo
+para nada era uma responsabilidade que esta app não precisa de ter.
+
+**O montante do contrato não é o que falta pagar.** Vai para o campo do saldo
+porque é o melhor ponto de partida que existe, mas com um aviso por baixo: num
+crédito com anos, a diferença são dezenas de milhares de euros, e é o erro mais
+fácil de deixar passar neste ecrã.
+
+## Preço dos imóveis: INE, e não o idealista
+
+O pedido falava do relatório de preços do idealista, que é o que toda a gente
+conhece. Não dá: o idealista não tem API pública, e só se lá chegava a raspar as
+páginas — o que viola os termos deles e parte no dia em que mudarem o HTML. O INE
+publica o mesmo tipo de indicador (valor mediano das vendas de alojamentos
+familiares, em €/m², por concelho) numa API pública e documentada.
+
+**Não são a mesma coisa, e é bom que se saiba.** O idealista mede anúncios, o INE
+mede escrituras. Pedidos contra pagos: o INE costuma dar mais baixo, e sai com uns
+meses de atraso. Em compensação é o que se pagou mesmo.
+
+**A geografia resolve-se por nome, não por código.** Uma tabela com os códigos dos
+308 concelhos era trezentas linhas a manter aqui dentro e a dessincronizar-se em
+silêncio. Em vez disso pede-se ao INE a lista toda e compara-se pelo nome que ele
+próprio devolve, sem acentos e sem maiúsculas. Um nome ambíguo **não se
+desempata**: há duas Lagoas em Portugal, uma nos Açores e outra no Algarve, com o
+dobro do preço uma da outra — escolher a primeira era acertar por sorte numa em
+duas, e o erro ficava calado.
+
+**A estimativa nunca substitui o valor.** `price_ref_cents` vive ao lado de
+`value_cents` e a estimativa aparece por baixo do valor, apagada e identificada. A
+mediana do concelho não sabe se a casa é num último andar com vista ou num rés do
+chão para as traseiras, e entre uma coisa e outra vão facilmente 30%. Trocar um
+valor desatualizado, que se sabe desatualizado, por um número errado com ar de
+facto seria uma troca má.
+
+**Escrever o preço à mão troca a proveniência.** Mexer no campo põe a fonte a
+"escrito à mão". Um preço com a etiqueta do INE que não veio do INE é pior do que
+um preço sem etiqueta nenhuma.
+
+**O código do indicador está numa variável de ambiente.** O INE renumera as séries
+quando muda a metodologia, e um número fixo no código obrigava a um deploy para
+uma coisa de configuração. Quando o pedido não devolve nada que se perceba, a app
+diz isso e aponta para a variável — em vez de mostrar zero concelhos, que se leria
+como "o teu concelho não tem dados".
+
+## Evolução do património: guarda-se, porque o passado não se reconstrói
+
+O património da app é uma fotografia — cada bem tem o valor de hoje e mais nada.
+O depósito que hoje tem 12 mil não sabe que teve 8 mil no ano passado, e a casa
+registada em 2019 não guardou o que valia então. As despesas dão-se a reconstruir
+porque são movimentos datados; um saldo não. Logo: ou se grava uma fotografia por
+dia, ou não há gráfico nenhum para desenhar. **O histórico começa vazio e enche-se
+para a frente**, e o ecrã diz isso em vez de mostrar um gráfico a fingir.
+
+**Grava-se na visita, não num cron.** Um cron diário obrigava a mais um segredo,
+mais uma entrada no `vercel.json` e uma lista de ambientes a percorrer. A
+gravação na visita é idempotente (uma por dia e por ambiente, por índice único) e
+não custa nada. O preço são buracos nos períodos em que ninguém abriu a app.
+
+**Os buracos não se preenchem.** Se faltarem meses, os pontos ficam mais afastados
+e vê-se que ficam. Ligá-los com uma recta era afirmar uma coisa sobre meses de que
+não se sabe nada.
+
+**Não há percentagem a partir de um património negativo.** Ir de -50 mil para -10
+mil é uma melhoria de 40 mil, e a divisão dá -80%: o sinal ao contrário do que
+aconteceu. Quem começa com mais dívida do que bens — o normal nos primeiros anos
+de um crédito à habitação — vê a variação em euros e não vê percentagem nenhuma.
+Pela mesma razão, o gráfico desenha a linha do zero sempre que há valores
+negativos: sem ela, uma série toda negativa desenhava-se igual a uma positiva.
+
+**O líquido gravado não se acredita.** `net_cents` está na tabela por
+conveniência, mas quem lê recalcula-o a partir das duas parcelas. Uma linha
+escrita por uma versão antiga com a soma errada desenhava um degrau que nunca
+existiu.
+
+## Conversar sobre os números: o modelo discute, não calcula
+
+O resumo da situação é montado por código com testes (`buildSituacao`) e vai para
+o modelo **já em euros**. Ele recebe totais, dívidas com taxa e prestação, médias
+por categoria e a evolução; discute-os, compara-os, aponta o que salta à vista.
+Não soma, não projeta, não estima rendibilidades — e é-lhe dito que, se para
+responder fizer falta uma conta que não está no resumo, diga que não tem esse
+número em vez de o produzir.
+
+É a mesma divisão de trabalho da importação (a IA escolhe colunas, não lê valores)
+e da leitura do contrato (copia, não calcula). A razão é a de sempre: *"a tua taxa
+de poupança é 34%"* é exatamente o tipo de frase em que ninguém desconfia.
+
+**Euros e nunca cêntimos.** Um modelo a ler "18000000" tanto pode dizer dezoito
+milhões como cento e oitenta mil, e a frase sai com o mesmo ar de certeza nos dois
+casos. Há teste.
+
+**As divisões por zero devolvem `null`, não infinito.** Taxa de poupança sem
+rendimento registado, anos de despesa cobertos sem despesa registada: os dois dão
+`Infinity`, e "o teu património dá para infinitos anos" lê-se mesmo como boa
+notícia. O resumo diz por extenso que não dá para saber.
+
+**O que não sai do servidor:** as despesas uma a uma (vão médias por categoria),
+as notas dos bens (texto livre, onde cabe o que alguém escreveu sem pensar que
+sairia dali) e os nomes das pessoas, que não acrescentam nada a uma conversa sobre
+dinheiro. O ecrã diz isto **antes** da primeira pergunta.
+
+**A conversa não fica guardada.** Vive na página e vai e volta em cada pedido. Uma
+tabela de conversas sobre dinheiro é uma responsabilidade que esta app não precisa
+de ter, e o valor de a guardar é pequeno. O histórico que volta do cliente é
+tratado como território de quem o envia: cortado, com os papéis a alternar e a
+começar sempre do lado de quem pergunta.
+
+## O chat vive no layout, e é por isso que sobrevive à navegação
+
+No App Router, o layout **não é remontado** quando se muda de rota — só o
+`children` é. Pôr o chat lá é o que faz a conversa aguentar uma ida às despesas e
+voltar, sem uma linha de código para isso. Numa página, cada clique no menu
+apagava tudo.
+
+O resumo que vai para o modelo passou a incluir o **saldo entre as pessoas do
+ambiente, com nomes**. A primeira versão excluía-os por princípio, e estava
+errado para o que esta app é: metade dela é despesa partilhada, e "quem me deve o
+quê?" não tem resposta possível sem nomes. São pessoas do próprio ambiente de
+quem pergunta, que já aparecem em todos os ecrãs. Continua de fora tudo o que não
+faz falta: as despesas uma a uma, as notas dos bens.
+
+## O que a revisão dos quatro problemas apanhou
+
+**O preço do INE estava a vir do indicador errado.** O `0012530` era um palpite —
+escrito sem se poder fazer a chamada — e devolvia outra coisa qualquer, com
+valores entre 1 e 3 que o ecrã mostrava como "1,00 €/m²". O certo é o **0012234**,
+confirmado contra uma resposta a sério: 931 linhas, preços entre 280 e 6986 €/m².
+
+**Os períodos do INE vêm por extenso, e ordená-los por texto mente.** As chaves
+são "1.º Trimestre de 2026"; ordenadas alfabeticamente, "4.º Trimestre de 2019"
+fica à frente e a app mostrava preços de há sete anos como se fossem os de agora.
+Lê-se o ano e o trimestre.
+
+**Comparar nomes por sub-cadeia era pior do que não comparar.** "Paranhos, Porto"
+trazia **Tó**, a freguesia de Mogadouro, porque "por**to**" contém "to" — e com
+oito lugares na lista, os oito "Tó" empurravam o Porto e Paranhos para fora do
+ecrã. Agora compara-se por **palavras inteiras**, com uma escada de pontuação, e
+a vírgula separa o sítio do contexto: em "Paranhos, Porto" procura-se Paranhos e
+"Porto" só desempata. Um nome de duas letras só entra se for escrito como palavra.
+
+**A lista do INE tem vários níveis ao mesmo tempo**, e há nomes repetidos entre
+eles — Odivelas é concelho e é freguesia lá dentro. Cada candidato leva agora o
+"dentro de", tirado da hierarquia dos próprios códigos (o da freguesia começa
+pelo do concelho). Sem isso, o ecrã mostrava dois botões iguais com preços
+diferentes e não havia forma de escolher.
+
+**A cotação em falta não era do símbolo — era da fonte, e a app não sabia
+dizê-lo.** O `googl.us` chega ao Yahoo como `GOOGL`, que é a forma certa. O que
+falhava era o motivo desaparecer: em `refreshStalePrices`, a série só era
+atribuída quando vinham cotações, e por isso o `problem` saía **provadamente
+sempre nulo**. O botão "Atualizar preços" respondia *"1 já estava em dia"* a um
+investimento sem preço nenhum. Agora o motivo de cada fonte é guardado e mostrado
+no cartão: "a fonte recusou o pedido" e "este símbolo não existe" são problemas
+opostos — um espera-se, o outro corrige-se à mão.
+
+Na mesma passagem: o `force` passou a saltar também a cache do Next (uma resposta
+200 sem dados ficava lá uma hora e o botão não a contornava), e uma escrita que
+falha deixou de contar como "preço atualizado".
+
+**O gráfico do património não estava partido — o estado vazio é que mentia.** A
+gravação da fotografia engolia o erro por inteiro, e o cartão dizia "o histórico
+está a começar" tanto no primeiro dia como todos os dias em que a escrita
+falhasse. Agora diz qual dos vazios é.
+
+## Reconstruir o passado do património: o que é medido e o que é assumido
+
+O Tiago pediu a evolução a recuar no tempo, depois de eu ter desaconselhado a
+parte estimada. É a decisão dele, e fica feita — mas **marcada**.
+
+**O que é medido a sério.** Os investimentos: há movimentos datados e cotações
+guardadas, por isso quantas unidades havia em Março e a que preço fechavam
+sabe-se. E o crédito: com taxa e prestação, o saldo passado sai da própria
+amortização ao contrário — `saldo = (saldo' + prestação) / (1 + i)`.
+
+**O que é assumido.** As contas bancárias e os imóveis não guardam passado
+nenhum: entram ao valor de **hoje**. A linha do ano passado mostra o saldo
+bancário de hoje. É por isso que a parte reconstruída é desenhada a **tracejado**,
+com pontos mais apagados, e com uma legenda a dizer exactamente isto por baixo do
+gráfico.
+
+**O câmbio fica congelado.** A cotação guardada está na moeda da bolsa e o preço
+em euros só se sabe para hoje. Usa-se a razão entre o fecho da data e o fecho mais
+recente, aplicada ao preço em euros de hoje: a moeda desaparece da conta e não é
+preciso uma taxa por mês. O preço fica certo, o câmbio não se mexe — num período
+em que o euro oscilou muito, a diferença aparece.
+
+**Sem nada reconstruível, não se desenha nada.** Se não houver investimentos com
+movimentos nem dívidas com plano, todos os pontos seriam o valor de hoje repetido
+para trás — uma linha horizontal a afirmar que o património esteve parado meses a
+fio. É a versão mais convincente da mentira que isto já assume ter, e essa não se
+faz.
+
+**O medido ganha sempre.** Um mês que tenha fotografia a sério não é substituído
+por uma estimativa, nem parcialmente. É o único ponto daquele mês em que se pode
+confiar.
+
+## A fotografia grava-se ao movimento, não só à visita
+
+Antes, a fotografia diária só era escrita ao abrir o `/patrimonio` — o gráfico
+tinha a resolução das **visitas** e não a dos **movimentos**. Registar uma compra
+e não abrir a página deixava o dia de fora, e o salto aparecia todo junto mais
+tarde. Agora grava-se também ao gravar um bem, ao apagar um bem e ao registar ou
+apagar um movimento. É idempotente (o dia é sempre a mesma linha) e falha calada:
+ninguém fica sem registar um movimento porque a fotografia não deu.
+
+## O imóvel pergunta o que se sabe, não o que se adivinha
+
+O formulário pedia "valor atual" e uma "taxa anual de rendimento" — duas
+perguntas que não fazem sentido numa casa. De um imóvel sabe-se **o que se pagou
+por ele** e **o que se meteu em obras**. O valor de hoje é a única coisa que
+ninguém tem, e era precisamente a que estava a ser pedida.
+
+**A conta:** `valor ≈ (compra + obras) × (índice de hoje / índice na data da
+escritura)`, com o índice a ser o €/m² que o INE publica para aquele sítio. O
+ponto de partida é um facto; só a variação vem da estatística.
+
+**Porquê isto e não "área × preço da zona".** A mediana aplicada à área diz
+quanto valeria uma casa *média* daquele tamanho naquela zona — e uma casa
+concreta não é a média: entre um T2 sem elevador e um último andar remodelado
+vão 30%. As duas contas continuam lado a lado no ecrã, porque **discordarem uma
+da outra é informação**.
+
+**As obras não valorizam desde a compra.** Entram no custo pelo que custaram.
+Aplicar-lhes o índice desde a escritura era dizer que uma cozinha feita o ano
+passado valorizou desde 2019.
+
+**Guarda-se o `geocod`, não só o nome.** Sem o código não há como ir buscar o
+índice de 2023: o nome não chega, porque há nomes repetidos entre níveis. E por
+isso o parser passou a guardar **todos** os períodos do INE, e não só o último —
+vinham no mesmo pedido e eram deitados fora.
+
+**Calcula-se a cada visita e um valor à mão ganha sempre.** Gravar o valor
+deixava-o parado até alguém reabrir o formulário, que é o problema que isto veio
+resolver. E quem conhece a casa sabe mais do que a mediana do concelho: havendo
+valor escrito, é esse que conta.
+
+## O lucro de cada entrada, e porque não é FIFO
+
+Numa ação comprada em sete alturas diferentes, a pergunta natural é *"comprar
+naquele dia foi bom negócio?"*. Cada movimento passa a mostrar o que essa entrada
+valeu a pena ao preço de agora.
+
+**Não é FIFO e não é mais-valia realizada.** A posição desta app é a **custo
+médio** — dizer aqui que uma venda consumiu esta compra e não aquela era pôr duas
+contabilidades no mesmo ecrã, com a de baixo a contradizer a de cima. Conta as
+unidades desse movimento ao preço de hoje, mesmo que já tenham sido vendidas. O
+ecrã diz isto por extenso, incluindo que **não serve para o IRS**, que em Portugal
+é FIFO.
+
+Numa venda a conta é ao contrário: o que se recebeu contra o que essas unidades
+valeriam hoje. Vender antes de uma descida é ganhar, e o sinal tem de o dizer.
+
+## As posições fechadas ficam arrumadas, não desaparecidas
+
+Uma importação de corretora traz tudo o que alguma vez se comprou, incluindo o
+que já foi vendido por inteiro — fichas com zero unidades e zero euros que
+ocupam o mesmo espaço que as posições vivas. Ficam escondidas por omissão, com a
+contagem à vista e a um clique de aparecerem. Esconder sem dizer que se escondeu
+seria fazer desaparecer coisas a quem está a contar dinheiro. Não mexe em número
+nenhum: uma posição a zero vale zero, esteja à vista ou não.
+
+## A bolsa vinha no ficheiro e estava a ser deitada fora
+
+O ficheiro da corretora traz uma coluna "Bolsa" ("NDQ", "EAM", "XET") e a
+importação ignorava-a. É a pista **mais fiável** que existe para descobrir o
+símbolo: diz a praça sem se ter de a adivinhar pelo nome do produto — e adivinhar
+mal é acertar no ticker de outra empresa, que devolve um preço plausível todos os
+dias, para sempre, sem ninguém desconfiar.
+
+Passa a ser lida, gravada no bem, mostrada no cartão e **enviada ao modelo** na
+sugestão de símbolo, com a lista de códigos que as corretoras usam. Serve também
+para filtrar a carteira.
+
+## Filtrar a carteira, sem esconder nada em silêncio
+
+Cinquenta produtos importados, muitos já vendidos por inteiro e muitos sem
+símbolo. O que se faz numa lista dessas é **procurar um**. Há agora procura por
+nome ou ticker, filtro por bolsa, filtro "sem símbolo", e as posições fechadas
+ficam arrumadas por omissão.
+
+A contagem está sempre à vista — "Já fechadas (12)", "Sem símbolo (51)" — e há
+"Limpar". Fazer fichas desaparecerem a quem está a contar dinheiro, sem dizer
+quantas nem como as trazer de volta, seria pior do que a lista comprida. E filtrar
+não mexe em número nenhum: uma posição a zero vale zero, esteja à vista ou não.
+
+## Corrigir um movimento passa pelas mesmas regras que criá-lo
+
+Um ficheiro de corretora engana-se: uma data trocada, uma quantidade com um zero
+a mais, uma taxa de câmbio que não é a que foi aplicada. Apagar e reescrever perde
+a linha e obriga a saber tudo de cor outra vez.
+
+A correção usa a **mesma ação** do servidor, com um `tradeId` a mais. As regras
+que impedem gravar dólares como euros, ou um movimento sem valor, valem tanto a
+criar como a corrigir — duas validações separadas divergem ao segundo mês. Numa
+moeda estrangeira o que se edita é o valor **original**, o que está na nota da
+corretora; o euro sai da taxa, como na criação.
+
+O `space_id` filtra a escrita e tem teste de isolamento: um id vindo de um
+formulário não é prova de nada, e tudo corre com a chave de serviço, que ignora o
+RLS.
+
+## A taxa mista estava escondida
+
+O campo "Tipo de taxa" oferecia fixa e variável. A mista existia — é o bloco "A
+taxa muda ao longo do crédito" — mas quem vinha ao campo à procura dela não a
+encontrava. Passa a estar na lista, e escolhê-la **abre o editor de períodos** já
+com as linhas típicas: fixa no princípio, variável com indexante a partir de uma
+data.
+
+Não é um terceiro valor a gravar: um crédito misto são dois períodos, e o tipo
+continua a ser lido deles.
+
+## A ordem dos bens é de quem olha para eles
+
+A lista vinha por data de criação — que numa carteira importada é a ordem do
+ficheiro da corretora, e não quer dizer nada. Ordenar por valor também não serve:
+a ordem por que se olha para as coisas é a de quem olha.
+
+**Setas, não arrastar.** Arrastar precisa de biblioteca, comporta-se mal no
+telemóvel e não funciona com teclado. Duas setas com `aria-label` fazem o mesmo e
+funcionam em todo o lado.
+
+**A ordem é dentro do tipo.** A página agrupa por tipo; trocar um imóvel com uma
+conta não teria efeito visível nenhum.
+
+**Não se arruma o que está filtrado.** Com a lista filtrada, mover mexia em
+posições que não se veem, e a ordem final saía diferente do que se viu a fazer.
+Os botões desaparecem enquanto houver filtro.
+
+**`sort_order` é NULL em tudo o que já existe**, e nesse caso manda a data de
+criação: nenhuma lista já vista muda por causa disto. Só passa a contar depois de
+alguém mexer, e a primeira mexida numera o grupo todo — uma escrita por bem, mas
+só quando se arruma, e deixa a ordem explícita em vez de dependente de empates.
+
+## Um número sozinho é ambíguo; a coluna inteira não é
+
+`"493.975"` tanto pode ser quatrocentos e noventa e três mil como
+quatrocentos e noventa e três vírgula novecentos e setenta e cinco. A regra de
+"três dígitos depois de um ponto são milhares" é a certa em português — e é a
+errada num ficheiro que escreve os decimais com ponto e às vezes usa três casas.
+
+Aconteceu a sério: uma compra de **493,98 €** entrou como **493 975,00 €**, e as
+linhas ao lado do mesmo ficheiro ("500.00", "555.36") foram lidas corretamente.
+É o que torna isto difícil de ver — a coluna parece certa.
+
+**A coluna desfaz a ambiguidade que o número não desfaz.** Um único "500.00" na
+coluna prova que, neste ficheiro, o ponto é decimal — e portanto "493.975" tem de
+ser 493,975. O separador é decidido **uma vez por coluna**, antes de se ler
+qualquer linha, e só quando a coluna não diz nada é que vale a regra de sempre.
+
+## Um mock sem colunas não apanha um nome de coluna errado
+
+O `updateAssetTrade` escrevia `date`; a coluna chama-se `trade_date`. O PostgREST
+recusava a escrita inteira e o ecrã dizia "Não consegui gravar o movimento" — a
+mensagem certa pela razão errada. A edição nunca podia ter funcionado.
+
+Os testes de isolamento não apanharam isto, e não foi descuido: correm contra o
+`MockRepository`, que guarda objetos e não tem colunas nenhumas. A diferença é
+estrutural e não se resolve tornando o mock mais rigoroso.
+
+Por isso há agora um teste que **lê as migrações**, aprende as colunas de cada
+tabela, e confronta com elas os nomes que os `update`s escrevem. Só os `update`s:
+um nome errado num `insert` rebenta na primeira utilização, alto e bom som; num
+`update` só rebenta naquele caminho — que pode ser um botão que ninguém carrega
+durante meses.
+
+## O split que fez a rentabilidade dizer +4969,9%
+
+Uma corretora regista um desdobramento como **uma venda e uma compra no mesmo
+dia, pelo mesmo dinheiro**: sai 1 unidade, entram 20, e o dinheiro não se mexe. A
+importação leu isso como negócios a sério, porque não tem noção nenhuma de
+operações societárias.
+
+Ao mesmo tempo, a série do Yahoo vem **ajustada a splits**. Ou seja: as unidades
+gravadas são pré-split e os preços são pós-split. O troço da TWR nesse dia fica
+`20p / 1p` = **×20 exactos, independentemente de qualquer preço**.
+
+Reproduzido com o código real e os movimentos reais: investido, já realizado,
+ganho e TIR batem ao cêntimo com o que estava no ecrã, e o fator entre o cenário
+com e sem split é 20,000000. A TWR honesta é ~+153% total (~+23%/ano), não
++4969,9%. **A TIR não é afetada** — as duas pernas partilham a data e anulam-se.
+
+**Recusar, não corrigir.** Enquanto não houver suporte a splits, a única saída
+honesta é não mostrar o número. A guarda compara, em cada movimento, o dinheiro
+por unidade com o fecho desse dia: fora de um fator de 1,35 é incoerência.
+
+O limite é largo de propósito — uma execução longe do fecho e as comissões
+embutidas andam nos poucos por cento, e recusar a rentabilidade a quem comprou
+com um limite mal colocado seria pior do que o problema. Apanha os splits de 3:2
+para cima; **um 5:4 passa**, e fica dito.
+
+**O aviso não fica só na TWR.** A "venda" fabricou uma mais-valia realizada de
+1923,08 € que nunca existiu — com ar de rendimento tributável — e a "compra" pôs
+no investido 2142,56 € que nunca saíram do banco. Recusar só a rentabilidade e
+deixar estes dois números sem aviso seria tapar metade do problema.
+
+## Duas recusas que o código prometia e não cumpria
+
+**Um fecho velho era arrastado para sempre.** O `positionValuePoints` diz no
+cabeçalho que devolve `null` se faltar o preço de algum dia — "não se estima, não
+se interpola e não se salta o ponto". Só que o `priceOn` arrastava o último fecho
+anterior sem limite: uma série que acabasse em 2022 avaliava um movimento de 2025
+a preços de 2022 e devolvia uma rentabilidade com ar de resposta. A promessa era
+impossível de cumprir, porque quem a devia cumprir nunca via um buraco.
+
+Agora há folga de **dez dias** — que chega para qualquer fim de semana ou Natal
+com feriados a calhar mal, e é curta para qualquer outra coisa.
+
+**Dois pontos no mesmo dia não são um troço.** Numa venda TOTAL executada 0,1%
+abaixo do fecho, o valor final é zero e a base fica esse resto de cêntimos: a TWR
+dava **-100%** num investimento que quase duplicou. De que lado do fecho caía a
+execução decidia entre +100% e -100% — e a app tem uma prateleira inteira para
+estas posições ("Já fechadas").
+
+Sem tempo não há rentabilidade: um troço de duração zero passa a contar como
+neutro. É exactamente o que o cabeçalho do `positionValuePoints` já dizia que o
+segundo ponto faz — "nunca inventa rentabilidade" — e que não fazia.
+
+---
+
+## Sessão de 2026-08-10/11
+
+### A subunidade das bolsas lê-se antes de qualquer maiúscula
+
+O Yahoo distingue `GBp` (pence) de `GBP` (libras) pela caixa de uma letra, e são
+duas moedas com um fator de cem entre elas. Qualquer normalização feita antes da
+comparação apaga a distinção — foi o que aconteceu. A conversão vive numa função
+própria (`moedaDeSubunidade`) para que uma arrumação inocente noutro sítio não a
+volte a apagar, e há um teste que falha se alguém normalizar primeiro.
+
+Cobrem-se `GBp`/`GBX` (Londres), `ZAc` (Joanesburgo) e `ILA` (Telavive).
+
+### Uma cache de cotações pode ser apagada; nada mais nesta app pode
+
+A migração 0033 apaga linhas. É defensável **só** porque as cotações são uma
+cache derivada de uma fonte pública: nada ali é dado de ninguém e tudo se vai
+buscar outra vez sozinho. É a única tabela de que isso se pode dizer, e o
+raciocínio não se estende a mais nenhuma.
+
+### As notas internas separam-se por função, nunca por bandeira
+
+`listTicketMessagesPublicas` e `listTicketMessagesTodas`, em vez de uma leitura
+com `incluirInternas`. Uma bandeira é igual a duas funções até ao dia em que
+alguém a passa ao contrário — e aí a nota já foi lida e não há como desfazer. A
+função que serve o utilizador não sabe ler a coluna.
+
+Pela mesma razão, uma nota interna não mexe no `updated_at`: se mexesse, o fio
+do utilizador denunciava a hora exacta em que alguém escreveu o que ele não pode
+ler.
+
+### O crescimento mede-se por `created_at`, nunca por `transaction_date`
+
+Quem importa dois anos de extrato numa noite fez **uma noite** de uso. Uma
+curva construída sobre a data da transação desenharia dois anos de atividade a
+partir dessa noite — o gráfico mais bonito e mais falso desta app.
+
+### Percentagens só acima de cinco na base
+
+"100% de retenção" com um ambiente elegível é verdade e não quer dizer nada.
+Abaixo de cinco mostra-se "2 de 3", que ninguém confunde com uma tendência.
+(`MINIMO_PARA_PERCENTAGEM`, em `domain/plataforma.ts`.)
+
+### Uma mediana robusta compara-se com todos, incluindo o próprio
+
+Na primeira versão do detetor de movimentos implausíveis, a mediana excluía o
+movimento que estava a ser julgado, "para a referência não ser puxada pelo
+erro". Esse raciocínio vale para uma média e é ao contrário numa mediana:
+excluir o próprio reduzia a amostra para dois, e o ponto médio de dois é a média
+deles. O resultado era acusar os dois movimentos certos e ilibar o errado.
+
+### A Euribor vem do BCE, e é a média do mês
+
+O dono da Euribor é o EMMI, que a publica com licença e sem API aberta. O BCE
+republica as séries de graça, sem chave, e é oficial. Usa-se a média do período
+(`HSTA`) e não o fixing do dia, porque é a média que os contratos portugueses
+usam para a revisão — o valor de hoje daria um número parecido o suficiente para
+ninguém reparar e diferente o suficiente para a prestação não bater certo.
+
+### Duas contas diferentes não podem ter o mesmo nome
+
+No resumo, "investido" era o custo das posições abertas; em Ativos, todo o
+dinheiro que alguma vez entrou. Ambos corretos, nomes iguais, valores muito
+diferentes — e quem lê conclui que um dos ecrãs está avariado. Passaram a
+chamar-se "custo das posições abertas" e "dinheiro que entrou".
+
+### A margem de segurança aplica-se antes de comparar com o preço
+
+É a diferença entre "vale 492 e custa 410, está barata" e "só compro abaixo de
+344, e custa 410, logo não". A margem não é um ajuste cosmético no fim: é o
+preço a que se está disposto a comprar, e é esse que entra na média pesada e no
+veredicto. Aplicá-la depois transformava-a num número decorativo ao lado de uma
+decisão que já tinha sido tomada sem ela.
+
+### As probabilidades dos cenários têm de somar cem, e não se normalizam
+
+Com 25/50/20 a média pesada sai 5% abaixo da verdadeira e nada no ecrã denuncia
+que faltavam cinco pontos. Normalizar sozinho resolvia a aritmética e devolvia
+um número que ninguém pediu — com o engano de quem escreveu escondido lá dentro.
+Recusa-se, e diz-se quanto somam.
+
+### Um DCF projeta em duas fases, não numa
+
+Uma empresa que cresce 15% ao ano não cresce 15% durante dez anos: a
+concorrência chega, a base fica grande, o mercado satura. Projetar a taxa dos
+primeiros anos até ao fim inflaciona o valor terminal — que já é a maior parte
+do resultado — e o exagero entra onde menos se vê. Por omissão a segunda fase
+começa a meio da projeção.
+
+### Um estudo de avaliação guarda o resultado, e não só os pressupostos
+
+Recalcular na leitura parecia mais limpo: menos colunas, nenhuma hipótese de o
+número guardado divergir da fórmula. Tinha uma consequência séria — no dia em
+que a fórmula mudasse, um valor que já serviu de base a uma compra mudava de
+opinião retroactivamente. Uma decisão tomada com 344 tem de continuar a poder
+ser lida com 344. Guardam-se os dois, e reavaliar cria uma linha nova em vez de
+reescrever a antiga: ver "valia 344 em fevereiro e 410 em agosto" é metade do
+valor de um funil.
+
+### Sem denominador positivo não há rácio
+
+Uma empresa com capital próprio negativo tem um ROE que, calculado à letra, sai
+positivo e enorme — e é exactamente ao contrário do que significa. A empresa
+mais endividada da lista apareceria com o melhor retorno. Onde o denominador não
+é positivo devolve-se `null`, e o ecrã escreve "—". É o mesmo princípio de "sem
+taxa de câmbio não se grava preço nenhum".
+
+### Os cenários partem do historial da empresa, e dizem-no
+
+Nascer em 6/9/15% era a app a ter uma opinião sobre uma empresa que não conhece.
+Agora partem do crescimento composto do fluxo livre dos exercícios que a fonte
+trouxe, travado nos 20% — acima disso é quase sempre uma base pequena a crescer,
+não um regime — com a segunda fase sempre mais lenta do que a primeira, que é a
+única coisa de que se tem a certeza. O ecrã diz de onde veio o número e os
+campos continuam todos editáveis: um pressuposto sem origem visível é uma
+opinião da app com ar de conta.
+
+### Uma página do App Router não exporta mais nada
+
+O `EstadoChip` estava exportado de `ajuda/page.tsx` e a página do detalhe
+importava-o de lá. Passava no `tsc`, passava no `lint`, e só rebentava no
+`next build` — com "not a valid Page export field", numa página que ninguém
+tinha tocado. Componentes partilhados vivem em `components/`.
+
+### Registos repetidos juntam-se pelo símbolo, nunca pelo nome
+
+A importação cria dois investimentos quando a corretora escreve "ADR ON
+UNILEVER" num extrato e "ADR ON UNILEVER PLC" no seguinte. Juntá-los por
+parecença de nomes apanhava esse caso — e apanhava também "XPHYTO THERAPEUTICS"
+e "XPHYTO THERAPEUTICS - NON TRADEABLE", que são coisas diferentes: uma negoceia
+e a outra não. Parecença de nomes é um palpite sobre dinheiro de alguém; dois
+registos com `ul.us` são um facto.
+
+### Uma arrumação de catálogo não pode destruir ficheiros
+
+`asset_attachments.asset_id` tem `on delete cascade`. Apagar o registo repetido
+antes de passar os anexos levava com ele os documentos que alguém carregou — sem
+erro nenhum, porque do ponto de vista da base de dados correu tudo bem. A ordem
+é: mover movimentos, mover anexos, e só então apagar. E move-se a linha, nunca o
+ficheiro: é o `storage_path` gravado que manda na leitura, e o id do bem que lá
+aparece é só o sítio onde ele calhou nascer.
+
+### Movimentos iguais depois de uma fusão dizem-se, não se apagam
+
+Um registo repetido é um erro de catalogação, não de dinheiro: as compras
+aconteceram todas. Se depois de juntos ficarem dois movimentos com a mesma
+assinatura, isso é dito e fica para alguém decidir — apagar um por dedução
+própria é apagar uma compra a sério que por acaso se parece com outra.
+
+### Um campo que o `update` não lê é pior do que um nome de coluna errado
+
+O `updateAssetTrade` não mapeava o `assetId`. Um nome de coluna errado faz o
+PostgREST recusar a escrita inteira e alguém repara; um campo esquecido corre
+sem erro nenhum e não faz nada. A fusão de dois registos anunciava "movi 12
+movimentos" com os doze exactamente onde estavam. O `MockRepository` não podia
+apanhar isto — faz `{ ...trade, ...patch }` e aceita tudo o que lhe dêem — por
+isso o teste é sobre o texto do repositório (`colunas.test.ts`), a confrontar os
+campos da interface com os que o método trata.
+
+### O símbolo interno não é o símbolo da fonte
+
+`googl.us` é a convenção desta app e não existe em bolsa nenhuma. As cotações já
+traduziam com `forSource`; as contas pediam o símbolo em cru e levavam 404 em
+tudo — e um 404 lê-se como "esta empresa não existe", quando o que não existia
+era o nome que lhe estávamos a chamar. O construtor do endereço vive no domínio
+por causa disso: para haver um teste que confirme que a tradução acontece antes
+de o pedido sair.
+
+### Ou o estudo está inteiro, ou não existe
+
+O funil passou a aceitar empresas sem DCF, o que obrigou a relaxar as colunas dos
+pressupostos. O que **não** se relaxou foi a relação entre eles: há um `check` a
+garantir que ou estão todos preenchidos ou nenhum está. Sem isso ficava-se com
+meio estudo — um preço ponderado que sobrevive à remoção do fluxo de caixa que o
+produziu, e fica no ecrã como um número que ninguém consegue explicar.
+
+### A idade que conta é a do estudo, não a da entrada no funil
+
+Uma empresa apontada há um ano e ainda por ler não tem pressupostos a envelhecer:
+não tem pressupostos nenhuns. Marcá-la de velha mandava rever um estudo que nunca
+existiu — e a seguir ninguém acreditaria no aviso quando ele fosse a sério. São
+duas datas e duas colunas.
+
+### A IA lê documentos e escreve prosa; não devolve números para o cálculo
+
+É a regra da importação ("a IA escolhe colunas, não lê dados") aplicada onde a
+tentação é maior: seria fácil pedir-lhe o fluxo de caixa livre do relatório e
+enfiá-lo no DCF, e nesse dia o valor por ação passava a depender de um modelo a
+ler um PDF. O resumo tem data e diz de que ficheiros saiu, e tem uma secção
+obrigatória do que fica por saber — um resumo que dá tudo por esclarecido é pior
+do que nenhum.
+
+### Um gráfico do historial mostra uma métrica de cada vez
+
+Sobrepor ROCE, margens e fluxo livre no mesmo eixo era juntar percentagens com
+milhares de milhões e pôr o desenho a mentir sobre a escala. Cada uma tem o seu
+eixo e trocar custa um clique. O eixo não começa em zero — uma margem entre 30% e
+33% desenhada do zero é uma linha reta que esconde a única coisa que interessa —
+e por isso os valores vão escritos, para o corte não exagerar o movimento sem
+aviso.
+
+### Um aviso que aparece sempre deixa de ser um aviso
+
+Se a carteira mostrasse a próxima apresentação de resultados de todas as
+posições o ano inteiro, ao fim de uma semana ninguém lia aquela zona do ecrã — e
+no dia em que uma data interessasse, já estava invisível. Por isso os prazos são
+diferentes por tipo e curtos: catorze dias para resultados (o que dá para reler o
+estudo antes de a empresa o invalidar), sete para a data-ex, cinco para o
+pagamento. E uma data que passou há menos de três dias continua a aparecer,
+porque explica o salto na cotação que alguém está a olhar hoje.
+
+### A data-ex é a única destas datas com consequência
+
+Quem quiser o dividendo tem de ter as ações antes desse dia: passou, perdeu-se, e
+não há como voltar atrás. Nas outras duas não há nada a decidir — há só a saber.
+É por isso que vem destacada e as outras não.
+
+### Não se distingue "não paga dividendo" de "ainda não perguntei" sem um carimbo
+
+Sem a coluna que diz quando é que as datas foram consultadas, o ecrã dizia a
+mesma coisa nos dois casos: nada. Com ela, um investimento que nunca foi
+consultado aparece como tal, e a app sabe quando voltar a ir. E o carimbo só se
+escreve quando a consulta corre — senão uma fonte em baixo adiava a tentativa
+seguinte por uma semana.
+
+### Uma falha ao ir buscar datas não apaga as que já se sabiam
+
+Escrever `null` por cima quando a fonte não responde transformava um problema de
+rede numa empresa que aparentemente deixou de pagar dividendo. Fica a data
+anterior, com a idade que tem.
+
+---
+
+## Foco do património por tipo de bem (2026-08-12)
+
+### O património de quem tem casa é quase todo casa
+
+Uma carteira de investimentos a subir 8% num ano desaparece no desenho ao lado de
+um imóvel que vale cinco vezes mais e não se mexe. A pergunta "como está a correr
+a parte investida?" ficava sem resposta num ecrã que tem os dados todos para a
+dar. As caixas do topo escolhem o que se conta — Tudo, Investimentos, Imóveis,
+Liquidez — e o foco vai no endereço (`?foco=investimento`), por isso sobrevive a
+um recarregamento e funciona sem JavaScript.
+
+Escolheu-se **ligações e não botões com estado no cliente**: um seletor de
+cliente teria de voltar ao servidor à mesma para refazer as contas — ganhava-se
+uma animação e perdia-se o endereço.
+
+### O filtro muda o que se desenha e nunca o que se grava
+
+A fotografia diária do património continua a ser a do **património inteiro**,
+mesmo quando o ecrã está a mostrar só os investimentos. Gravar o líquido de uma
+vista filtrada escrevia no passado que naquele dia a pessoa não tinha casa — e,
+ao contrário das despesas, um saldo não se reconstrói depois.
+
+### Um ponto que não sabe repartir-se sai do gráfico
+
+As fotografias guardam o valor por tipo de bem num `jsonb`, mas as antigas — e
+todas as reconstruídas — só guardaram o total. Repartir esse total pelas
+proporções de hoje desenharia uma linha de investimentos que nunca existiu, com
+o ar de facto que uma linha desenhada tem. O ponto desaparece e o ecrã diz
+quantos ficaram de fora, para o buraco se explicar em vez de se esconder.
+
+### As dívidas só descontam nos focos que as incluem
+
+Em "Imóveis" o crédito à habitação entra, porque o que interessa a quem escolhe
+esse foco é o líquido da casa e não o valor bruto de uma casa hipotecada. Em
+"Investimentos" não entra: não há ali nada que ele financie, e subtraí-lo dava um
+"líquido" negativo que não corresponde a decisão nenhuma. Os juros do ano seguem
+a mesma regra — "Pagas 4 200 € de juros" por baixo de um total de investimentos
+lia-se como se os juros saíssem daquele número.
+
+### Cada caixa mostra o seu próprio número
+
+Uma fila de rótulos obrigava a carregar em cada um para descobrir quanto vale.
+Com o valor à vista, a comparação que motiva o filtro — quanto disto é casa e
+quanto é carteira — faz-se sem carregar em nada. E uma vista parcial anuncia-se:
+quem chega por um link já com foco não tem como saber que está a ver uma parte.
+
+---
+
+## Séries temporais no DCF (2026-08-12)
+
+### Uma tabela com dez indicadores não mostra uma direcção
+
+O que se procura no historial de uma empresa não é um número, é uma direcção: a
+margem está a abrir ou a fechar, a dívida está a subir ou a descer. Numa tabela
+isso lê-se, mas só por quem se lembrar de percorrer a linha com os olhos e
+guardar quatro números de cabeça. Por isso cada indicador ganhou o seu desenho ao
+lado dos seus números, agrupado por tema (crescimento, rentabilidade, solidez) e
+em acordeão para caber num telemóvel.
+
+Os números vão **ao lado** do desenho e não em vez dele: uma linha com o eixo
+cortado exagera o movimento, e uma tendência de "+3 pontos" pode ser um degrau ou
+um regresso ao que era.
+
+### Os trimestres vieram no mesmo pedido, e não decidem nada
+
+O `quoteSummary` aceita os módulos trimestrais na mesma lista, sem custo extra.
+Quatro pontos anuais escondem uma margem que virou há dois trimestres, e essa
+resolução faz falta. Mas **as médias, o CAGR e os cenários continuam a sair só
+dos exercícios anuais**: um trimestre comparado com o anterior mede sazonalidade
+tanto como desempenho, e um trimestre de Natal a seguir a um de janeiro "cresce"
+sozinho. Quem escolhe a vista trimestral é avisado disso por palavras.
+
+### Os trimestres são rotulados pelo mês em que acabam, não por "T1…T4"
+
+O ano fiscal da Apple acaba em setembro e o primeiro trimestre dela fecha em
+dezembro. Chamar-lhe "T1" quando o calendário diz T4, ou "T4" quando a empresa
+lhe chama T1, engana das duas maneiras. O mês de fecho não precisa de convenção
+nenhuma para se ler.
+
+### Uma percentagem só quando o ponto de partida é positivo
+
+É a mesma recusa que o histórico do património já faz com um líquido negativo.
+Uma margem que vai de −5% para 3% melhorou oito pontos; a divisão dá −160%, com o
+sinal ao contrário do que aconteceu, e uma percentagem não se confere contra
+nada. Nesses casos mostra-se a variação em pontos percentuais.
+
+### Um leitor de períodos, não dois
+
+O anual e o trimestral passam pela mesma função. Uma segunda cópia significava
+que, no dia em que o `capitalExpenditures` mudasse de sinal ou o Yahoo trocasse
+um nome de campo, só uma das séries ficava certa — e as duas continuavam a
+desenhar-se com o mesmo ar de facto. A única diferença é a chave: o anual indexa
+por ano (para juntar um exercício reexpresso), o trimestral por data (senão os
+quatro trimestres de 2025 colapsam num ponto só).
+
+---
+
+## A carteira por setor (2026-08-12)
+
+### O setor fica no bem, e não numa tabela de setores
+
+É um texto por investimento que muda de década a década. Uma tabela de referência
+com chave estrangeira obrigava a uma junção em todas as leituras da carteira para
+devolver uma palavra, e a inventar uma linha nova sempre que a fonte estreasse um
+nome. Agrupar por texto é o que esta app já faz com as categorias de despesa.
+
+### A tradução vive no código, não na base de dados
+
+Guarda-se o nome como a fonte lhe chama, em inglês, e traduz-se ao ler. Assim um
+nome que o Yahoo estreie **chega ao ecrã como está** em vez de cair numa fatia
+"Outros" — que juntaria numa fatia só coisas sem nada a ver umas com as outras,
+sem ninguém dar por isso.
+
+### "Por classificar" é um grupo com nome e nunca uma fatia calada
+
+Se metade da carteira não tem setor, a percentagem do maior setor está errada por
+metade. Um gráfico que só desenhe os classificados esconde exactamente isso e
+apresenta uma conta incompleta como se fosse a conta. Os que faltam contam para o
+total, aparecem na lista, e o ecrã diz quantos são e que percentagem do valor
+representam.
+
+### Com nada classificado não há maior setor nenhum
+
+O caso de uma carteira acabada de importar. "O maior é *Por classificar*, com
+100%" apresentava a ausência de um dado como uma conclusão sobre a carteira. A
+ordenação por si só não chegava para isto — foi preciso um teste que falhasse
+contra a versão que só ordenava, e a primeira tentativa de o escrever passava dos
+dois lados, o que quer dizer que não testava nada.
+
+### Duas leituras de peso, e não uma
+
+O peso no valor de hoje diz onde é que o dinheiro está; o peso no dinheiro que
+entrou diz onde é que se decidiu pô-lo. Um setor que subiu muito ocupa mais peso
+do que alguma vez se decidiu dar-lhe — é assim que uma concentração aparece sem
+ninguém a ter escolhido. A segunda linha só se mostra quando as duas se afastam
+três pontos ou mais: iguais, é ruído.
+
+### As empresas ordenam-se pelo dinheiro que entrou, não pelo valor
+
+A pergunta é sobre as decisões que se tomaram, e a maior posição de hoje pode ser
+a que menos dinheiro levou.
+
+### Um ETF sem setor na fonte não é uma falha
+
+A fonte não classifica fundos por setor. Chamar-lhe erro mandava alguém procurar
+um problema que não existe, por isso a mensagem separa "não deu resposta"
+(repete-se à próxima) de "respondeu que não sabe" (não se repete). É o
+`profile_at` que permite a distinção — e ele só se escreve quando a consulta
+corre, porque carimbá-lo numa falha de rede adiava a tentativa seguinte sem nada
+ter sido perguntado.
+
+### Um lote de cada vez
+
+Uma carteira com cinquenta investimentos sem setor dava cinquenta idas à rede em
+série dentro de uma função com tempo limitado — que estoirava o prazo e não
+gravava nada. Doze por passagem, com o número que falta no próprio botão.
+
+
+---
+
+## O gráfico que esteve vazio com os dados certos por baixo (2026-08-13)
+
+### O que aconteceu
+
+As barras do "Registos criados por mês" eram um `<span>` com `height` em
+percentagem, dentro de um `<li>` que era item de um `flex` com `items-end`. Com
+`items-end` o item **encolhe para a altura do conteúdo**, e uma percentagem de
+uma altura `auto` resolve para zero. As doze barras tinham zero pixéis. A base de
+dados tinha 191 despesas, 51 ativos e 137 movimentos, todos com `created_at`
+preenchido — o gráfico estava a desenhar os números certos com altura nenhuma.
+
+### Porque é que nada apanhou isto
+
+O `tsc` compila, o `lint` passa, o `build` compila, e os 1013 testes não tocam em
+CSS — não há DOM nos testes desta app. Um gráfico vazio e um gráfico avariado
+eram **indistinguíveis** a olho: os dois mostram uma caixa com rótulos de meses e
+nada por cima.
+
+### As duas defesas que ficaram
+
+1. **A altura vai ao item que tem altura definida**, nunca a um filho de um item
+   encolhido. O `items-end` saiu; o alinhamento ao fundo faz-se com `justify-end`
+   dentro de cada coluna, que não mexe na altura do item.
+2. **Os valores vão escritos por cima das barras.** Se o desenho voltar a
+   colapsar, os números continuam à vista e a avaria denuncia-se sozinha. É a
+   defesa que interessa mesmo: a primeira corrige este bug, a segunda torna
+   impossível o próximo passar despercebido durante semanas.
+
+O mesmo cuidado está na barra das funcionalidades: é largura no elemento de fora,
+e não altura percentual dentro de um item de flex.
+
+---
+
+## A consola da plataforma em acordeão (2026-08-13)
+
+### Oito blocos empilhados obrigam a percorrer sete para chegar a um
+
+Numa consola de administração procura-se quase sempre **uma** coisa. A página
+crescia a cada sessão e para chegar aos ambientes passava-se por cima dos
+números, das contas, do que é usado e dos bancos aprendidos.
+
+`<details>` e não estado no cliente: abre sem JavaScript, a pesquisa da página
+encontra texto lá dentro, e não há nada para hidratar numa página já servida por
+inteiro.
+
+### Cada cabeçalho traz o número que se procuraria lá dentro
+
+Um acordeão em que todos os cabeçalhos se parecem obriga a abrir todos para
+encontrar um — que é exactamente o problema que ele veio resolver.
+
+### O que fica de fora do acordeão, e porquê
+
+Os **KPIs de topo**, porque uma consola em que o primeiro olhar custa um clique
+não serve para o primeiro olhar. E os **avisos** do que não foi possível ler:
+um aviso dentro de uma secção fechada não é um aviso — quem olha para os números
+de cima não tem como saber que um deles veio a menos. (Este bloco chegou a
+perder-se na reorganização, apagado com as secções que substituiu. Foi reposto.)
+
+### "Registos ao todo" ao lado de "Despesas"
+
+A consola dizia "191 despesas" numa app que já tem património, movimentos,
+rendimentos e metas. O número mais visível era o de uma parte só e lia-se como o
+tamanho do todo. Fica `null` — e não zero — quando a leitura das despesas falha:
+um total mais pequeno do que o real com ar de facto é pior do que um traço.
+
+### A adoção mede-se em ambientes, não em registos
+
+Uma funcionalidade com dez mil linhas num único ambiente e outra com dez linhas
+em cinco ambientes: a segunda é a que está a pegar. Ordenar por registos punha a
+primeira em primeiro lugar e mandava manter o que só uma pessoa usa.
+
+---
+
+## Um lote não se faz como se faz um pedido (2026-08-13)
+
+### O que aconteceu
+
+O botão "Ir buscar setores" foi carregado e **não gravou nada**. Nem meio, nem
+um: zero linhas. Na base de dados, quarenta investimentos com símbolo e nenhum
+com `profile_at` — ou seja, nem sequer foram perguntados.
+
+A causa: `atualizarSetores` percorria doze investimentos chamando
+`buscarFundamentais` exactamente como o botão de **uma** empresa o chama. E essa
+função, por chamada, abre uma **sessão anónima nova** no Yahoo (mais dois
+pedidos), tenta **todas as formas do ticker** (até quatro) e dá **doze segundos**
+de tolerância a cada pedido. Doze investimentos davam mais de cem chamadas e
+minutos de espera dentro de uma função que vive segundos. Morria antes da
+primeira escrita.
+
+### Uma função de rede não é reutilizável em lote só porque compila
+
+Os parâmetros que fazem sentido para um pedido — tolerância generosa, tentar
+todas as variantes, sessão fresca — são exactamente os que rebentam um lote. A
+assinatura não muda, o `tsc` não se queixa, e o comportamento passa de bom a
+inutilizável. `buscarFundamentais` passou a aceitar sessão, tolerância e número
+de variantes; o lote passa os seus, o botão de uma empresa continua a não passar
+nada.
+
+### Um trabalho em lote tem de caber no tempo que tem
+
+E quando não cabe, **acaba por decisão própria**: grava o que fez e diz o que
+ficou. O relógio verifica-se **antes** de começar mais um — entrar num pedido de
+cinco segundos com dois de orçamento é como não ter relógio. O oposto é ser
+interrompido a meio e não deixar nem escrita nem explicação, que foi o que
+aconteceu.
+
+### O que ficou por fazer vai sempre na mensagem
+
+Um lote que trata oito de quarenta e diz só "8 com setor" lê-se como "está
+tratado" — e quem lê fica a olhar para uma tabela meia por classificar sem
+perceber que só tem de carregar outra vez.
+
+E `consultados` deixou de ser o comprimento da lista: com o relógio a cortar a
+passagem a meio, contava como consultados os que nunca chegaram a ser
+perguntados.
+
+### O teste passou dos dois lados à primeira, e não valia nada
+
+O mock do Yahoo devolvia 200 logo à primeira tentativa. Nesse caminho a sessão
+nunca é pedida — por isso a versão avariada também abria uma sessão só, e o teste
+passava contra ela. Só depois de o mock responder **401 sem `crumb`**, como o
+Yahoo a sério responde, é que o teste começou a medir alguma coisa: nove sessões
+contra uma. É a regra do `CLAUDE.md` a apanhar-me a mim.
+
+### A mesma correção foi aplicada às datas de mercado
+
+Tinham o mesmo padrão e a mesma bomba-relógio, só que disfarçada: correm uma vez
+por semana por símbolo, por isso raramente juntavam uma dúzia de cada vez.

@@ -21,6 +21,11 @@ import type {
   AssetKind,
   IncomeKind,
   SpacePlan,
+  Crescimento,
+  TicketStatus,
+  AssetSplit,
+  CenarioDcf,
+  EtapaAvaliacao,
 } from "@/lib/domain";
 
 export type { Membership };
@@ -168,12 +173,370 @@ export interface Asset {
   termMonths?: number | null;
   /** "fixa" ou "variavel". */
   rateKind?: string | null;
+  /** Crédito: data do último pagamento. Não envelhece, ao contrário de `termMonths`. */
+  maturityDate?: string | null;
+  /**
+   * Crédito com períodos de taxa (habitação): `{ periods, indexanteRates }`.
+   *
+   * Vem de uma coluna `jsonb`, por isso chega aqui como `unknown` de propósito.
+   * Ler **sempre** com `parseCreditTerms` — o que está guardado pode ter sido
+   * escrito por outra versão da app, e um plano de amortização feito sobre um
+   * objeto por validar é um número a sério com origem duvidosa.
+   */
+  creditTerms?: unknown;
+  /** Que fatia deste bem conta para este ambiente, em percentagem. Null = tudo. */
+  ownershipPct?: number | null;
+  /** Quem tem o resto, quando é alguém deste ambiente. Só para o registo. */
+  coOwnerMemberId?: string | null;
+  /** Imóvel: área em metros quadrados. Com o preço por m², dá a estimativa. */
+  areaM2?: number | null;
+  /** Imóvel: concelho, como se escreve. Casa com o nome que o INE devolve. */
+  location?: string | null;
+  /**
+   * Imóvel: preço de referência por m², em cêntimos.
+   *
+   * **Nunca substitui o `valueCents`.** A mediana do concelho não sabe se a casa
+   * é num último andar com vista ou num rés do chão para as traseiras — a
+   * estimativa mostra-se ao lado do valor registado, não por cima dele.
+   */
+  priceRefCents?: number | null;
+  /** De onde veio o preço e de quando é ("INE · Lisboa · 2025"). */
+  priceRefSource?: string | null;
+  /**
+   * O código do sítio no INE.
+   *
+   * Sem ele não há como ir buscar o índice da data da compra — e é isso que faz
+   * o valor do imóvel acompanhar a zona. O nome não chega: há nomes repetidos
+   * entre níveis (Odivelas é concelho e é freguesia lá dentro).
+   */
+  priceRefGeocod?: string | null;
+  /** Imóvel: o que se pagou. É o ponto de partida do valor estimado. */
+  purchasePriceCents?: number | null;
+  /** Imóvel: o que se meteu em obras desde a compra. */
+  worksCents?: number | null;
+  /**
+   * Ordem escolhida à mão, dentro do tipo de bem.
+   *
+   * `null` quer dizer "nunca foi mexida", e nesse caso manda a data de criação —
+   * é o que faz esta funcionalidade não mexer em nenhuma lista já vista.
+   */
+  sortOrder?: number | null;
   /** Símbolo na fonte de cotações (ex.: "vwce.de"). Sem ele, o preço é manual. */
   symbol?: string | null;
+  /**
+   * A bolsa como a corretora a escreve ("NDQ", "EAM"). Vem do ficheiro.
+   *
+   * É a pista mais fiável para descobrir o símbolo — diz a praça sem se ter de
+   * a adivinhar pelo nome — e serve para filtrar a carteira.
+   */
+  exchange?: string | null;
+  /**
+   * Domínio da marca ("apple.com", "ishares.com"), para o logo.
+   *
+   * Guarda-se o domínio e não um URL de imagem: um URL apodrece quando o
+   * fornecedor muda de caminho, e fica um quadrado partido na carteira de
+   * alguém. O logo é servido pela rota `/api/logo/[id]` da própria app, nunca
+   * pedido pelo browser — ver o cabeçalho dessa rota.
+   */
+  logoDomain?: string | null;
+  /**
+   * Numa dívida: que bem é que ela financia.
+   *
+   * O campo vive na dívida e não no bem porque um imóvel pode ter mais do que
+   * um crédito — o da compra e o das obras — e um crédito financia uma coisa
+   * só. Serve para mostrar o líquido: o que a casa vale menos o que falta
+   * pagar dela.
+   */
+  financesAssetId?: string | null;
+
+  /**
+   * O montante contratado do crédito, em cêntimos.
+   *
+   * **Não é o que falta pagar** — esse é o `valueCents`. Serve para calcular o
+   * capital em dívida a partir do contrato quando ninguém o souber de cabeça, e
+   * nunca substitui o que está registado: o cálculo não sabe de amortizações
+   * antecipadas nem de comissões, e o valor do banco ganha sempre. Ver
+   * `credito-contrato.ts`. E o nome não é `originalAmountCents` de propósito:
+   * esse já existe nos movimentos e quer dizer o montante na moeda original.
+   */
+  contractedAmountCents?: number | null;
+
+  /**
+   * Datas que valem um aviso, como a fonte as deu. Ver `datas-mercado.ts`.
+   *
+   * **Não se apagam depois de passarem.** Uma apresentação de resultados de
+   * anteontem explica o salto na cotação que alguém está a olhar hoje; quem lê
+   * decide o que mostra, e a coluna guarda o que a fonte disse.
+   */
+  nextEarningsDate?: string | null;
+  dividendDate?: string | null;
+  exDividendDate?: string | null;
+  /**
+   * Quando é que estas datas foram consultadas.
+   *
+   * Sem isto não se distingue "esta empresa não paga dividendo" de "ainda não
+   * fui perguntar" — e o ecrã diria a mesma coisa nos dois casos: nada.
+   */
+  marketDatesAt?: string | null;
+  /**
+   * Setor e indústria da empresa, como a fonte lhes chama (em inglês).
+   *
+   * A tradução para português vive no domínio (`setorPorExtenso`), e não aqui:
+   * um nome novo da fonte tem de chegar ao ecrã como está em vez de cair numa
+   * fatia "Outros" onde ninguém dá por ele.
+   */
+  sector?: string | null;
+  industry?: string | null;
+  /**
+   * Quando é que o perfil foi consultado.
+   *
+   * A mesma razão do `marketDatesAt`: sem isto não se distingue "a fonte não
+   * sabe o setor deste ETF" de "ainda não fui perguntar".
+   */
+  profileAt?: string | null;
   updatedAt?: string | null;
 }
 
 export type CreateAssetInput = Omit<Asset, "id" | "updatedAt"> & { createdBy?: string | null };
+
+/**
+ * Uma fotografia do património num dia.
+ *
+ * O património da app é uma fotografia: cada bem tem o valor de hoje e mais
+ * nada. O passado não se reconstrói, por isso guarda-se. O histórico começa
+ * vazio e enche-se para a frente.
+ */
+export interface NetWorthSnapshotRow {
+  id: string;
+  spaceId: string;
+  /** "AAAA-MM-DD". */
+  onDate: string;
+  assetsCents: number;
+  debtsCents: number;
+  /** Derivado das duas parcelas. Quem lê recalcula em vez de acreditar. */
+  netCents: number;
+  /** Valor por tipo de bem. Vem de `jsonb`, por isso chega como `unknown`. */
+  breakdown?: unknown;
+}
+
+export type CreateNetWorthSnapshot = Omit<NetWorthSnapshotRow, "id">;
+
+/**
+ * Um ficheiro anexado a um bem: escritura, caderneta, contrato, nota de
+ * liquidação.
+ *
+ * `status` existe porque o ficheiro vai **direto para o Storage**, sem passar
+ * pela app — as Server Actions do Next têm tecto de 1 MB e uma função da Vercel
+ * ~4,5 MB, e uma escritura digitalizada passa os dois. A linha nasce em
+ * `a-enviar` e só conta depois de o envio ser confirmado.
+ */
+export interface AssetAttachment {
+  id: string;
+  spaceId: string;
+  assetId: string;
+  /** O nome original, só para a descarga o devolver ao browser. */
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  /** `<space_id>/<asset_id>/<id>.<ext>`. Nunca vem do cliente. */
+  storagePath: string;
+  status: "a-enviar" | "pronto";
+  createdBy?: string | null;
+  createdAt?: string | null;
+}
+
+export type CreateAssetAttachment = Omit<AssetAttachment, "createdAt">;
+
+/**
+ * Um pedido de ajuda.
+ *
+ * **Quem vê:** o autor e o administrador, e mais ninguém — nem os outros
+ * participantes do mesmo ambiente. Um pedido leva lá dentro o que a pessoa
+ * quiser escrever, incluindo coisas que ela não diria à frente de quem divide
+ * as despesas com ela.
+ */
+export interface Ticket {
+  id: string;
+  spaceId: string;
+  createdBy: string;
+  subject: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  body: string;
+  /**
+   * Nota interna: escrita para quem trata do assunto e **nunca** mostrada a
+   * quem abriu o pedido. Chega ao ecrã do utilizador por uma função de leitura
+   * que não a devolve de todo — ver `listTicketMessagesPublicas`.
+   */
+  internal: boolean;
+  createdAt: string;
+}
+
+/**
+ * Um desdobramento gravado, com o ambiente a que pertence.
+ *
+ * O domínio (`AssetSplit`) não precisa do `space_id` — as contas são as mesmas
+ * seja qual for o ambiente. Aqui precisa, porque é o `space_id` passado a cada
+ * consulta que faz o isolamento nesta app.
+ */
+export interface StoredAssetSplit extends AssetSplit {
+  spaceId: string;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export interface CreateAssetSplitInput {
+  spaceId: string;
+  assetId: string;
+  date: string;
+  ratio: number;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+/**
+ * Um estudo de avaliação guardado, com os pressupostos **e** o resultado.
+ *
+ * O resultado vem congelado de propósito: recalculá-lo na leitura fazia com que
+ * uma mudança de fórmula reescrevesse a conclusão de uma decisão já tomada. Ver
+ * a migração 0037 e `avaliacoes.ts` no domínio.
+ */
+/**
+ * Uma linha do funil de avaliação.
+ *
+ * **Pode não ter estudo nenhum.** Uma empresa que se apontou hoje entra aqui com
+ * nome, data e notas, e mais nada — que é o passo mais barato do processo e era
+ * o único que a app não suportava. Os campos do DCF são todos nulos nesse caso,
+ * **e ou estão todos preenchidos ou nenhum está**: meio estudo é pior do que
+ * nenhum, porque um preço ponderado sobrevive à remoção do fluxo de caixa que o
+ * produziu e fica no ecrã como um número que ninguém consegue explicar. A regra
+ * está num `check` da migração 0038, e não só na boa vontade de quem escreve.
+ */
+export interface StoredValuation {
+  id: string;
+  spaceId: string;
+  symbol: string | null;
+  name: string;
+  stage: EtapaAvaliacao;
+  /** O dia em que a empresa entrou no funil, "AAAA-MM-DD". */
+  studyDate: string;
+  /** O dia do DCF. `null` numa empresa que ainda só está apontada. */
+  valuedAt: string | null;
+  /** O domínio da marca, para o logo. Mesma ideia dos investimentos. */
+  logoDomain: string | null;
+
+  fcfCents: number | null;
+  shares: number | null;
+  netDebtCents: number | null;
+  discountPct: number | null;
+  perpetualPct: number | null;
+  years: number | null;
+  marginPct: number | null;
+  /**
+   * `null` quando não há estudo, **ou** quando o que estava guardado não passou
+   * na validação.
+   *
+   * Ver `lerCenarios`: um cenário a que falte a probabilidade entraria na média
+   * pesada como zero. Sem cenários mostra-se o estudo sem eles, em vez de o
+   * mostrar com cenários errados.
+   */
+  scenarios: CenarioDcf[] | null;
+
+  weightedPriceCents: number | null;
+  priceAtStudyCents: number | null;
+  upsidePct: number | null;
+
+  notes: string | null;
+  /** O que a IA leu nos anexos, e quando. */
+  aiSummary: string | null;
+  aiSummaryAt: string | null;
+  createdAt: string | null;
+}
+
+/** Os números de um DCF. Vão sempre juntos — ver o `check` da 0038. */
+export interface ValuationEstudo {
+  fcfCents: number;
+  shares: number;
+  netDebtCents: number;
+  discountPct: number;
+  perpetualPct: number;
+  years: number;
+  marginPct: number;
+  scenarios: CenarioDcf[];
+  weightedPriceCents: number;
+  priceAtStudyCents: number | null;
+  upsidePct: number | null;
+  valuedAt: string;
+}
+
+export interface CreateValuationInput {
+  spaceId: string;
+  symbol: string | null;
+  name: string;
+  stage: EtapaAvaliacao;
+  studyDate: string;
+  notes: string | null;
+  logoDomain?: string | null;
+  /** Omitido numa empresa que ainda só está apontada. */
+  estudo?: ValuationEstudo | null;
+  createdBy?: string | null;
+}
+
+/** O que se pode corrigir depois. Campos omitidos ficam como estão. */
+export interface UpdateValuationInput {
+  stage?: EtapaAvaliacao;
+  name?: string;
+  symbol?: string | null;
+  notes?: string | null;
+  logoDomain?: string | null;
+  aiSummary?: string | null;
+}
+
+/**
+ * Um documento de uma avaliação: relatório, apresentação, nota.
+ *
+ * Tabela própria e não uma coluna a mais nos anexos dos bens: uma empresa em
+ * radar **não é um bem** — ainda não se comprou nada. Ver a migração 0038.
+ */
+export interface ValuationAttachment {
+  id: string;
+  spaceId: string;
+  valuationId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  /** `<space_id>/avaliacoes/<valuation_id>/<id>.<ext>`. Nunca vem do cliente. */
+  storagePath: string;
+  status: "a-enviar" | "pronto";
+  /** O texto extraído, para a IA não ter de reler o ficheiro a cada pergunta. */
+  extractedText: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+}
+
+export type CreateValuationAttachment = Omit<ValuationAttachment, "createdAt" | "extractedText">;
+
+export interface CreateTicketInput {
+  spaceId: string;
+  createdBy: string;
+  subject: string;
+  /** A primeira mensagem do fio. Um pedido sem corpo não é um pedido. */
+  body: string;
+}
+
+export interface CreateTicketMessageInput {
+  ticketId: string;
+  authorId: string;
+  body: string;
+  internal: boolean;
+}
 
 /**
  * Um movimento datado de um investimento: compra, venda, dividendo ou custo.
@@ -262,6 +625,11 @@ export interface Member {
   email?: string | null;
   /** "full" participa no saldo; "submitter" só submete (com aprovação). */
   role?: MemberRole;
+  /**
+   * Desde quando divide despesas em partes iguais ("AAAA-MM-DD").
+   * `null` = desde sempre, que é o que vale para quem já cá estava.
+   */
+  participatesFrom?: string | null;
 }
 
 export interface AppUser {
@@ -321,6 +689,14 @@ export interface PlatformStats {
   /** Que partes da app são usadas, e por quantos ambientes. */
   features: FeatureUsage[];
   /**
+   * Se isto está a aumentar ou parado.
+   *
+   * `null` quando as leituras de que depende falharam. Uma curva a zeros por
+   * não se ter conseguido ler é indistinguível de uma curva a zeros por não
+   * haver uso — e as duas dizem coisas opostas.
+   */
+  crescimento: Crescimento | null;
+  /**
    * O que não foi possível ler, em texto. A consola mostra o resto na mesma:
    * um número em falta não pode deitar abaixo a página inteira.
    */
@@ -341,6 +717,8 @@ export interface AddMemberInput {
   name: string;
   email?: string | null;
   linkedUserId?: string | null;
+  /** Ver `Member.participatesFrom`. Ausente = desde sempre. */
+  participatesFrom?: string | null;
 }
 
 export interface UpdateMemberInput {
@@ -348,6 +726,7 @@ export interface UpdateMemberInput {
   email?: string | null;
   role?: MemberRole;
   linkedUserId?: string | null;
+  participatesFrom?: string | null;
 }
 
 export interface ContactMessage {
@@ -469,18 +848,26 @@ export interface Repository {
   countMemberActivity(memberId: string): Promise<number>;
 
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
-  getExpense(id: string, viewerId: string): Promise<Expense | null>;
+  /**
+   * Uma despesa, pelo id.
+   *
+   * O `spaceId` é obrigatório e não é decorativo: sem ele isto lê qualquer
+   * despesa de qualquer ambiente a quem souber um id. Tudo aqui corre com a
+   * chave de serviço, que ignora o RLS, por isso o isolamento entre ambientes
+   * é este parâmetro e mais nada. O mesmo vale para as escritas abaixo.
+   */
+  getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null>;
   createExpense(input: CreateExpenseInput): Promise<Expense>;
-  updateExpense(id: string, input: UpdateExpenseInput): Promise<void>;
-  setReceiptPath(id: string, path: string | null): Promise<void>;
-  softDeleteExpense(id: string, actorId: string): Promise<void>;
+  updateExpense(id: string, spaceId: string, input: UpdateExpenseInput): Promise<void>;
+  setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void>;
+  softDeleteExpense(id: string, spaceId: string, actorId: string): Promise<void>;
   /** Fecha o período: marca as despesas partilhadas abertas como liquidadas. Devolve nº afetado. */
   settleOpenExpenses(spaceId: string): Promise<number>;
   /** Reabre o período: limpa a marca de liquidação das despesas do ambiente. */
   reopenExpenses(spaceId: string): Promise<void>;
 
   /** Confirma uma despesa pendente, fixando o valor real (recorrentes variáveis). */
-  confirmExpense(id: string, amountCents: number): Promise<void>;
+  confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void>;
 
   listSettlements(spaceId: string): Promise<Settlement[]>;
   createSettlement(input: CreateSettlementInput): Promise<Settlement>;
@@ -531,7 +918,11 @@ export interface Repository {
   /** Apaga a conta e os ambientes onde era a única pessoa. */
   deleteAccountAndSoleSpaces(userId: string): Promise<void>;
   /** Aprovar (status='approved' -> null) ou rejeitar uma despesa submetida. */
-  setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void>;
+  setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void>;
   // Templates de bancos (estrutura confirmada, reutilizável).
   findImportTemplate(fingerprint: string): Promise<ImportTemplate | null>;
   saveImportTemplate(input: Omit<ImportTemplate, "id" | "uses" | "createdAt">): Promise<void>;
@@ -565,12 +956,60 @@ export interface Repository {
   createAsset(input: CreateAssetInput): Promise<Asset>;
   updateAsset(id: string, spaceId: string, patch: Partial<CreateAssetInput>): Promise<void>;
   deleteAsset(id: string, spaceId: string): Promise<void>;
+  /**
+   * As fotografias do património do ambiente, da mais antiga para a mais recente.
+   *
+   * Cresce uma por dia: passa as mil linhas ao fim de três anos, e por isso a
+   * leitura tem de ser paginada. Uma leitura cortada aqui apagava o princípio do
+   * gráfico sem dizer nada.
+   */
+  listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]>;
+  /** Grava a fotografia do dia. A última do dia manda. */
+  saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void>;
+  /** Os anexos de um bem, ou os do ambiente todo quando não se diz qual. */
+  listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]>;
+  /**
+   * Um anexo, pelo id **e** pelo ambiente.
+   *
+   * Numa consulta só, nunca "ler pelo id e comparar depois": a comparação é o
+   * que as pessoas se esquecem de escrever. Como tudo corre com a chave de
+   * serviço, que ignora o RLS, este `space_id` é a única fronteira que existe.
+   */
+  getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null>;
+  createAssetAttachment(input: CreateAssetAttachment): Promise<void>;
+  /**
+   * Passa os anexos de um bem para outro, ao juntar registos repetidos.
+   *
+   * **Só mexe na linha, nunca no ficheiro.** O `storage_path` fica como está: é
+   * ele que manda na leitura, e o id do bem que lá aparece é só o sítio onde o
+   * ficheiro calhou nascer. Mover o objeto no Storage seria trabalho a mais para
+   * arriscar perder um ficheiro de alguém a meio.
+   *
+   * Existe porque a coluna tem `on delete cascade`: sem esta passagem, juntar
+   * dois registos repetidos apagava os documentos que alguém carregou — uma
+   * arrumação de catálogo a destruir ficheiros.
+   */
+  moveAssetAttachments(fromAssetId: string, toAssetId: string, spaceId: string): Promise<number>;
+  markAssetAttachmentReady(id: string, spaceId: string): Promise<void>;
+  deleteAssetAttachment(id: string, spaceId: string): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
   /** Só o fecho mais recente, para quem quer o preço e não a série. */
   latestQuote(symbol: string): Promise<StoredQuote | null>;
+  /**
+   * O fecho mais recente de vários símbolos de uma vez.
+   *
+   * **Existe por causa do tempo que a página do património demorava a abrir.**
+   * Por símbolo eram três idas à base de dados (`latestQuoteDate`,
+   * `latestQuote`, `quoteCurrency`); com meia centena de investimentos, isso são
+   * cento e cinquenta viagens só para desenhar um ecrã que já tinha os dados
+   * guardados. Aqui é uma.
+   */
+  latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>>;
   /** Guarda cotações, sem duplicar as que já lá estão. */
   saveQuotes(symbol: string, quotes: StoredQuote[], currency: string): Promise<void>;
   /** Em que moeda estão as cotações guardadas deste símbolo. */
@@ -581,6 +1020,19 @@ export interface Repository {
   listAllAssetSymbols(): Promise<string[]>;
   createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
   deleteAssetTrade(id: string, spaceId: string): Promise<void>;
+  /**
+   * Corrigir um movimento já registado.
+   *
+   * O `spaceId` é obrigatório e filtra a escrita: um id vindo de um formulário
+   * não é prova de nada, e tudo aqui corre com a chave de serviço, que ignora o
+   * RLS. Sem este filtro, quem soubesse um id reescrevia o movimento de outra
+   * pessoa.
+   */
+  updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void>;
 
   // Rendimento.
   listIncome(spaceId: string): Promise<Income[]>;
@@ -597,6 +1049,68 @@ export interface Repository {
   listImportBatches(spaceId: string): Promise<ImportBatch[]>;
   /** Anula um lote: elimina (soft-delete) as despesas que criou. */
   undoImportBatch(batchId: string, spaceId: string, userId: string): Promise<number>;
+
+  // Desdobramentos. Ver `splits.ts` no domínio para o porquê de existirem.
+  /** Os desdobramentos do ambiente, ou os de um bem quando se diz qual. */
+  listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]>;
+  createAssetSplit(input: CreateAssetSplitInput): Promise<void>;
+  deleteAssetSplit(id: string, spaceId: string): Promise<void>;
+
+  // Avaliações de empresas. Ver `avaliacoes.ts` no domínio para as etapas.
+  /** Os estudos do ambiente, do mais recente para o mais antigo. */
+  listValuations(spaceId: string): Promise<StoredValuation[]>;
+  createValuation(input: CreateValuationInput): Promise<string>;
+  /** Corrige etapa, nome, notas ou marca. O ambiente filtra a escrita. */
+  updateValuation(id: string, spaceId: string, patch: UpdateValuationInput): Promise<void>;
+  /**
+   * Escreve os números de um DCF numa linha que ainda não os tinha.
+   *
+   * Separado do `updateValuation` de propósito: os campos do estudo vão sempre
+   * todos juntos, e um patch parcial deixaria meio estudo gravado. Ver o `check`
+   * da migração 0038.
+   */
+  setValuationEstudo(id: string, spaceId: string, estudo: ValuationEstudo): Promise<void>;
+  deleteValuation(id: string, spaceId: string): Promise<void>;
+
+  // Anexos de uma avaliação. Ver `ValuationAttachment` para o porquê da tabela.
+  listValuationAttachments(spaceId: string, valuationId?: string): Promise<ValuationAttachment[]>;
+  getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null>;
+  createValuationAttachment(input: CreateValuationAttachment): Promise<void>;
+  markValuationAttachmentReady(id: string, spaceId: string): Promise<void>;
+  /** Guarda o texto lido do ficheiro, para a IA o poder resumir sem o reler. */
+  setValuationAttachmentText(id: string, spaceId: string, texto: string | null): Promise<void>;
+  deleteValuationAttachment(id: string, spaceId: string): Promise<void>;
+
+  // Pedidos de ajuda. Ver `Ticket` para a regra das notas internas.
+  createTicket(input: CreateTicketInput): Promise<string>;
+  /** Os pedidos de uma pessoa, do mais recente para o mais antigo. */
+  listTicketsDoUtilizador(userId: string): Promise<Ticket[]>;
+  /** Todos os pedidos. Só para o administrador. */
+  listTicketsTodos(): Promise<Ticket[]>;
+  /**
+   * Um pedido, **pelo id e pelo autor**.
+   *
+   * A verificação vai na consulta e não num `if` depois de ler. É a mesma
+   * razão do `space_id` em todo o resto: aqui tudo corre com a chave de
+   * serviço, que ignora o RLS, e a comparação feita em JS é a que as pessoas
+   * se esquecem de escrever.
+   */
+  getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null>;
+  getTicket(id: string): Promise<Ticket | null>;
+  /**
+   * As mensagens que o utilizador pode ler. **Nunca devolve notas internas.**
+   *
+   * Não tem bandeira nenhuma de propósito: uma `incluirInternas` seria igual a
+   * isto até ao dia em que alguém a passasse ao contrário, e aí a nota já foi
+   * lida e não há como desfazer.
+   */
+  listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]>;
+  /** Tudo, incluindo as notas internas. Só para o administrador. */
+  listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]>;
+  addTicketMessage(input: CreateTicketMessageInput): Promise<void>;
+  setTicketStatus(id: string, status: TicketStatus): Promise<void>;
+  /** Quantos pedidos estão por tratar, para o aviso da consola. */
+  countTicketsAbertos(): Promise<number>;
 
   // Mensagens de contacto da landing.
   createContactMessage(input: CreateContactInput): Promise<void>;
