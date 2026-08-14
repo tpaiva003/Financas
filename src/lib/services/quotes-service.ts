@@ -38,6 +38,20 @@ import {
 } from "@/lib/domain";
 
 const TIMEOUT_MS = 10_000;
+/**
+ * O mesmo tecto, mas quando ninguém pediu para esperar.
+ *
+ * **Dez segundos é o que se dá a quem carregou num botão** e está a olhar para
+ * ele. Ao desenhar a página do património, essa mesma espera é imposta a quem só
+ * queria mudar de menu — e como as fontes se tentam uma a seguir à outra, um
+ * único símbolo que ninguém conhece bloqueia o ecrã vinte segundos. Com seis
+ * desses por visita, a página parecia avariada.
+ *
+ * Três segundos chegam de sobra para uma fonte que está de pé. O que não couber
+ * fica para a visita seguinte e **diz-se por palavras** na linha do
+ * investimento, em vez de um preço velho passar por atual.
+ */
+const TIMEOUT_NA_VISITA_MS = 3_000;
 
 export interface QuoteSeries {
   symbol: string;
@@ -100,9 +114,10 @@ async function fetchFrom(
    * contornava — carregar outra vez dava exatamente o mesmo nada.
    */
   force = false,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Attempt> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(sourceUrl(source, symbol, from), {
       signal: controller.signal,
@@ -145,10 +160,11 @@ async function fetchFromSource(
   symbol: string,
   from?: string | null,
   force = false,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<{ quotes: StoredQuote[]; currency: string; motivo: string | null }> {
   const motivos: string[] = [];
   for (const source of QUOTE_SOURCES) {
-    const attempt = await fetchFrom(source, symbol, from, force);
+    const attempt = await fetchFrom(source, symbol, from, force, timeoutMs);
     if (attempt.quotes.length > 0) {
       return { quotes: attempt.quotes, currency: attempt.currency, motivo: null };
     }
@@ -168,7 +184,18 @@ async function fetchFromSource(
  */
 export async function getQuoteSeries(
   rawSymbol: string,
-  options: { since?: string | null; force?: boolean; latestOnly?: boolean } = {},
+  options: {
+    since?: string | null;
+    force?: boolean;
+    latestOnly?: boolean;
+    /**
+     * Quanto tempo esperar por cada fonte.
+     *
+     * Existe para o desenho de uma página não impor a espera de quem carregou
+     * num botão. Ver `TIMEOUT_NA_VISITA_MS`.
+     */
+    timeoutMs?: number;
+  } = {},
 ): Promise<QuoteSeries> {
   const symbol = normalizeSymbol(rawSymbol);
   if (!symbol) {
@@ -203,6 +230,7 @@ export async function getQuoteSeries(
       symbol,
       lastDate,
       options.force,
+      options.timeoutMs ?? TIMEOUT_MS,
     );
     fetchedCurrency = currency;
     if (fetched.length === 0) {
@@ -569,6 +597,9 @@ export async function refreshStalePrices(
         const tentativa = await getQuoteSeries(c, {
           latestOnly: true,
           force: options.force,
+          // Sem `force` isto está a correr no meio do desenho de uma página, e
+          // a espera não foi pedida por ninguém. Ver `TIMEOUT_NA_VISITA_MS`.
+          timeoutMs: options.force ? TIMEOUT_MS : TIMEOUT_NA_VISITA_MS,
         }).catch(() => null);
         if (tentativa && tentativa.quotes.length > 0) {
           series = tentativa;

@@ -296,31 +296,44 @@ export async function linhasDeIndice(
   const base = medidos[0];
   if (!base || pontos.length < 2 || base.netCents <= 0) return [];
 
-  const out: LinhaDeIndice[] = [];
-  for (const b of BENCHMARKS) {
-    let quotes: { date: string; closeCents: number }[] = [];
-    for (const candidato of b.symbols) {
-      const s = await getQuoteSeries(candidato.symbol, { since: base.onDate }).catch(() => null);
-      if (s && s.quotes.length > 0) {
-        quotes = s.quotes;
-        break;
+  /**
+   * Os índices vão todos ao mesmo tempo.
+   *
+   * Eram em fila indiana, e cada um pode ter de ir à fonte: com três índices, o
+   * gráfico do resumo esperava pelos três somados antes de desenhar. Não há
+   * dependência nenhuma entre eles — o único preço de os juntar era a ordem, e
+   * essa restabelece-se no fim pelo índice do `map`.
+   *
+   * **Nunca podem custar a página**: um `catch` por índice, e quem não responder
+   * simplesmente não tem linha. Ver o cabeçalho.
+   */
+  const linhas = await Promise.all(
+    BENCHMARKS.map(async (b): Promise<LinhaDeIndice | null> => {
+      let quotes: { date: string; closeCents: number }[] = [];
+      for (const candidato of b.symbols) {
+        const s = await getQuoteSeries(candidato.symbol, { since: base.onDate }).catch(() => null);
+        if (s && s.quotes.length > 0) {
+          quotes = s.quotes;
+          break;
+        }
       }
-    }
-    if (quotes.length === 0) continue;
+      if (quotes.length === 0) return null;
 
-    const precos: Record<string, number> = {};
-    for (const q of quotes) precos[q.date] = q.closeCents;
-    const inicial = priceOn(precos, base.onDate, 20);
-    if (inicial === null || inicial <= 0) continue;
+      const precos: Record<string, number> = {};
+      for (const q of quotes) precos[q.date] = q.closeCents;
+      const inicial = priceOn(precos, base.onDate, 20);
+      if (inicial === null || inicial <= 0) return null;
 
-    const valores = pontos.map((p) => {
-      // Antes do ponto de partida não há linha nenhuma para desenhar.
-      if (p.onDate < base.onDate) return null;
-      const preco = priceOn(precos, p.onDate, 20);
-      if (preco === null || preco <= 0) return null;
-      return Math.round(base.netCents * (preco / inicial));
-    });
-    out.push({ id: b.id, label: b.label, valores });
-  }
-  return out;
+      const valores = pontos.map((p) => {
+        // Antes do ponto de partida não há linha nenhuma para desenhar.
+        if (p.onDate < base.onDate) return null;
+        const preco = priceOn(precos, p.onDate, 20);
+        if (preco === null || preco <= 0) return null;
+        return Math.round(base.netCents * (preco / inicial));
+      });
+      return { id: b.id, label: b.label, valores };
+    }),
+  );
+
+  return linhas.filter((l): l is LinhaDeIndice => l !== null);
 }
