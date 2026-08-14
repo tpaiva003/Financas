@@ -2195,3 +2195,41 @@ contra uma. É a regra do `CLAUDE.md` a apanhar-me a mim.
 
 Tinham o mesmo padrão e a mesma bomba-relógio, só que disfarçada: correm uma vez
 por semana por símbolo, por isso raramente juntavam uma dúzia de cada vez.
+
+---
+
+## A lentidão do património, a sério desta vez (2026-08-14)
+
+A ronda anterior tirou o que era visível — a espera sem aviso, o tecto de dez
+segundos nas cotações, as leituras em fila indiana — e **continuou lento**. O que
+faltava não estava no componente: estava na reconstrução do histórico.
+
+### Cinquenta viagens à base de dados, uma por investimento
+
+`reconstruirDoPassado` pedia as cotações **dentro de um ciclo sobre os bens**,
+uma chamada por símbolo, cada uma a trazer o histórico inteiro desse símbolo. Com
+meia centena de investimentos são cinquenta idas em série — sempre que alguém
+abre o resumo do património.
+
+É a **segunda vez que esta app aprende isto na mesma tabela**. O
+`refreshStalePrices` já tinha passado de três consultas por símbolo para uma só,
+com o comentário a explicar porquê; a reconstrução ficou de fora e ninguém
+reparou, porque a página acabava por abrir. Agora há um `listQuotesFor` — uma
+consulta para todos os símbolos, paginada — e um teste que **conta viagens**, que
+é a única coisa que impede a terceira vez.
+
+### Uma correção com um buraco é uma correção pela metade
+
+O tecto de tempo da visita foi posto nas cotações da carteira e **não** nas
+linhas dos índices do gráfico, que chamam a mesma função de outro sítio. Ficaram
+com os dez segundos por fonte que são para quem carregou num botão — dentro do
+desenho de uma página. Corrigir um caminho e deixar o gémeo aberto é o género de
+coisa que só se apanha à segunda queixa.
+
+### O que não era, e vale a pena ter escrito
+
+O INE **não** era o problema, apesar dos vinte segundos de tolerância que tem: a
+estimativa desiste antes de ir à rede quando nenhum imóvel tem `price_ref_geocod`
+preenchido, que é o caso. Ter ido confirmar isso poupou uma correção inútil num
+sítio inocente — e deixa o aviso de pé para quando alguém preencher esse campo,
+porque aí os vinte segundos passam a contar.

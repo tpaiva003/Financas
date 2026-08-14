@@ -883,6 +883,30 @@ export class MockRepository implements Repository {
     store.assetTrades[i] = { ...store.assetTrades[i]!, ...patch };
   }
 
+  /**
+   * Lê o armazém directamente, e **não** por `listQuotes` símbolo a símbolo.
+   *
+   * Não é preciosismo: em produção isto é uma consulta só, e um mock que faça N
+   * leituras por baixo mede outra coisa — um teste que conte viagens à base de
+   * dados passaria a contar as do mock em vez das do código.
+   */
+  async listQuotesFor(
+    symbols: readonly string[],
+    fromDate?: string,
+  ): Promise<Map<string, StoredQuote[]>> {
+    const fora = new Map<string, StoredQuote[]>();
+    const todas = getStore().quotes;
+    for (const s of new Set(symbols.map((x) => x.trim().toLowerCase()).filter(Boolean))) {
+      fora.set(
+        s,
+        (todas[s] ?? [])
+          .filter((q) => !fromDate || q.date >= fromDate)
+          .sort((a, b) => (a.date < b.date ? -1 : 1)),
+      );
+    }
+    return fora;
+  }
+
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const all = getStore().quotes[symbol] ?? [];
     return all

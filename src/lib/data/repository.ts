@@ -996,6 +996,16 @@ export interface Repository {
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
+  /**
+   * As séries de vários símbolos, numa consulta só.
+   *
+   * **Existe porque a reconstrução do histórico as pedia uma a uma.** Com meia
+   * centena de investimentos eram cinquenta viagens à base de dados em fila
+   * indiana, cada uma a trazer o histórico inteiro de um símbolo, sempre que
+   * alguém abria o resumo do património. É a mesma lição do `latestQuotesFor`,
+   * na mesma tabela, e a segunda vez que esta app a aprende.
+   */
+  listQuotesFor(symbols: readonly string[], fromDate?: string): Promise<Map<string, StoredQuote[]>>;
   /** Só o fecho mais recente, para quem quer o preço e não a série. */
   latestQuote(symbol: string): Promise<StoredQuote | null>;
   /**
