@@ -96,10 +96,38 @@ export async function PatrimonioContent({
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
-  // Preços em dia antes de ler os bens. Só vai à fonte o que estiver velho, e as
+
+  /**
+   * O que cada vista precisa mesmo de ler.
+   *
+   * **São quatro perguntas diferentes servidas pelo mesmo componente**, e até
+   * aqui as quatro pagavam o custo das quatro: a vista das dívidas ia à rede
+   * buscar cotações de investimentos que não mostra, e todas liam as despesas
+   * todas do ambiente para calcular uma média que só o FIRE usa. Numa casa com
+   * milhares de despesas, isso é a leitura mais cara da página — feita três em
+   * cada quatro vezes por nada.
+   */
+  /**
+   * **A ida à rede** é o que se salta nas dívidas: essa vista não mostra o preço
+   * de investimento nenhum, e era a espera mais cara de todas.
+   *
+   * Os movimentos e os desdobramentos continuam a ler-se em todas as vistas, de
+   * propósito. Saltá-los nas dívidas poupava uma consulta que agora já corre em
+   * paralelo com as outras, e em troca fazia as quantidades de cada
+   * investimento passarem a depender da vista — que é o género de subtileza que
+   * um dia dá dois ecrãs a discordar sobre a mesma posição. Não vale a troca.
+   */
+  const precisaDeCotacoes = view !== "dividas";
+  const precisaDeAnexos = view === "ativos" || view === "dividas";
+  const precisaDeDespesas = view === "fire";
+
+  // Preços em dia antes de ler os bens — e só quando a vista mostra
+  // investimentos. Só vai à fonte o que estiver velho, com tecto de tempo, e as
   // cotações são partilhadas, por isso cada símbolo é buscado uma vez por dia no
   // serviço inteiro. Nunca falha para o lado de deitar a página abaixo.
-  const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
+  const freshness = precisaDeCotacoes
+    ? await refreshStalePrices(ctx.space.id).catch(() => [])
+    : [];
   const quoteDateOf = new Map(freshness.map((f) => [f.assetId, f.quoteDate]));
   const quoteProblemOf = new Map(freshness.map((f) => [f.assetId, f.problem]));
   // O fecho na moeda de origem, que é o número que as pessoas reconhecem.
@@ -109,11 +137,50 @@ export async function PatrimonioContent({
       .map((f) => [f.assetId, { cents: f.quoteCents!, currency: f.quoteCurrency! }]),
   );
 
-  // A tabela pode não existir se a migração 0013 ainda não correu.
-  const stored: Asset[] = await repo.listAssets(ctx.space.id).catch(() => []);
-  // Movimentos datados: quando existem, são eles que dizem quantas unidades se
-  // tem e quanto custaram. A posição escrita à mão fica intocada por baixo.
-  const trades = await repo.listAssetTrades(ctx.space.id).catch(() => []);
+  /**
+   * As leituras independentes vão todas juntas.
+   *
+   * Eram cinco viagens à base de dados em fila indiana, cada uma à espera da
+   * anterior sem precisar dela para nada. Nenhuma destas depende do resultado de
+   * outra, por isso o tempo da página passa a ser o da mais lenta em vez da
+   * soma de todas.
+   *
+   * A tabela dos bens pode não existir se a migração 0013 ainda não correu — daí
+   * o `catch` em cada uma, e não um à volta do conjunto: uma falhar não pode
+   * apagar as outras do ecrã.
+   */
+  const [stored, trades, splits, anexosTodos, expenses] = await Promise.all([
+    repo.listAssets(ctx.space.id).catch(() => [] as Asset[]),
+    repo.listAssetTrades(ctx.space.id).catch(() => []),
+    repo.listAssetSplits(ctx.space.id).catch(() => []),
+    /**
+     * Os documentos de todos os bens, numa leitura só.
+     *
+     * **A distinção entre "não há" e "não consegui ler" é o ponto todo.** Uma
+     * leitura falhada devolvida como lista vazia diria a quem tem a escritura
+     * anexada que ela desapareceu — o mesmo modo de falha que apagou o
+     * património inteiro do ecrã quando a ordenação foi para o SQL antes da
+     * migração. Por isso o erro vira `null` e desce assim até à linha, que o diz
+     * por palavras.
+     *
+     * Só os `pronto`: um anexo que ficou a meio do envio não é um ficheiro. E
+     * quando a vista não mostra fichas de bens, também é `null` — ninguém
+     * pergunta por eles, e uma lista vazia aqui seria uma resposta a uma
+     * pergunta que não foi feita.
+     */
+    precisaDeAnexos
+      ? repo
+          .listAssetAttachments(ctx.space.id)
+          .then((rows) => rows.filter((x) => x.status === "pronto"))
+          .catch(() => null)
+      : Promise.resolve(null),
+    // Só o FIRE usa isto, e é a leitura que mais cresce com o tempo.
+    precisaDeDespesas
+      ? repo
+          .listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId })
+          .catch(() => [])
+      : Promise.resolve([]),
+  ]);
   /**
    * Os desdobramentos, aplicados antes de qualquer conta.
    *
@@ -124,7 +191,6 @@ export async function PatrimonioContent({
    *
    * O dinheiro não muda com isto. Só as unidades e o custo por unidade.
    */
-  const splits = await repo.listAssetSplits(ctx.space.id).catch(() => []);
   const splitsPorBem = new Map<string, typeof splits>();
   for (const sp of splits) {
     splitsPorBem.set(sp.assetId, [...(splitsPorBem.get(sp.assetId) ?? []), sp]);
@@ -138,21 +204,6 @@ export async function PatrimonioContent({
     if (doBem && doBem.length > 0) tradesByAsset.set(assetId, aplicarSplits(lista, doBem));
   }
 
-  /**
-   * Os documentos de todos os bens, numa leitura só.
-   *
-   * **A distinção entre "não há" e "não consegui ler" é o ponto todo.** Uma
-   * leitura falhada devolvida como lista vazia diria a quem tem a escritura
-   * anexada que ela desapareceu — o mesmo modo de falha que apagou o património
-   * inteiro do ecrã quando a ordenação foi para o SQL antes da migração. Por
-   * isso o erro vira `null` e desce assim até à linha, que o diz por palavras.
-   *
-   * Só os `pronto`: um anexo que ficou a meio do envio não é um ficheiro.
-   */
-  const anexosTodos = await repo
-    .listAssetAttachments(ctx.space.id)
-    .then((rows) => rows.filter((x) => x.status === "pronto"))
-    .catch(() => null);
   const anexosPorBem = new Map<string, AnexoView[]>();
   for (const x of anexosTodos ?? []) {
     anexosPorBem.set(x.assetId, [
@@ -205,10 +256,8 @@ export async function PatrimonioContent({
   ) as Record<FocoId, number>;
 
   // Gasto anual sugerido para o FIRE: a partir das despesas reais do ambiente,
-  // média dos meses com movimento, para não contar meses vazios como zero.
-  const expenses = await repo
-    .listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId })
-    .catch(() => []);
+  // média dos meses com movimento, para não contar meses vazios como zero. A
+  // lista vem vazia nas vistas que não são o FIRE — ver `precisaDeDespesas`.
   const byMonth = new Map<string, number>();
   for (const e of expenses) {
     if (e.status !== "confirmed" || e.deletedAt) continue;
