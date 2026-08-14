@@ -639,6 +639,7 @@ export class SupabaseRepository implements Repository {
 
   async updateExpensesForRecurring(
     recurringId: string,
+    spaceId: string,
     patch: { description: string; categoryId: string | null; payerId: string; split: Split },
     amount?: { cents: number; onlyPending: boolean },
   ): Promise<void> {
@@ -655,6 +656,7 @@ export class SupabaseRepository implements Repository {
       .from("expenses")
       .update(base)
       .eq("recurring_id", recurringId)
+      .eq("space_id", spaceId)
       .is("deleted_at", null);
     if (e1) throw new Error(e1.message);
 
@@ -664,6 +666,7 @@ export class SupabaseRepository implements Repository {
         .from("expenses")
         .update({ amount_cents: amount.cents })
         .eq("recurring_id", recurringId)
+        .eq("space_id", spaceId)
         .is("deleted_at", null);
       if (amount.onlyPending) q = q.eq("status", "pending");
       const { error: e2 } = await q;

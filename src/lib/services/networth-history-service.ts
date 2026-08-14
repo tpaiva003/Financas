@@ -23,6 +23,7 @@
  */
 
 import { getRepository } from "@/lib/data";
+import type { Asset, AssetTrade } from "@/lib/data";
 import {
   BENCHMARKS,
   buildCreditoPlano,
@@ -120,12 +121,26 @@ export async function getNetWorthHistory(spaceId: string): Promise<NetWorthSnaps
  * desaparece da conta e evita-se ir buscar uma taxa a cada mês. O preço fica
  * certo; o câmbio não se mexe. É mais uma razão para isto ser uma estimativa.
  */
-async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetWorthSnapshot[]> {
+async function reconstruirDoPassado(
+  spaceId: string,
+  hoje: string,
+  /**
+   * Os bens e os movimentos, quando quem chama já os tem.
+   *
+   * **A página do património lê os dois antes de chegar aqui**, e sem isto a
+   * reconstrução voltava a lê-los — duas leituras completas repetidas em cada
+   * abertura do resumo, com a carteira inteira a atravessar a rede outra vez
+   * para dar exactamente o mesmo resultado.
+   */
+  jaLidos?: { stored: Asset[]; trades: AssetTrade[] },
+): Promise<NetWorthSnapshot[]> {
   const repo = getRepository();
-  const [stored, trades] = await Promise.all([
-    repo.listAssets(spaceId).catch(() => []),
-    repo.listAssetTrades(spaceId).catch(() => []),
-  ]);
+  const [stored, trades] = jaLidos
+    ? [jaLidos.stored, jaLidos.trades]
+    : await Promise.all([
+        repo.listAssets(spaceId).catch(() => []),
+        repo.listAssetTrades(spaceId).catch(() => []),
+      ]);
   if (stored.length === 0) return [];
 
   const movimentosDe = new Map<string, { date: string; unidades: number }[]>();
@@ -275,10 +290,12 @@ const MESES_A_RECONSTRUIR = 36;
 export async function getNetWorthHistoryCompleto(
   spaceId: string,
   hoje: string,
+  /** Ver `reconstruirDoPassado`: evita reler o que a página já tem. */
+  jaLidos?: { stored: Asset[]; trades: AssetTrade[] },
 ): Promise<NetWorthSnapshot[]> {
   const [medido, estimado] = await Promise.all([
     getNetWorthHistory(spaceId),
-    reconstruirDoPassado(spaceId, hoje).catch(() => []),
+    reconstruirDoPassado(spaceId, hoje, jaLidos).catch(() => []),
   ]);
   return juntarHistorico(estimado, medido);
 }

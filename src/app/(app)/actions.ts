@@ -1146,6 +1146,7 @@ export async function updateRecurringAction(
   if (applyScope === "all") {
     await repo.updateExpensesForRecurring(
       id,
+      ctx.space.id,
       {
         description: d.description,
         categoryId: d.categoryId ?? null,

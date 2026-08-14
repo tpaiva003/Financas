@@ -885,8 +885,18 @@ export interface Repository {
    * O valor, se fornecido, é aplicado a todas ou só às pendentes (estimativas),
    * para nunca reescrever valores reais confirmados de recorrentes variáveis.
    */
+  /**
+   * **O ambiente é obrigatório, e é essa a razão de ele estar aqui.**
+   *
+   * Isto reescreve despesas já registadas a partir do id de um recorrente. Sem
+   * o ambiente na assinatura, quem chamasse tinha de se **lembrar** de o
+   * validar antes — e a validação que se faz de memória é a que um dia falta.
+   * Com ele obrigatório, o compilador exige um id já validado, que é a mesma
+   * regra que os seis métodos de despesas passaram a seguir.
+   */
   updateExpensesForRecurring(
     recurringId: string,
+    spaceId: string,
     patch: { description: string; categoryId: string | null; payerId: string; split: Split },
     amount?: { cents: number; onlyPending: boolean },
   ): Promise<void>;

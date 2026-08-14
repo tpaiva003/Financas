@@ -453,12 +453,17 @@ export class MockRepository implements Repository {
 
   async updateExpensesForRecurring(
     recurringId: string,
+    spaceId: string,
     patch: { description: string; categoryId: string | null; payerId: string; split: Split },
     amount?: { cents: number; onlyPending: boolean },
   ): Promise<void> {
     const now = new Date().toISOString();
     for (const e of getStore().expenses) {
-      if (e.recurringId !== recurringId || e.deletedAt) continue;
+      // O mock aplica a MESMA regra da produção. Um backend mais permissivo do
+      // que o real esconde exactamente o engano que os testes procuram.
+      if (e.recurringId !== recurringId || (e.spaceId ?? "casa") !== spaceId || e.deletedAt) {
+        continue;
+      }
       e.description = patch.description;
       e.categoryId = patch.categoryId;
       e.payerId = patch.payerId;
