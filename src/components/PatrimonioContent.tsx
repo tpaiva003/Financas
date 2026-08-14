@@ -449,7 +449,9 @@ export async function PatrimonioContent({
     if (view !== "resumo") return null;
     // A fotografia gravada é sempre a do património INTEIRO. Ver `foco`.
     const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
-    const completo = await getNetWorthHistoryCompleto(ctx.space.id, today);
+    // Os bens e os movimentos já foram lidos lá em cima: passá-los evita duas
+    // leituras completas repetidas em cada abertura do resumo.
+    const completo = await getNetWorthHistoryCompleto(ctx.space.id, today, { stored, trades });
     /**
      * O gráfico segue o foco, e os pontos que não sabem repartir-se saem.
      *
