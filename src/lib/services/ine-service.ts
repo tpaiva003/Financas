@@ -80,7 +80,26 @@ export function resetInePriceCache(): void {
  * o indicador que foi pedido, que é o que faz falta saber quando o INE muda o
  * código da série e isto passa a devolver nada.
  */
-export async function getInePriceTable(): Promise<InePriceResult> {
+export async function getInePriceTable(
+  opcoes: {
+    /**
+     * Quanto tempo esperar pelo INE.
+     *
+     * **Vinte segundos é para quem carregou em «Ver no INE»** e está à espera
+     * de uma lista de concelhos. Ao desenhar a página do património, essa
+     * espera passa a ser imposta a quem só queria ver o património — e a cache
+     * aqui é uma variável em memória, que numa função sem servidor **morre a
+     * cada arranque a frio**. Ou seja: em produção, boa parte das visitas
+     * pagava a ida à rede outra vez.
+     *
+     * Nesse caminho o valor ao preço da zona é um extra que aparece **ao lado**
+     * do valor registado. Não vale um segundo de espera imposta, quanto mais
+     * vinte: se não chegar depressa, não aparece, e o imóvel mostra o que tem
+     * registado — que é o que mostra na mesma quando o INE não responde.
+     */
+    timeoutMs?: number;
+  } = {},
+): Promise<InePriceResult> {
   const agora = Date.now();
   if (cache && agora - cache.at < TTL_MS) return cache.result;
 
@@ -89,7 +108,7 @@ export async function getInePriceTable(): Promise<InePriceResult> {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), opcoes.timeoutMs ?? TIMEOUT_MS);
     const resposta = await fetch(url, {
       signal: controller.signal,
       headers: { Accept: "application/json" },

@@ -26,6 +26,15 @@ import {
 import { getInePriceTable } from "./ine-service";
 
 /**
+ * O que a página do património está disposta a esperar pelo INE.
+ *
+ * O valor ao preço da zona aparece **ao lado** do valor registado e nunca por
+ * cima. Não chegar a tempo não parte nada: o imóvel mostra o que tem registado,
+ * que é o que já mostrava antes de isto existir.
+ */
+const TIMEOUT_NA_PAGINA_MS = 2_500;
+
+/**
  * Estima o valor de cada imóvel que tenha custo, data e sítio.
  *
  * Devolve um mapa por id. Os que não têm dados que cheguem ficam de fora — e
@@ -47,7 +56,11 @@ export async function estimarValoresDeImoveis(
   );
   if (candidatos.length === 0) return porId;
 
-  const { table } = await getInePriceTable().catch(() => ({ table: null }));
+  // Tecto curto: isto corre no meio do desenho de uma página e ninguém pediu
+  // para esperar. Ver `getInePriceTable`.
+  const { table } = await getInePriceTable({ timeoutMs: TIMEOUT_NA_PAGINA_MS }).catch(() => ({
+    table: null,
+  }));
   if (!table) return porId;
 
   for (const a of candidatos) {
@@ -95,7 +108,11 @@ export async function indicesDeImoveis(
   );
   if (candidatos.length === 0 || datas.length === 0) return porId;
 
-  const { table } = await getInePriceTable().catch(() => ({ table: null }));
+  // Tecto curto: isto corre no meio do desenho de uma página e ninguém pediu
+  // para esperar. Ver `getInePriceTable`.
+  const { table } = await getInePriceTable({ timeoutMs: TIMEOUT_NA_PAGINA_MS }).catch(() => ({
+    table: null,
+  }));
   if (!table) return porId;
 
   for (const a of candidatos) {
