@@ -51,7 +51,7 @@ const TIMEOUT_MS = 10_000;
  * fica para a visita seguinte e **diz-se por palavras** na linha do
  * investimento, em vez de um preço velho passar por atual.
  */
-const TIMEOUT_NA_VISITA_MS = 3_000;
+export const TIMEOUT_NA_VISITA_MS = 3_000;
 
 export interface QuoteSeries {
   symbol: string;

@@ -1578,6 +1578,41 @@ export class SupabaseRepository implements Repository {
   }
 
   /**
+   * As séries de vários símbolos, numa consulta só. Ver a interface.
+   *
+   * Paginada, como todas as leituras que podem crescer: a tabela das cotações
+   * tem uma linha por dia e por símbolo, e cinquenta símbolos com anos de
+   * histórico passam das mil linhas muito à vontade. Uma leitura cortada aqui
+   * devolveria um histórico que começa a meio, sem se queixar.
+   */
+  async listQuotesFor(
+    symbols: readonly string[],
+    fromDate?: string,
+  ): Promise<Map<string, StoredQuote[]>> {
+    const fora = new Map<string, StoredQuote[]>();
+    const unicos = [...new Set(symbols.map((x) => x.trim().toLowerCase()).filter(Boolean))];
+    if (unicos.length === 0) return fora;
+
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("quotes").select("symbol, quote_date, close_cents").in("symbol", unicos);
+      if (fromDate) q = q.gte("quote_date", fromDate);
+      return q.order("quote_date", { ascending: true }).range(de, ate);
+    });
+
+    for (const r of rows) {
+      const sym = String(r.symbol).trim().toLowerCase();
+      const lista = fora.get(sym) ?? [];
+      lista.push({
+        date: String(r.quote_date).slice(0, 10),
+        closeCents: Number(r.close_cents),
+      });
+      fora.set(sym, lista);
+    }
+    return fora;
+  }
+
+  /**
    * Só o último fecho.
    *
    * Existe para quem quer o preço de agora e não a série: atualizar o valor de um

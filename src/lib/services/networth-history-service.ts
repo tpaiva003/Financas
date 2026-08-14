@@ -40,7 +40,7 @@ import {
   type NetWorth,
   type NetWorthSnapshot,
 } from "@/lib/domain";
-import { getQuoteSeries } from "./quotes-service";
+import { TIMEOUT_NA_VISITA_MS, getQuoteSeries } from "./quotes-service";
 import { indicesDeImoveis } from "./imovel-service";
 
 /** O que aconteceu à fotografia de hoje. */
@@ -160,6 +160,23 @@ async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetW
   }
   const indices = await indicesDeImoveis(stored, datas).catch(() => new Map());
 
+  /**
+   * As cotações de todos os investimentos, **numa consulta só**.
+   *
+   * Eram pedidas uma a uma dentro do ciclo lá em baixo: com meia centena de
+   * investimentos, cinquenta viagens à base de dados em fila indiana, cada uma
+   * a trazer o histórico inteiro de um símbolo — e tudo isto sempre que alguém
+   * abria o resumo do património. É a mesma lição que o `refreshStalePrices` já
+   * tinha aprendido na mesma tabela, e a segunda vez que esta app a aprende.
+   */
+  const simbolosDaCarteira = stored
+    .filter((a) => a.kind === "investimento" && a.symbol)
+    .map((a) => normalizeSymbol(String(a.symbol)))
+    .filter((x): x is string => Boolean(x));
+  const cotacoesPorSimbolo = await repo
+    .listQuotesFor(simbolosDaCarteira)
+    .catch(() => new Map<string, { date: string; closeCents: number }[]>());
+
   let outrosAtivosCents = 0;
   let outrasDividasCents = 0;
   const dividas: DividaReconstruivel[] = [];
@@ -173,7 +190,7 @@ async function reconstruirDoPassado(spaceId: string, hoje: string): Promise<NetW
       let precos: { date: string; closeEurCents: number }[] = [];
 
       if (simbolo && typeof a.unitPriceCents === "number" && a.unitPriceCents > 0) {
-        const guardadas = await repo.listQuotes(simbolo).catch(() => []);
+        const guardadas = cotacoesPorSimbolo.get(simbolo) ?? [];
         const ultima = guardadas.at(-1);
         if (ultima && ultima.closeCents > 0) {
           // A razão contra o fecho mais recente, aplicada ao preço em euros de
@@ -311,7 +328,16 @@ export async function linhasDeIndice(
     BENCHMARKS.map(async (b): Promise<LinhaDeIndice | null> => {
       let quotes: { date: string; closeCents: number }[] = [];
       for (const candidato of b.symbols) {
-        const s = await getQuoteSeries(candidato.symbol, { since: base.onDate }).catch(() => null);
+        /**
+         * **Com tecto de tempo.** Isto corre no meio do desenho do resumo, e
+         * sem `timeoutMs` cada índice ficava com os dez segundos por fonte que
+         * são para quem carregou num botão — a falha que a correção anterior
+         * fechou nas cotações da carteira e deixou aberta aqui.
+         */
+        const s = await getQuoteSeries(candidato.symbol, {
+          since: base.onDate,
+          timeoutMs: TIMEOUT_NA_VISITA_MS,
+        }).catch(() => null);
         if (s && s.quotes.length > 0) {
           quotes = s.quotes;
           break;
