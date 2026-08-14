@@ -211,3 +211,58 @@ describe("um movimento de investimento não se corrige a partir de outro ambient
     expect(t?.amountCents).toBe(1_000_00);
   });
 });
+
+/**
+ * Reescrever despesas a partir de um recorrente.
+ *
+ * **É a mesma família dos seis métodos de despesas do cabeçalho**, encontrada
+ * numa revisão posterior. A ação valida o ambiente antes de atualizar o
+ * recorrente, mas essa atualização não atira quando não encontra nada — e a
+ * chamada seguinte reescrevia as despesas só pelo id do recorrente. Uma
+ * validação que depende de quem chama se lembrar dela é a que um dia falta.
+ */
+describe("updateExpensesForRecurring", () => {
+  const patch = {
+    description: "Reescrita",
+    categoryId: null,
+    payerId: "m1",
+    split: { kind: "shared", parts: [{ memberId: "m1", amountCents: 1_00 }] } as never,
+  };
+
+  async function comRecorrente() {
+    const r = new MockRepository();
+    const despesa = await r.createExpense({
+      spaceId: "casa",
+      description: "Original",
+      amountCents: 10_00,
+      transactionDate: "2026-02-01",
+      payerId: "m1",
+      split: { kind: "shared", parts: [{ memberId: "m1", amountCents: 10_00 }] } as never,
+      status: "confirmed",
+      kind: "shared",
+      recurringId: "rec-1",
+      // O UID à mão: sem ele o mock deriva-o dos campos e precisa de mais do
+      // que este teste tem para dar. Aqui o que se mede é o ambiente.
+      uid: "uid-rec-1",
+      origin: "manual",
+      currency: "EUR",
+    } as never);
+    return { r, despesaId: despesa.id };
+  }
+
+  it("reescreve com o ambiente certo", async () => {
+    const { r, despesaId: id } = await comRecorrente();
+    await r.updateExpensesForRecurring("rec-1", "casa", patch);
+
+    const e = await r.getExpense(id, "casa", "m1");
+    expect(e?.description).toBe("Reescrita");
+  });
+
+  it("não reescreve com o ambiente errado", async () => {
+    const { r, despesaId: id } = await comRecorrente();
+    await r.updateExpensesForRecurring("rec-1", "outro-ambiente", patch);
+
+    const e = await r.getExpense(id, "casa", "m1");
+    expect(e?.description).toBe("Original");
+  });
+});
