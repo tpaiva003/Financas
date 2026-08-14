@@ -22,7 +22,8 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://rachar.pt";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Rachar · Contas à Moda do Porto",
-  description: "Rachar, dividir contas partilhadas sem dramas. Nascido no Porto.",
+  description:
+    "Rachar, as contas partilhadas e o património no mesmo sítio: dividir despesas, importar extratos, rendimentos, investimentos e FIRE. Nascido no Porto.",
   manifest: "/manifest.webmanifest",
   // O iOS ignora os ícones do manifest: usa o apple-touch-icon, e só em PNG.
   // Sem ele, "Adicionar ao ecrã principal" mete uma miniatura da página em vez

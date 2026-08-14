@@ -3,9 +3,44 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-12 (foco do património por tipo de bem; séries
-> temporais no DCF; análise por setor; as contas do Yahoo confirmadas a
-> funcionar). **Migração 0041 por correr.**
+> Última atualização: 2026-08-13. Duas frentes em paralelo: o **back end** (foco
+> do património, séries no DCF, análise por setor, contas do Yahoo confirmadas)
+> e a **landing pública** (PR #32). **Migração 0041 por correr.**
+
+---
+
+## 0. Sessão de 2026-08-13 — a landing pública (PR #32, por integrar)
+
+Branch `claude/rachar-landing-page-zdliyf`. Deploy verde, ainda em rascunho.
+
+| | |
+|---|---|
+| Landing reescrita: contava só o dividir contas, agora conta a app toda | ✅ |
+| Capturas de ecrã reais na landing, geradas por `npm run shots` | ✅ |
+| Menos linhas e mais movimento, na landing **e** dentro da app | ✅ |
+| Dados de exemplo para património, investimentos, cotações e rendimentos | ✅ |
+| `README.md` atualizado (dizia "Fase 1" e "dois utilizadores") | ✅ |
+
+**Dois bugs corrigidos pelo caminho, ambos anteriores a esta sessão:**
+
+1. **O middleware barrava páginas que têm de ser públicas.** `/privacidade`,
+   `/termos` e `/recuperar` redirecionavam para o login. As duas primeiras estão
+   no rodapé e **a Google exige-as acessíveis sem sessão para aprovar o ecrã de
+   consentimento do SSO** — ou seja, isto bloqueava o ponto 4 desta lista sem que
+   se soubesse. A terceira é a reposição de palavra-chave, que por definição é
+   para quem não consegue entrar.
+2. **O `.env.example` trazia `AUTH_URL="https://rachar.pt"`.** O README manda
+   copiá-lo e arrancar, e com um URL `https` os cookies de sessão saem `Secure`,
+   que o browser recusa em `http://localhost`. O arranque documentado não dava
+   para entrar na app, e falhava em silêncio.
+
+**Pedido do Tiago que fica para outra branch:** a consola `/plataforma` com mais
+indicadores em gráfico, secções em acordeão e separação entre indicadores, contas
+novas e testes de acesso. Nota que veio da conversa e que vale a pena guardar:
+um gráfico de registos por mês **tem de sair das datas já gravadas**
+(`app_users.created_at` e `spaces.created_at` existem desde a `0001_init`), e não
+de contadores criados de raiz — senão nasce vazio e esconde tudo o que aconteceu
+antes de ele existir, que foi exatamente o que o Tiago viu.
 
 ---
 
@@ -572,7 +607,10 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
       conta. O Tiago decidiu não mexer nisto agora. A saída natural é o convite
       levar um token, reutilizando o mecanismo do `password_reset_tokens`, que já
       existe e é sólido. **Fechar antes de abrir o registo.**
-- [ ] **SSO Google/Microsoft** — falta a UI **e** as credenciais do Tiago.
+- [ ] **SSO Google/Microsoft** — falta a UI **e** as credenciais do Tiago. A
+      terceira metade do bloqueio, as páginas legais abrirem sem sessão (que a
+      Google exige para aprovar o ecrã de consentimento), **está resolvida**:
+      vive agora em `lib/public-routes.ts`, com testes.
 - [x] **Ticker a partir do nome** — feito na sessão de 2026-08-08 (por ficha) e
       08-09 (todos de uma vez, `suggestMissingSymbolsAction`). A regra é "o
       modelo sugere, os factos confirmam": o candidato só vale depois de a fonte
@@ -620,6 +658,10 @@ A revisão acrescenta dois, aprendidos ao ver as mesmas falhas repetirem-se:
 9. **O que a app mostra tem de ser lido do valor, não do que o Excel desenha.**
    `raw: false` devolve texto formatado, e um formato de número chega para
    esconder um sinal negativo.
+10. **Uma página pública não se assume, verifica-se sem sessão.** As páginas
+    legais e a recuperação de palavra-chave estiveram a redirecionar para o
+    login sem ninguém dar por isso, porque quem testa está quase sempre
+    autenticado. É por isso que a lista vive num módulo com testes.
 
 ---
 

@@ -37,3 +37,6 @@ next-env.d.ts
 # supabase
 /supabase/.branches
 /supabase/.temp
+
+# capturas de ecrã da landing, ficheiros intermédios
+/.shots-tmp/

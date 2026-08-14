@@ -53,6 +53,7 @@ describe("Património", () => {
       "Avaliação",
       "Funil",
       "FIRE",
+      "Avaliação",
       "Importar",
     ]);
   });
