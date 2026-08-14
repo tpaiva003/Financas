@@ -38,6 +38,8 @@ import {
   type Trade,
   duplicadosDeAtivos,
   datasAProximar,
+  resumoDoTipo,
+  type ResumoDoTipo,
   FOCOS,
   contaNoFoco,
   focoDe,
@@ -279,6 +281,27 @@ export async function PatrimonioContent({
   }
 
   const shown = net.assets.filter((a) => kindsToShow.includes(a.kind));
+  /**
+   * O resumo de cada tipo, para o cabeçalho do acordeão.
+   *
+   * Sai da mesma vista que a lista desenha (`net.assets`), e não de uma segunda
+   * contagem: dois números da mesma coisa calculados por caminhos diferentes
+   * acabam sempre por discordar num dia qualquer, e quem os vir tem razão em
+   * desconfiar dos dois.
+   */
+  const resumoDe = (kind: AssetKind) =>
+    resumoDoTipo(
+      kind,
+      shown.map((a) => ({
+        kind: a.kind,
+        currentValueCents: a.currentValueCents,
+        quantity: a.quantity ?? null,
+        unitCostCents: a.unitCostCents ?? null,
+        missingPrice: a.missingPrice,
+      })),
+    );
+  /** O primeiro tipo com bens fica aberto. Ver o comentário no acordeão. */
+  const primeiroTipo = kindsToShow.find((k) => (byKind.get(k) ?? []).length > 0) ?? null;
   // Para se poder dizer quem tem a outra parte de um bem comprado a meias. Só
   // nome e id: o campo não precisa de mais nada de ninguém.
   const memberOptions = ctx.members.map((m) => ({ id: m.id, name: m.name }));
@@ -698,9 +721,33 @@ export async function PatrimonioContent({
           kindsToShow
             .filter((k) => (byKind.get(k) ?? []).length > 0)
             .map((kind) => (
-              <div key={kind} className="card p-0">
-                <div className="flex flex-wrap items-start justify-between gap-2 px-5 pt-4">
-                  <p className="label mb-0">{ASSET_KIND_LABELS[kind]}</p>
+              /*
+                Cada tipo abre e fecha, com o resumo no cabeçalho.
+
+                **O resumo não é decoração.** Um cabeçalho que diga só
+                "Investimentos" obriga a abrir para saber se vale a pena abrir —
+                e nessa altura o acordeão só acrescentou um clique. O que se
+                procura ao passar os olhos por aqui é quanto vale o grupo e se
+                está a ganhar; é isso que fica à vista com ele fechado.
+
+                O primeiro fica aberto: um ecrã todo fechado esconde que há
+                alguma coisa lá dentro.
+              */
+              <details key={kind} open={kind === primeiroTipo} className="card group p-0">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-4">
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block text-fg-faint transition-transform group-open:rotate-90"
+                    >
+                      ›
+                    </span>
+                    <span className="label mb-0">{ASSET_KIND_LABELS[kind]}</span>
+                  </span>
+                  <ResumoDoGrupo resumo={resumoDe(kind)} />
+                </summary>
+
+                <div className="flex flex-wrap items-start justify-between gap-2 border-t border-hair2 px-5 pt-4">
                   {/* Um botão só, para os investimentos, e só se algum tiver
                       símbolo. Com dezenas de posições ninguém carrega uma a uma. */}
                   {kind === "investimento" &&
@@ -865,7 +912,7 @@ export async function PatrimonioContent({
                     ))}
                   </ul>
                 )}
-              </div>
+              </details>
             ))
         )}
       </section>
@@ -1078,6 +1125,40 @@ async function PortfolioReturnSection({
         </ul>
       </div>
     </section>
+  );
+}
+
+/**
+ * Os números de um grupo, no cabeçalho do acordeão.
+ *
+ * Mostra só o que existe: onde não há custo registado não há "investido" nem
+ * percentagem, e um zero ali lia-se como "não ganhaste nada" quando o que se
+ * passa é que a pergunta não se aplica àquele tipo de bem.
+ */
+function ResumoDoGrupo({ resumo }: { resumo: ResumoDoTipo }) {
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 font-mono text-[11px] tnum text-fg-faint">
+      <span>
+        {resumo.quantos} {resumo.quantos === 1 ? "bem" : "bens"}
+      </span>
+      <span className="text-fg-muted">{formatCents(resumo.valorCents)}</span>
+      {resumo.custoCents !== null ? (
+        <span>{formatCents(resumo.custoCents)} investido</span>
+      ) : null}
+      {resumo.ganhoPct !== null ? (
+        <span className={resumo.ganhoCents! >= 0 ? "text-credit" : "text-debt"}>
+          {resumo.ganhoCents! >= 0 ? "+" : ""}
+          {String(resumo.ganhoPct).replace(".", ",")}%
+        </span>
+      ) : null}
+      {/* Quantos ficaram de fora do ganho. Sem isto, a percentagem parecia
+          cobrir a carteira toda quando cobre só parte dela. */}
+      {resumo.semPreco > 0 ? (
+        <span title="Sem preço atual: contam pelo que custaram e ficam de fora do ganho.">
+          {resumo.semPreco} sem preço
+        </span>
+      ) : null}
+    </span>
   );
 }
 
