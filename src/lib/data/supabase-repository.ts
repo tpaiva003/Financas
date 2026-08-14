@@ -42,6 +42,7 @@ import type {
   CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
+  UpdateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1836,6 +1837,21 @@ export class SupabaseRepository implements Repository {
     });
     if (error) throw new Error(error.message);
     return { ...input, id };
+  }
+
+  async updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = {};
+    if (patch.kind !== undefined) row.kind = patch.kind;
+    if (patch.description !== undefined) row.description = patch.description;
+    if (patch.amountCents !== undefined) row.amount_cents = patch.amountCents;
+    if (patch.date !== undefined) row.date = patch.date;
+    if (patch.recurring !== undefined) row.recurring = patch.recurring;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (Object.keys(row).length === 0) return;
+
+    const { error } = await db.from("income").update(row).eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
   }
 
   async deleteIncome(id: string, spaceId: string): Promise<void> {

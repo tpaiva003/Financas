@@ -266,3 +266,43 @@ describe("updateExpensesForRecurring", () => {
     expect(e?.description).toBe("Original");
   });
 });
+
+/**
+ * Corrigir um rendimento.
+ *
+ * O id vem do formulário; o ambiente vem sempre do contexto. Um id de outro
+ * ambiente não pode encontrar linha nenhuma — senão o campo escondido do
+ * formulário passava a ser a fronteira, e um campo escondido não é fronteira
+ * nenhuma.
+ */
+describe("updateIncome", () => {
+  async function comRendimento() {
+    const r = new MockRepository();
+    const i = await r.createIncome({
+      spaceId: "casa",
+      kind: "salario",
+      description: "Ordenado",
+      amountCents: 2_550_00,
+      date: "2026-07-30",
+      recurring: true,
+      notes: null,
+    });
+    return { r, id: i.id };
+  }
+
+  it("corrige com o ambiente certo", async () => {
+    const { r, id } = await comRendimento();
+    await r.updateIncome(id, "casa", { amountCents: 2_600_00 });
+
+    const i = (await r.listIncome("casa")).find((x) => x.id === id);
+    expect(i?.amountCents).toBe(2_600_00);
+  });
+
+  it("não corrige com o ambiente errado", async () => {
+    const { r, id } = await comRendimento();
+    await r.updateIncome(id, "outro-ambiente", { amountCents: 99_999_00 });
+
+    const i = (await r.listIncome("casa")).find((x) => x.id === id);
+    expect(i?.amountCents).toBe(2_550_00);
+  });
+});

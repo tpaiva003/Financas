@@ -590,6 +590,11 @@ export interface Income {
 
 export type CreateIncomeInput = Omit<Income, "id"> & { createdBy?: string | null };
 
+/** O que se pode corrigir num rendimento. O ambiente nunca muda. */
+export type UpdateIncomeInput = Partial<
+  Pick<Income, "kind" | "description" | "amountCents" | "date" | "recurring" | "notes">
+>;
+
 /** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
 export interface SpendingGoal {
   id: string;
@@ -1057,6 +1062,13 @@ export interface Repository {
   // Rendimento.
   listIncome(spaceId: string): Promise<Income[]>;
   createIncome(input: CreateIncomeInput): Promise<Income>;
+  /**
+   * Corrigir um rendimento já registado.
+   *
+   * O `spaceId` é obrigatório, como em tudo o que mexe em dados de um ambiente:
+   * é o `space_id` que o código passa que faz a fronteira, e mais nada.
+   */
+  updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void>;
   deleteIncome(id: string, spaceId: string): Promise<void>;
 
   /** Nº de despesas por aprovar no ambiente. */

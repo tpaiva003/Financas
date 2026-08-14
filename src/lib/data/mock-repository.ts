@@ -48,6 +48,7 @@ import type {
   CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
+  UpdateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1010,6 +1011,19 @@ export class MockRepository implements Repository {
     const entry: Income = { ...input, id: `inc_${randomUUID()}` };
     getStore().income.push(entry);
     return entry;
+  }
+
+  async updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void> {
+    const i = getStore().income.find((x) => x.id === id && x.spaceId === spaceId);
+    // Sem o ambiente certo não se corrige nada, como na produção. Um mock mais
+    // permissivo esconde exactamente o engano que os testes procuram.
+    if (!i) return;
+    if (patch.kind !== undefined) i.kind = patch.kind;
+    if (patch.description !== undefined) i.description = patch.description;
+    if (patch.amountCents !== undefined) i.amountCents = patch.amountCents;
+    if (patch.date !== undefined) i.date = patch.date;
+    if (patch.recurring !== undefined) i.recurring = patch.recurring;
+    if (patch.notes !== undefined) i.notes = patch.notes;
   }
 
   async deleteIncome(id: string, spaceId: string): Promise<void> {

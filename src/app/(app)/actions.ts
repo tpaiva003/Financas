@@ -2268,6 +2268,32 @@ export async function saveIncomeAction(
     ? (rawKind as (typeof INCOME_KINDS)[number])
     : "outro";
 
+  /**
+   * Com id, corrige-se o que já lá está; sem id, regista-se de novo.
+   *
+   * O id vem do formulário mas **nunca decide o ambiente**: o `ctx.space.id` é
+   * que manda, e o repositório exige-o. Um id de outro ambiente não encontra
+   * linha nenhuma e não escreve nada.
+   */
+  const id = String(formData.get("id") ?? "").trim();
+  if (id) {
+    try {
+      await getRepository().updateIncome(id, ctx.space.id, {
+        kind,
+        description: description.slice(0, 120),
+        amountCents: cents,
+        date,
+        recurring: String(formData.get("recurring") ?? "") === "on",
+        notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      });
+    } catch {
+      return { error: "Não consegui gravar a correção." };
+    }
+    revalidatePath("/rendimentos");
+    revalidatePath("/relatorios");
+    return { ok: true, message: `${description} corrigido.` };
+  }
+
   try {
     await getRepository().createIncome({
       spaceId: ctx.space.id,
