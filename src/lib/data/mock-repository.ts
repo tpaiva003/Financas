@@ -7,8 +7,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { stableUid } from "@/lib/domain";
-import type { Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
+import { stableUid, ticketAberto } from "@/lib/domain";
+import type { Expense, Settlement, ClassificationRule, Split, TicketStatus, EtapaAvaliacao } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
@@ -30,6 +30,22 @@ import type {
   StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
+  CreateNetWorthSnapshot,
+  NetWorthSnapshotRow,
+  AssetAttachment,
+  CreateAssetAttachment,
+  Ticket,
+  TicketMessage,
+  StoredAssetSplit,
+  CreateAssetSplitInput,
+  StoredValuation,
+  CreateValuationInput,
+  UpdateValuationInput,
+  ValuationEstudo,
+  ValuationAttachment,
+  CreateValuationAttachment,
+  CreateTicketInput,
+  CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
   Membership,
@@ -75,6 +91,13 @@ interface Store {
   spendingGoals: SpendingGoal[];
   assets: Asset[];
   assetTrades: AssetTrade[];
+  netWorthSnapshots: NetWorthSnapshotRow[];
+  assetAttachments: AssetAttachment[];
+  assetSplits: StoredAssetSplit[];
+  valuations: StoredValuation[];
+  valuationAttachments: ValuationAttachment[];
+  tickets: Ticket[];
+  ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
   quoteCurrencies: Record<string, string>;
   income: Income[];
@@ -104,8 +127,18 @@ function getStore(): Store {
       importTemplates: [],
       importReminders: [],
       spendingGoals: [],
+      // Semeados: sem eles, metade dos ecrãs abre vazia e não há capturas para
+      // a landing. As coleções que ficam a zero são as que ainda não têm
+      // exemplo escrito.
       assets: seedAssets(),
       assetTrades: seedAssetTrades(),
+      netWorthSnapshots: [],
+      assetAttachments: [],
+      assetSplits: [],
+      valuations: [],
+      valuationAttachments: [],
+      tickets: [],
+      ticketMessages: [],
       quotes: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.quotes])),
       quoteCurrencies: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.currency])),
       income: seedIncomes(),
@@ -120,6 +153,18 @@ function canView(e: Expense, viewerId: string): boolean {
   if (e.kind === "shared") return true;
   if (e.ownerId === viewerId) return true;
   return e.visibleToPartner === true;
+}
+
+/**
+ * Uma despesa pelo id, mas só se for mesmo daquele ambiente.
+ *
+ * Procurar só pelo id deixava qualquer id chegar a qualquer ambiente. O mock
+ * aplica a mesma regra que o Supabase para não haver um backend mais permissivo
+ * do que o outro: se os testes correm contra o mock, é o mock que tem de
+ * apanhar o engano.
+ */
+function findExpense(id: string, spaceId: string): Expense | undefined {
+  return getStore().expenses.find((x) => x.id === id && (x.spaceId ?? "casa") === spaceId);
 }
 
 export class MockRepository implements Repository {
@@ -182,6 +227,7 @@ export class MockRepository implements Repository {
       name: input.name,
       linkedUserId: input.linkedUserId ?? null,
       email: input.email ?? null,
+      participatesFrom: input.participatesFrom ?? null,
     };
     getStore().members.push(member);
     return member;
@@ -194,6 +240,7 @@ export class MockRepository implements Repository {
     if (patch.email !== undefined) m.email = patch.email;
     if (patch.role !== undefined) m.role = patch.role;
     if (patch.linkedUserId !== undefined) m.linkedUserId = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) m.participatesFrom = patch.participatesFrom;
   }
 
   async deleteMember(id: string, spaceId: string): Promise<void> {
@@ -229,8 +276,8 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
+    const e = findExpense(id, spaceId);
     if (!e || !canView(e, viewerId)) return null;
     return e;
   }
@@ -281,8 +328,12 @@ export class MockRepository implements Repository {
     return expense;
   }
 
-  async updateExpense(id: string, input: import("./repository").UpdateExpenseInput): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async updateExpense(
+    id: string,
+    spaceId: string,
+    input: import("./repository").UpdateExpenseInput,
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (!e) return;
     e.description = input.description;
     e.amountCents = input.amountCents;
@@ -296,13 +347,13 @@ export class MockRepository implements Repository {
     e.updatedAt = new Date().toISOString();
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) e.receiptPath = path;
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.deletedAt = new Date().toISOString();
       e.updatedAt = e.deletedAt;
@@ -333,8 +384,8 @@ export class MockRepository implements Repository {
     }
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.amountCents = amountCents;
       e.status = "confirmed";
@@ -505,8 +556,12 @@ export class MockRepository implements Repository {
     delete store.passwords[id];
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.approvalStatus = status === "approved" ? null : "rejected";
       e.updatedAt = new Date().toISOString();
@@ -654,6 +709,9 @@ export class MockRepository implements Repository {
 
     return {
       accountCount: store.appUsers.length,
+      // O mock não guarda `createdAt` em tudo o que serviria de evento, e uma
+      // curva construída sobre metade dos dados seria pior do que não a ter.
+      crescimento: null,
       spaceCount: spaces.length,
       expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
       activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
@@ -703,7 +761,83 @@ export class MockRepository implements Repository {
   }
 
   async listAssets(spaceId: string): Promise<Asset[]> {
-    return getStore().assets.filter((a) => a.spaceId === spaceId);
+    // A mesma regra do Supabase: a ordem escolhida à mão primeiro, e quem nunca
+    // foi mexido fica por ordem de criação. Um mock mais permissivo do que a
+    // produção esconde exatamente os enganos que os testes procuram.
+    const doAmbiente = getStore().assets.filter((a) => a.spaceId === spaceId);
+    return doAmbiente
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => {
+        const ax = x.a.sortOrder ?? null;
+        const ay = y.a.sortOrder ?? null;
+        if (ax !== null && ay !== null) return ax - ay || x.i - y.i;
+        if (ax !== null) return -1;
+        if (ay !== null) return 1;
+        return x.i - y.i;
+      })
+      .map((x) => x.a);
+  }
+
+  async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
+    return getStore()
+      .netWorthSnapshots.filter((s) => s.spaceId === spaceId)
+      .sort((a, b) => (a.onDate < b.onDate ? -1 : a.onDate > b.onDate ? 1 : 0));
+  }
+
+  async saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void> {
+    const store = getStore();
+    // Uma por dia e por ambiente: a do dia substitui a anterior.
+    const i = store.netWorthSnapshots.findIndex(
+      (s) => s.spaceId === input.spaceId && s.onDate === input.onDate,
+    );
+    const row: NetWorthSnapshotRow = { id: i >= 0 ? store.netWorthSnapshots[i]!.id : randomUUID(), ...input };
+    if (i >= 0) store.netWorthSnapshots[i] = row;
+    else store.netWorthSnapshots.push(row);
+  }
+
+  async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
+    return getStore().assetAttachments.filter(
+      (a) => a.spaceId === spaceId && (!assetId || a.assetId === assetId),
+    );
+  }
+
+  async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
+    // A mesma regra da produção: o ambiente entra na procura, não numa
+    // comparação a seguir.
+    return getStore().assetAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null;
+  }
+
+  async createAssetAttachment(input: CreateAssetAttachment): Promise<void> {
+    getStore().assetAttachments.push({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  async markAssetAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments[i] = { ...store.assetAttachments[i]!, status: "pronto" };
+  }
+
+  async moveAssetAttachments(
+    fromAssetId: string,
+    toAssetId: string,
+    spaceId: string,
+  ): Promise<number> {
+    let mexidos = 0;
+    for (const a of getStore().assetAttachments) {
+      // Filtra pelo ambiente tal como o Supabase: um mock mais permissivo do
+      // que a produção esconde o engano que os testes procuram.
+      if (a.assetId === fromAssetId && a.spaceId === spaceId) {
+        a.assetId = toAssetId;
+        mexidos += 1;
+      }
+    }
+    return mexidos;
+  }
+
+  async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments.splice(i, 1);
   }
 
   async createAsset(input: CreateAssetInput): Promise<Asset> {
@@ -748,6 +882,41 @@ export class MockRepository implements Repository {
     store.assetTrades = store.assetTrades.filter((t) => !(t.id === id && t.spaceId === spaceId));
   }
 
+  async updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void> {
+    const store = getStore();
+    const i = store.assetTrades.findIndex((t) => t.id === id && t.spaceId === spaceId);
+    if (i < 0) return;
+    store.assetTrades[i] = { ...store.assetTrades[i]!, ...patch };
+  }
+
+  /**
+   * Lê o armazém directamente, e **não** por `listQuotes` símbolo a símbolo.
+   *
+   * Não é preciosismo: em produção isto é uma consulta só, e um mock que faça N
+   * leituras por baixo mede outra coisa — um teste que conte viagens à base de
+   * dados passaria a contar as do mock em vez das do código.
+   */
+  async listQuotesFor(
+    symbols: readonly string[],
+    fromDate?: string,
+  ): Promise<Map<string, StoredQuote[]>> {
+    const fora = new Map<string, StoredQuote[]>();
+    const todas = getStore().quotes;
+    for (const s of new Set(symbols.map((x) => x.trim().toLowerCase()).filter(Boolean))) {
+      fora.set(
+        s,
+        (todas[s] ?? [])
+          .filter((q) => !fromDate || q.date >= fromDate)
+          .sort((a, b) => (a.date < b.date ? -1 : 1)),
+      );
+    }
+    return fora;
+  }
+
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const all = getStore().quotes[symbol] ?? [];
     return all
@@ -758,6 +927,25 @@ export class MockRepository implements Repository {
   async latestQuote(symbol: string): Promise<StoredQuote | null> {
     const all = await this.listQuotes(symbol);
     return all.length > 0 ? all[all.length - 1]! : null;
+  }
+
+  async latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>> {
+    const fora = new Map<string, { date: string; closeCents: number; currency: string }>();
+    const store = getStore();
+    for (const bruto of symbols) {
+      const s = bruto.trim().toLowerCase();
+      const lista = store.quotes[s];
+      if (!lista || lista.length === 0) continue;
+      const ultima = lista[lista.length - 1]!;
+      fora.set(s, {
+        date: ultima.date,
+        closeCents: ultima.closeCents,
+        currency: store.quoteCurrencies?.[s] ?? "EUR",
+      });
+    }
+    return fora;
   }
 
   async quoteCurrency(symbol: string): Promise<string | null> {
@@ -890,6 +1078,261 @@ export class MockRepository implements Repository {
       archivedAt: null,
       notes: null,
     });
+  }
+
+  // ---- Desdobramentos ---------------------------------------------------
+
+  async listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]> {
+    return getStore()
+      .assetSplits.filter(
+        (s) => s.spaceId === spaceId && (assetId ? s.assetId === assetId : true),
+      )
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async createAssetSplit(input: CreateAssetSplitInput): Promise<void> {
+    const store = getStore();
+    // O mesmo ativo não desdobra duas vezes no mesmo dia — o índice único da
+    // migração diz o mesmo, e o mock aplica a mesma regra para não ser mais
+    // permissivo do que a produção.
+    const jaHa = store.assetSplits.some(
+      (s) => s.assetId === input.assetId && s.date === input.date,
+    );
+    if (jaHa) throw new Error("Já há um desdobramento nesse dia para este ativo.");
+    store.assetSplits.push({
+      id: `spl_${randomUUID()}`,
+      spaceId: input.spaceId,
+      assetId: input.assetId,
+      date: input.date,
+      ratio: input.ratio,
+      notes: input.notes ?? null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteAssetSplit(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.assetSplits = store.assetSplits.filter(
+      (s) => !(s.id === id && s.spaceId === spaceId),
+    );
+  }
+
+  // ---- Avaliações -------------------------------------------------------
+
+  async listValuations(spaceId: string): Promise<StoredValuation[]> {
+    return getStore()
+      .valuations.filter((v) => v.spaceId === spaceId)
+      .sort((a, b) => (a.studyDate < b.studyDate ? 1 : a.studyDate > b.studyDate ? -1 : 0));
+  }
+
+  async createValuation(input: CreateValuationInput): Promise<string> {
+    const id = `val_${randomUUID()}`;
+    const e = input.estudo ?? null;
+    getStore().valuations.push({
+      id,
+      spaceId: input.spaceId,
+      symbol: input.symbol,
+      name: input.name,
+      stage: input.stage,
+      studyDate: input.studyDate,
+      valuedAt: e?.valuedAt ?? null,
+      logoDomain: input.logoDomain ?? null,
+      fcfCents: e?.fcfCents ?? null,
+      shares: e?.shares ?? null,
+      netDebtCents: e?.netDebtCents ?? null,
+      discountPct: e?.discountPct ?? null,
+      perpetualPct: e?.perpetualPct ?? null,
+      years: e?.years ?? null,
+      marginPct: e?.marginPct ?? null,
+      scenarios: e?.scenarios ?? null,
+      weightedPriceCents: e?.weightedPriceCents ?? null,
+      priceAtStudyCents: e?.priceAtStudyCents ?? null,
+      upsidePct: e?.upsidePct ?? null,
+      notes: input.notes,
+      aiSummary: null,
+      aiSummaryAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  async updateValuation(id: string, spaceId: string, patch: UpdateValuationInput): Promise<void> {
+    // Filtra pelo ambiente tal como o Supabase. Um mock mais permissivo do que
+    // a produção esconde exactamente o engano que os testes procuram.
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!v) return;
+    if (patch.stage !== undefined) v.stage = patch.stage;
+    if (patch.name !== undefined) v.name = patch.name;
+    if (patch.symbol !== undefined) v.symbol = patch.symbol;
+    if (patch.notes !== undefined) v.notes = patch.notes;
+    if (patch.logoDomain !== undefined) v.logoDomain = patch.logoDomain;
+    if (patch.aiSummary !== undefined) {
+      v.aiSummary = patch.aiSummary;
+      v.aiSummaryAt = patch.aiSummary === null ? null : new Date().toISOString();
+    }
+  }
+
+  async setValuationEstudo(id: string, spaceId: string, e: ValuationEstudo): Promise<void> {
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!v) return;
+    Object.assign(v, {
+      fcfCents: e.fcfCents,
+      shares: e.shares,
+      netDebtCents: e.netDebtCents,
+      discountPct: e.discountPct,
+      perpetualPct: e.perpetualPct,
+      years: e.years,
+      marginPct: e.marginPct,
+      scenarios: e.scenarios,
+      weightedPriceCents: e.weightedPriceCents,
+      priceAtStudyCents: e.priceAtStudyCents,
+      upsidePct: e.upsidePct,
+      valuedAt: e.valuedAt,
+    });
+  }
+
+  async deleteValuation(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuations = store.valuations.filter((v) => !(v.id === id && v.spaceId === spaceId));
+    // O `on delete cascade` da migração leva os anexos; o mock aplica a mesma
+    // regra, senão ficavam anexos de uma avaliação que já não existe.
+    store.valuationAttachments = store.valuationAttachments.filter((a) => a.valuationId !== id);
+  }
+
+  // ---- Anexos de uma avaliação -------------------------------------------
+
+  async listValuationAttachments(
+    spaceId: string,
+    valuationId?: string,
+  ): Promise<ValuationAttachment[]> {
+    return getStore().valuationAttachments.filter(
+      (a) => a.spaceId === spaceId && (valuationId ? a.valuationId === valuationId : true),
+    );
+  }
+
+  async getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null> {
+    return (
+      getStore().valuationAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null
+    );
+  }
+
+  async createValuationAttachment(input: CreateValuationAttachment): Promise<void> {
+    getStore().valuationAttachments.push({
+      ...input,
+      extractedText: null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async markValuationAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.status = "pronto";
+  }
+
+  async setValuationAttachmentText(
+    id: string,
+    spaceId: string,
+    texto: string | null,
+  ): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.extractedText = texto;
+  }
+
+  async deleteValuationAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuationAttachments = store.valuationAttachments.filter(
+      (a) => !(a.id === id && a.spaceId === spaceId),
+    );
+  }
+
+  // ---- Pedidos de ajuda -------------------------------------------------
+  //
+  // Duas leituras com nomes diferentes, tal como no Supabase. O mock aplica a
+  // MESMA regra de propósito: um backend mais permissivo do que o outro
+  // esconde exactamente o engano que os testes procuram.
+
+  async createTicket(input: CreateTicketInput): Promise<string> {
+    const store = getStore();
+    const id = `tkt_${randomUUID()}`;
+    const agora = new Date().toISOString();
+    store.tickets.unshift({
+      id,
+      spaceId: input.spaceId,
+      createdBy: input.createdBy,
+      subject: input.subject,
+      status: "novo",
+      createdAt: agora,
+      updatedAt: agora,
+    });
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: id,
+      authorId: input.createdBy,
+      body: input.body,
+      internal: false,
+      createdAt: agora,
+    });
+    return id;
+  }
+
+  async listTicketsDoUtilizador(userId: string): Promise<Ticket[]> {
+    return getStore()
+      .tickets.filter((t) => t.createdBy === userId)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async listTicketsTodos(): Promise<Ticket[]> {
+    return [...getStore().tickets].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id && t.createdBy === userId) ?? null;
+  }
+
+  async getTicket(id: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id) ?? null;
+  }
+
+  async listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId && !m.internal)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async addTicketMessage(input: CreateTicketMessageInput): Promise<void> {
+    const store = getStore();
+    const agora = new Date().toISOString();
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: input.ticketId,
+      authorId: input.authorId,
+      body: input.body,
+      internal: input.internal,
+      createdAt: agora,
+    });
+    // Uma nota interna não mexe no `updatedAt`: mexer denunciava a hora em
+    // que alguém escreveu uma coisa que o utilizador não pode ler.
+    if (!input.internal) {
+      const t = store.tickets.find((x) => x.id === input.ticketId);
+      if (t) t.updatedAt = agora;
+    }
+  }
+
+  async setTicketStatus(id: string, status: TicketStatus): Promise<void> {
+    const t = getStore().tickets.find((x) => x.id === id);
+    if (!t) return;
+    t.status = status;
+    t.updatedAt = new Date().toISOString();
+  }
+
+  async countTicketsAbertos(): Promise<number> {
+    return getStore().tickets.filter((t) => ticketAberto(t.status)).length;
   }
 
   async listContactMessages(): Promise<ContactMessage[]> {

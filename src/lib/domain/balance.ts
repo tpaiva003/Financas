@@ -35,6 +35,44 @@ export interface ComputeBalanceParams {
   users: UserId[];
   expenses: Expense[];
   settlements: Settlement[];
+  /**
+   * Desde quando cada pessoa divide despesas ("AAAA-MM-DD"). Ausente ou `null`
+   * quer dizer "desde sempre", que é o comportamento de quem já cá estava.
+   *
+   * Sem isto, acrescentar alguém ao ambiente redividia o histórico inteiro: a
+   * pessoa passava a dever a sua parte de jantares em que não esteve e o saldo
+   * de quem lá estava invertia-se sozinho. O saldo deixava de ser explicável,
+   * que é o único invariante que este ficheiro tem de defender.
+   */
+  participatesFrom?: Record<UserId, string | null>;
+}
+
+/**
+ * Quem divide ESTA despesa.
+ *
+ * Só conta para divisões em partes iguais. Uma divisão com pesos explícitos
+ * (percentagens, quotas, montantes fixos) já nomeia quem suporta o quê: quem
+ * não estiver lá tem peso zero e não recebe nada, por isso acrescentar uma
+ * pessoa nunca lhe mexeu. É o `EQUAL` que reparte por cabeças, e é só aí que
+ * "quantas cabeças" muda o resultado.
+ */
+function participantsFor(
+  e: Expense,
+  users: UserId[],
+  participatesFrom: Record<UserId, string | null> | undefined,
+): UserId[] {
+  if (e.split.type !== "EQUAL" || !participatesFrom) return users;
+
+  const elegiveis = users.filter((u) => {
+    const desde = participatesFrom[u] ?? null;
+    return desde === null || e.transactionDate >= desde;
+  });
+
+  // Se ninguém for elegível, a despesa não pode ser repartida por cabeças. Em
+  // vez de rebentar (ou de a repartir por gente que não participou), fica a
+  // cargo de quem a pagou: o efeito no saldo é zero e ninguém fica com uma
+  // dívida inventada.
+  return elegiveis.length > 0 ? elegiveis : [e.payerId];
 }
 
 /** Uma despesa entra no saldo? */
@@ -44,25 +82,45 @@ export function countsTowardsBalance(e: Expense): boolean {
 }
 
 export function computeBalance(params: ComputeBalanceParams): BalanceResult {
-  const { users, expenses, settlements } = params;
+  const { users, expenses, settlements, participatesFrom } = params;
+
+  /**
+   * As chaves do saldo.
+   *
+   * Inclui quem pagou mesmo que não conste nos membros. Antes não incluía, e o
+   * crédito de quem tinha pago era simplesmente descartado enquanto as quotas
+   * continuavam a ser debitadas — o saldo deixava de somar zero e as duas
+   * pessoas apareciam a dever dinheiro a ninguém.
+   */
+  const chaves = new Set<UserId>(users);
+  for (const e of expenses) if (countsTowardsBalance(e)) chaves.add(e.payerId);
+  for (const s of settlements) {
+    chaves.add(s.fromUserId);
+    chaves.add(s.toUserId);
+  }
+
   const net: Record<UserId, number> = {};
-  for (const u of users) net[u] = 0;
+  for (const u of chaves) net[u] = 0;
 
   const contributions: BalanceContribution[] = [];
 
   for (const e of expenses) {
     if (!countsTowardsBalance(e)) continue;
-    const shares = computeShares(e.amountCents, e.split, users);
+    const shares = computeShares(
+      e.amountCents,
+      e.split,
+      participantsFor(e, users, participatesFrom),
+    );
 
     const deltas: Record<UserId, number> = {};
-    for (const u of users) deltas[u] = 0;
+    for (const u of chaves) deltas[u] = 0;
 
-    // Quem pagou colocou o montante total.
+    // Quem pagou colocou o montante total. É independente de como se divide.
     deltas[e.payerId] = (deltas[e.payerId] ?? 0) + e.amountCents;
     // Cada um consome a sua quota-parte.
-    for (const u of users) deltas[u] = (deltas[u] ?? 0) - (shares[u] ?? 0);
+    for (const u of chaves) deltas[u] = (deltas[u] ?? 0) - (shares[u] ?? 0);
 
-    for (const u of users) net[u] = (net[u] ?? 0) + (deltas[u] ?? 0);
+    for (const u of chaves) net[u] = (net[u] ?? 0) + (deltas[u] ?? 0);
 
     contributions.push({
       source: "expense",
@@ -76,12 +134,12 @@ export function computeBalance(params: ComputeBalanceParams): BalanceResult {
 
   for (const s of settlements) {
     const deltas: Record<UserId, number> = {};
-    for (const u of users) deltas[u] = 0;
+    for (const u of chaves) deltas[u] = 0;
     // Quem paga o acerto reduz a sua dívida; quem recebe reduz o seu crédito.
     deltas[s.fromUserId] = (deltas[s.fromUserId] ?? 0) + s.amountCents;
     deltas[s.toUserId] = (deltas[s.toUserId] ?? 0) - s.amountCents;
 
-    for (const u of users) net[u] = (net[u] ?? 0) + (deltas[u] ?? 0);
+    for (const u of chaves) net[u] = (net[u] ?? 0) + (deltas[u] ?? 0);
 
     contributions.push({
       source: "settlement",

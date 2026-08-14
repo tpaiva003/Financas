@@ -1,109 +1,90 @@
 # Rachar, Contas à Moda do Porto
 
-App web privada (PWA) que começou por dividir as despesas do agregado e hoje
-trata do dinheiro nos dois sentidos: o do dia a dia e o de longo prazo. Substitui
-o Tricount/Splitwise **e** a folha de cálculo do património. Atrás de
-autenticação, com a landing como única parte pública.
+App web (PWA) para registar e dividir despesas entre as pessoas de um agregado, e
+para acompanhar o património. Substitui o Tricount/Splitwise e cresceu para lá
+disso.
 
-> Especificação completa em [`REQUISITOS.md`](./REQUISITOS.md). Decisões de
-> desenvolvimento em [`DECISOES.md`](./DECISOES.md). **Estado verificado e
-> trabalho em falta em [`RETOMAR.md`](./RETOMAR.md), que é o primeiro ficheiro a
-> abrir numa sessão nova.**
+> Ponto de situação em [`RETOMAR.md`](./RETOMAR.md) — **é o primeiro ficheiro a
+> ler**. Decisões, com o contexto todo, em [`DECISOES.md`](./DECISOES.md). O
+> [`REQUISITOS.md`](./REQUISITOS.md) é a especificação original e descreve uma
+> app de dois utilizadores que já não é esta; vale como história.
 
-## Estado
+## O que faz
 
-Em produção, a servir. O que já funciona:
-
-**Contas partilhadas**
-- ➕ Entrada manual rápida, e divisão a meias, por percentagem, valor fixo ou quotas.
-- ⚖️ Saldo "quem deve a quem", sempre **explicável** até cada despesa e acerto.
-- 🤝 Acertos com histórico; 📋 lista com filtros e pesquisa; 🧾 recibos anexados.
-- 🔁 Recorrentes, incluindo as de valor variável (confirma-se antes de entrar no saldo).
-- ✅ Aprovações, para quem só submete despesas.
-
-**Trazer os dados de fora**
-- 📥 Importação de Excel e CSV do banco, PDF do cartão Universo e ficheiros de corretora.
-- 🧠 Deteção de colunas por cabeçalho, com um modelo a ajudar nos formatos novos
-  (**escolhe colunas, nunca lê valores**).
-- 🚫 Deduplicação por UID estável: a mesma transação nunca entra duas vezes.
-- ⏰ Lembretes de importação por banco.
-
-**Perceber para onde vai**
-- 🏷️ Classificação por regras, categorias próprias e metas mensais.
-- 📊 Relatórios por categoria, por comerciante e por mês, com média móvel e
-  período homólogo comparado de forma justa a meio do mês.
-- 💶 Rendimentos (ativo e passivo) e taxa de poupança.
-
-**Património e investimentos**
-- 🏦 Contas, depósitos, imóveis e dívidas; património líquido numa conta só.
-- 🏠 Crédito à habitação com data do último pagamento e juros até lá.
-- 📈 Posições calculadas a partir de movimentos datados, com custo médio ponderado,
-  cotações automáticas, TIR e TWR, e comparação honesta com um ETF em euros.
-- 🔥 Calculadora FIRE e 🧮 avaliação de empresas por fluxos de caixa descontados.
-
-**A plataforma**
-- 🏘️ Vários **ambientes** por conta, com convites, papéis e isolamento entre inquilinos.
-- 📱 PWA instalável (Android/iOS), tema de dia e de noite.
-- 🗄️ Schema Supabase (Postgres) com **RLS**.
-- 🌐 Landing pública em [rachar.pt](https://rachar.pt), com capturas geradas a
-  partir da própria app (`npm run shots`).
-- ✅ **461 testes** à lógica crítica (dedup, saldo, divisão, classificação,
-  rentabilidade, câmbio, amortização, FIRE, avaliação, limites, isolamento).
-
-O que falta está em [`RETOMAR.md`](./RETOMAR.md).
+- **Despesas**: entrada rápida, importação de extratos (Excel, CSV, PDF do
+  cartão Universo) com deteção de colunas e formatos aprendidos, classificação
+  por regras, recorrentes, metas.
+- **Saldo** "quem deve a quem", sempre **explicável** até cada despesa e acerto.
+  Acrescentar alguém a um ambiente não reescreve o histórico: escolhe-se se
+  divide tudo, a partir de uma data, ou só dali para a frente.
+- **Ambientes** (multi-inquilino) com participantes, convites e dois papéis:
+  `full`, que participa no saldo, e `submitter`, que só submete despesas para
+  aprovação.
+- **Património**: bens, investimentos, movimentos de corretora, cotações
+  automáticas, câmbio, dívidas com amortização, rendimentos, comparação com
+  índices e calculadora FIRE.
+- **Relatórios** e exportação CSV.
+- **PWA** instalável (Android/iOS), responsiva.
+- **Landing pública** em [rachar.pt](https://rachar.pt), com capturas de ecrã
+  geradas a partir da própria app (`npm run shots`).
 
 ## Stack
 
 Next.js 14 (App Router) · React 18 · TypeScript · Tailwind · Auth.js (NextAuth v5)
-· Supabase (Postgres + RLS) · Vitest · Zod.
+· Supabase (Postgres + Storage) · Vitest · Zod.
+
+Entra-se com **email e palavra-chave**. Os fornecedores Google e Microsoft estão
+configurados no Auth.js mas ainda **não têm botão na interface**.
 
 ## Arranque rápido (modo mock, sem Supabase)
 
-A app arranca navegável de ponta a ponta com dados de exemplo, sem precisar de
-configurar Supabase nem OAuth.
+A app arranca navegável de ponta a ponta com dados de exemplo, sem Supabase.
 
 ```bash
 npm install
-cp .env.example .env.local      # já vem pronto para modo mock
+cp .env.example .env.local
 npm run dev                     # http://localhost:3000
 ```
 
-Entra com um dos emails da allow-list (`tiago@example.com` ou
-`clara@example.com`) e a palavra-chave que quiseres: na primeira entrada de cada
-conta, a que escreveres fica a ser a dela. Variáveis relevantes no `.env.local`:
+No `.env.local`, para desenvolvimento local:
 
 ```ini
 AUTH_SECRET="<gera com: openssl rand -base64 32>"
+AUTH_URL="http://localhost:3000"   # senão os redirecionamentos vão para produção
 ALLOWED_EMAILS="tiago@example.com,clara@example.com"
-APP_DATA_MODE="mock"              # repositório em memória, já semeado
-AUTH_URL="http://localhost:3000"  # TEM de ser o URL local, ver abaixo
+APP_DATA_MODE="mock"               # repositório em memória, com seed
 ```
 
-> **O `AUTH_URL` local não é um detalhe.** Com um URL `https`, o Auth.js marca os
-> cookies de sessão como `Secure` e o browser recusa-os em `http://localhost`. O
-> login falha **sem dar erro**: volta à página de login como se a palavra-chave
-> estivesse errada.
+Entra com um dos emails do `ALLOWED_EMAILS`. **Na primeira entrada, a
+palavra-chave que escreveres passa a ser a palavra-chave daquela conta** — é
+cómodo em local e é uma dívida conhecida em produção (ver `RETOMAR.md`).
+
+> **O `AUTH_URL` local não é um detalhe.** Com um URL `https`, o Auth.js marca
+> os cookies de sessão como `Secure` e o browser recusa-os em
+> `http://localhost`. O login falha **sem dar erro**: volta à página de login
+> como se a palavra-chave estivesse errada.
 
 Os dados de exemplo cobrem a app toda (despesas de um ano, património,
 investimentos com movimentos datados, cotações e rendimentos), para nenhum ecrã
 abrir vazio.
 
-## Configurar SSO real + Supabase (produção)
+## Configurar Supabase (produção)
 
 1. **Supabase**: cria um projeto. Em *Project Settings → API* copia o URL, a
    `anon key` e a `service_role key` para o `.env.local`.
-2. Aplica o schema e o seed de referência:
-   - SQL Editor → cola `supabase/migrations/0001_init.sql` e corre.
-   - SQL Editor → cola `supabase/seed.sql` (atualiza os emails para os reais).
-   - Ou, com o **Supabase CLI**: `supabase db push`.
-3. **OAuth**: cria credenciais Google e/ou Microsoft Entra ID e preenche
-   `AUTH_GOOGLE_*` / `AUTH_MICROSOFT_ENTRA_ID_*` no `.env.local`.
-4. Define `ALLOWED_EMAILS` com os emails reais, `APP_DATA_MODE="supabase"`, e
-   `AUTH_URL`/`NEXT_PUBLIC_SITE_URL` com o domínio de produção.
-5. (Opcional) Semear dados de exemplo no Supabase:
+2. Aplica **todas** as migrações de `supabase/migrations/`, por ordem — são 23,
+   e as despesas dependem de tabelas criadas na `0003`. Com o **Supabase CLI**:
+   `supabase db push`.
+3. Define `APP_DATA_MODE="supabase"` e `AUTH_URL` com o domínio real.
+4. Define `CRON_SECRET` — sem ele a rota de cron responde 503 e as cotações não
+   se atualizam sozinhas.
+5. (Opcional) Semear dados de exemplo:
    ```bash
    npm run seed
    ```
+
+Para SSO, preenche `AUTH_GOOGLE_*` / `AUTH_MICROSOFT_ENTRA_ID_*` — mas nota que
+falta a interface, por isso as credenciais sozinhas não chegam.
 
 ## Scripts
 
@@ -127,47 +108,53 @@ landing com capturas de uma versão que já não existe promete o que não entre
 ```
 src/
   app/                  # rotas (App Router)
-    (app)/              # área autenticada: saldo, movimentos, análise, património
-    page.tsx            # landing pública (rachar.pt)
-    login/ privacidade/ termos/ recuperar/   # o resto do que abre sem sessão
-    api/auth/           # rotas do Auth.js
+    (app)/              # área autenticada
+    login/  recuperar/  privacidade/  termos/   # públicas, com a landing em /
+    api/                # auth, cron, export, fx, recibos
+    error.tsx  global-error.tsx  not-found.tsx  # ecrãs de falha
   components/           # componentes de UI
     landing/            # só da página pública (molduras, revelação ao scroll)
   lib/
-    domain/             # ⭐ lógica de domínio pura + testes (dedup, saldo, divisão, classificação)
+    domain/             # ⭐ lógica pura + testes (saldo, divisão, dedup, posições, câmbio)
+    import/             # leitura de ficheiros e deteção de colunas (+ testes)
     data/               # interface Repository + Mock + Supabase + seed
-    auth.ts             # configuração Auth.js + allow-list
-    services/           # serviços (ex.: saldo do agregado)
-supabase/
-  migrations/0001_init.sql   # modelo de dados + RLS
-  seed.sql                   # dados de referência
-scripts/
-  seed.ts                    # seed do Supabase
-  shots.mjs                  # capturas da landing, tiradas da app a correr
-public/landing/              # essas capturas, em WebP
+- O **saldo** é sempre **explicável** até às despesas que o compõem, e mexer nos
+  membros não reescreve o passado.
+- **Sem taxa de câmbio não se grava preço nenhum.**
+- A IA escolhe **colunas**, nunca lê valores.
+- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
+- Uma página pública **verifica-se sem sessão**, não se assume: quem testa está
+  quase sempre autenticado, e foi assim que as páginas legais e a recuperação de
+  palavra-chave passaram tempo a redirecionar para o login sem ninguém notar.
 ```
 
 ## Invariantes (nunca violar)
 
-- Deduplicação por **UID estável**: a mesma transação nunca entra duas vezes.
+- Deduplicação por **UID estável**: a mesma transação nunca entra duas vezes —
+  e duas transações diferentes nunca viram uma.
 - Entradas manuais **nunca** são reclassificadas automaticamente.
 - "**Quem pagou**" é independente de "**como se divide**".
-- O **saldo** é sempre **explicável** até às despesas que o compõem.
+- O **saldo** é sempre **explicável**, e mexer nos membros não reescreve o
+  passado.
 - **Sem taxa de câmbio não se grava preço nenhum.**
-- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
-- Nada dos dados de ninguém é acessível sem sessão. Sem sessão abrem só a
-  landing, o login, a privacidade, os termos e a reposição de palavra-chave, e
-  nenhuma dessas páginas mostra dados de quem quer que seja.
+- A IA escolhe **colunas**, nunca lê valores.
 
-## Privacidade
+As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
+participantes chamados André e Maria: são imagens numa página pública e não
+levam lá dados de ninguém.
 
-Os dados de um ambiente são acessíveis só a quem lá está, atrás de autenticação,
-com RLS na base de dados e isolamento entre inquilinos verificado em testes. Uma
-pessoa não consegue sequer descobrir que existem outras contas com que não
-partilhe um ambiente. Recibos e ficheiros em armazenamento privado, por URL
-assinado de curta duração.
+## Privacidade e segurança
 
-As capturas de ecrã da landing são **dados de exemplo do modo mock**, nunca
-dados reais: são imagens numa página pública. Ver `DECISOES.md` para a estratégia
-de RLS e `RETOMAR.md` para o texto de RGPD que ainda falta escrever na
-`/privacidade`.
+Fora as páginas públicas (landing, login, recuperação e páginas legais), nada é
+acessível sem sessão. Recibos em armazenamento privado, servidos por URL
+assinado. Sem indexação (`X-Robots-Tag: noindex`).
+
+**O RLS não é a fronteira entre ambientes.** Toda a app fala com o Supabase pela
+chave de serviço, que o ignora; as políticas existem mas nenhuma olha para o
+`space_id`. O isolamento é o `space_id` que o código passa a cada consulta — uma
+consulta por `id` sem filtrar o ambiente é uma falha de segurança. Ver
+`src/lib/data/isolation.test.ts`.
+
+As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
+participantes chamados André e Maria: são imagens numa página pública e não
+levam lá dados de ninguém.

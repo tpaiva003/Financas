@@ -38,6 +38,20 @@ import {
 } from "@/lib/domain";
 
 const TIMEOUT_MS = 10_000;
+/**
+ * O mesmo tecto, mas quando ninguém pediu para esperar.
+ *
+ * **Dez segundos é o que se dá a quem carregou num botão** e está a olhar para
+ * ele. Ao desenhar a página do património, essa mesma espera é imposta a quem só
+ * queria mudar de menu — e como as fontes se tentam uma a seguir à outra, um
+ * único símbolo que ninguém conhece bloqueia o ecrã vinte segundos. Com seis
+ * desses por visita, a página parecia avariada.
+ *
+ * Três segundos chegam de sobra para uma fonte que está de pé. O que não couber
+ * fica para a visita seguinte e **diz-se por palavras** na linha do
+ * investimento, em vez de um preço velho passar por atual.
+ */
+export const TIMEOUT_NA_VISITA_MS = 3_000;
 
 export interface QuoteSeries {
   symbol: string;
@@ -78,15 +92,32 @@ interface Attempt {
   quotes: Quote[];
   currency: string;
   blocked: boolean;
+  /**
+   * Porque é que não deu, por extenso.
+   *
+   * O `blocked` existia e **nunca era lido**: uma fonte a recusar o pedido era
+   * indistinguível de um símbolo que não existe, e a app acusava o símbolo. São
+   * coisas opostas — uma resolve-se esperando, a outra corrigindo o ticker.
+   */
+  motivo?: string | null;
 }
 
 async function fetchFrom(
   source: QuoteSourceId,
   symbol: string,
   from?: string | null,
+  /**
+   * Quem carregou no botão quer o valor de agora.
+   *
+   * Sem isto, o `force` só saltava a verificação contra a base de dados: uma
+   * resposta 200 sem dados ficava uma hora na cache do Next e o botão não a
+   * contornava — carregar outra vez dava exatamente o mesmo nada.
+   */
+  force = false,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Attempt> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(sourceUrl(source, symbol, from), {
       signal: controller.signal,
@@ -96,14 +127,23 @@ async function fetchFrom(
         // pedidos que não parecem vir de um browser.
         "user-agent": "Mozilla/5.0 (compatible; Rachar/1.0; +https://rachar.pt)",
       },
-      next: { revalidate: 3_600 },
+      ...(force ? { cache: "no-store" as const } : { next: { revalidate: 3_600 } }),
     });
-    if (!res.ok) return { quotes: [], currency: "EUR", blocked: false };
+    if (!res.ok) {
+      return { quotes: [], currency: "EUR", blocked: false, motivo: `${source} respondeu ${res.status}` };
+    }
     const text = await res.text();
-    if (looksBlocked(text)) return { quotes: [], currency: "EUR", blocked: true };
-    return { ...parseFor(source, text), blocked: false };
+    if (looksBlocked(text)) {
+      return { quotes: [], currency: "EUR", blocked: true, motivo: `${source} recusou o pedido` };
+    }
+    const lido = parseFor(source, text);
+    return {
+      ...lido,
+      blocked: false,
+      motivo: lido.quotes.length === 0 ? `${source} não conhece este símbolo` : null,
+    };
   } catch {
-    return { quotes: [], currency: "EUR", blocked: false };
+    return { quotes: [], currency: "EUR", blocked: false, motivo: `não consegui falar com a ${source}` };
   } finally {
     clearTimeout(timer);
   }
@@ -119,12 +159,21 @@ async function fetchFrom(
 async function fetchFromSource(
   symbol: string,
   from?: string | null,
-): Promise<{ quotes: StoredQuote[]; currency: string }> {
+  force = false,
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<{ quotes: StoredQuote[]; currency: string; motivo: string | null }> {
+  const motivos: string[] = [];
   for (const source of QUOTE_SOURCES) {
-    const attempt = await fetchFrom(source, symbol, from);
-    if (attempt.quotes.length > 0) return { quotes: attempt.quotes, currency: attempt.currency };
+    const attempt = await fetchFrom(source, symbol, from, force, timeoutMs);
+    if (attempt.quotes.length > 0) {
+      return { quotes: attempt.quotes, currency: attempt.currency, motivo: null };
+    }
+    if (attempt.motivo) motivos.push(attempt.motivo);
   }
-  return { quotes: [], currency: "EUR" };
+  // Todas falharam: diz-se o que cada uma respondeu. "Não encontrei cotações
+  // para este símbolo" culpa o símbolo, e na maior parte das vezes o símbolo
+  // está certo e quem recusou foi a fonte.
+  return { quotes: [], currency: "EUR", motivo: motivos.join("; ") || null };
 }
 
 /**
@@ -135,7 +184,18 @@ async function fetchFromSource(
  */
 export async function getQuoteSeries(
   rawSymbol: string,
-  options: { since?: string | null; force?: boolean; latestOnly?: boolean } = {},
+  options: {
+    since?: string | null;
+    force?: boolean;
+    latestOnly?: boolean;
+    /**
+     * Quanto tempo esperar por cada fonte.
+     *
+     * Existe para o desenho de uma página não impor a espera de quem carregou
+     * num botão. Ver `TIMEOUT_NA_VISITA_MS`.
+     */
+    timeoutMs?: number;
+  } = {},
 ): Promise<QuoteSeries> {
   const symbol = normalizeSymbol(rawSymbol);
   if (!symbol) {
@@ -166,12 +226,22 @@ export async function getQuoteSeries(
 
   if (options.force || isStale(lastDate, today)) {
     // Pede-se só o que falta. Da primeira vez não há nada, e vem tudo.
-    const { quotes: fetched, currency } = await fetchFromSource(symbol, lastDate);
+    const { quotes: fetched, currency, motivo } = await fetchFromSource(
+      symbol,
+      lastDate,
+      options.force,
+      options.timeoutMs ?? TIMEOUT_MS,
+    );
     fetchedCurrency = currency;
     if (fetched.length === 0) {
-      problem = lastDate
-        ? "Não consegui atualizar as cotações agora."
-        : "Não encontrei cotações para este símbolo.";
+      // O motivo por extenso quando o há. "Não encontrei cotações para este
+      // símbolo" acusa o símbolo, e quase sempre o símbolo está certo e quem
+      // recusou foi a fonte — que são problemas opostos: um espera-se, o outro
+      // corrige-se à mão.
+      const base = lastDate
+        ? "Não consegui atualizar as cotações agora"
+        : "Não consegui obter cotações para este símbolo";
+      problem = motivo ? `${base}: ${motivo}.` : `${base}.`;
     } else {
       try {
         await repo.saveQuotes(symbol, fetched, currency);
@@ -393,6 +463,21 @@ async function toEurAtDate(
  * dia no serviço inteiro, não uma vez por visita. Se a fonte falhar, fica o
  * preço que havia, e quem chama mostra a data para não haver enganos.
  */
+/**
+ * Quantos símbolos podem ir à rede numa visita.
+ *
+ * **Existe porque a página do património demorava uma eternidade a abrir.** Um
+ * símbolo que a fonte não conhece nunca chega a ter cotação guardada, e por isso
+ * conta como "velho" **em todas as visitas para sempre** — quatro tentativas com
+ * dez segundos de espera cada, por cada um deles, sempre. Com uma dúzia desses
+ * na carteira, abrir o ecrã passava a ser uma ida à rede de vários minutos.
+ *
+ * Com um tecto, cada visita adianta um pouco e nenhuma paga tudo. Quem quiser
+ * tudo de uma vez carrega no botão, que passa `force` e não tem tecto: aí a
+ * espera é pedida, e uma espera pedida não é o mesmo que uma imposta.
+ */
+const MAX_IDAS_A_REDE_POR_VISITA = 6;
+
 export async function refreshStalePrices(
   spaceId: string,
   options: { force?: boolean } = {},
@@ -402,20 +487,119 @@ export async function refreshStalePrices(
   const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
   if (withSymbol.length === 0) return [];
 
+  /**
+   * Tudo o que está guardado, numa consulta só.
+   *
+   * Antes eram três idas à base de dados por símbolo, e com meia centena de
+   * investimentos isso são cento e cinquenta viagens para desenhar um ecrã cujos
+   * dados já estavam gravados.
+   */
+  const candidatosDeTodos = withSymbol.flatMap((a) => symbolCandidates(a.symbol!));
+  const guardadas = await repo.latestQuotesFor(candidatosDeTodos).catch(() => new Map());
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Quem já tem cotação fresca não vai à rede nem à base de dados outra vez.
+  let idasDisponiveis = options.force ? Number.POSITIVE_INFINITY : MAX_IDAS_A_REDE_POR_VISITA;
+
   return Promise.all(
     withSymbol.map(async (a): Promise<PriceFreshness> => {
+      /**
+       * O atalho: já há cotação fresca guardada para uma das formas do símbolo.
+       *
+       * Sem `force`, este caminho não toca na rede nem faz mais consultas — e é
+       * o caminho de quase todos os investimentos em quase todas as visitas.
+       */
+      if (!options.force) {
+        const fresca = symbolCandidates(a.symbol!)
+          .map((c) => ({ c, q: guardadas.get(c) }))
+          .find((x) => x.q && !isStale(x.q.date, hoje));
+
+        if (fresca?.q) {
+          const q = fresca.q;
+          const original = isForeign(q.currency)
+            ? { quoteCents: q.closeCents, quoteCurrency: q.currency }
+            : { quoteCents: null, quoteCurrency: null };
+
+          const emEuros = await toEurAtDate(q.closeCents, q.currency, q.date);
+          if (emEuros === null) {
+            return {
+              assetId: a.id,
+              symbol: fresca.c,
+              quoteDate: q.date,
+              refreshed: false,
+              problem: `Cotação em ${q.currency} e sem taxa de câmbio para a converter.`,
+              quoteCents: null,
+              quoteCurrency: null,
+            };
+          }
+          if (emEuros !== a.unitPriceCents) {
+            const gravou = await repo
+              .updateAsset(a.id, spaceId, { unitPriceCents: emEuros })
+              .then(() => true)
+              .catch(() => false);
+            return {
+              assetId: a.id,
+              symbol: fresca.c,
+              quoteDate: q.date,
+              refreshed: gravou,
+              problem: gravou ? null : "Fui buscar a cotação mas não a consegui guardar.",
+              ...original,
+            };
+          }
+          return {
+            assetId: a.id,
+            symbol: fresca.c,
+            quoteDate: q.date,
+            refreshed: false,
+            problem: null,
+            ...original,
+          };
+        }
+
+        // Está velha e o tecto já foi gasto: fica para a próxima visita, com o
+        // que se sabe. Um preço velho identificado como velho é informação.
+        if (idasDisponiveis <= 0) {
+          const qualquer = symbolCandidates(a.symbol!)
+            .map((c) => ({ c, q: guardadas.get(c) }))
+            .find((x) => x.q);
+          return {
+            assetId: a.id,
+            symbol: qualquer?.c ?? a.symbol!,
+            quoteDate: qualquer?.q?.date ?? null,
+            refreshed: false,
+            problem:
+              "Ainda não fui buscar a cotação nesta visita. Carrega em «Atualizar preços» para não esperar pela próxima.",
+            quoteCents: null,
+            quoteCurrency: null,
+          };
+        }
+        idasDisponiveis -= 1;
+      }
+
       // Um ticker escrito à mão vem quase sempre sem sufixo de praça ("MSFT",
       // não "msft.us"), e sem sufixo a fonte não o encontra. Tentam-se as
       // formas prováveis, e guarda-se a que funcionou para não se andar a
       // tentar três de cada vez para sempre.
       const candidatos = symbolCandidates(a.symbol!);
       let series = null;
+      /**
+       * O motivo da última tentativa falhada.
+       *
+       * Sem isto o motivo era **provadamente sempre perdido**: `series` só era
+       * atribuída quando vinham cotações, e por isso `series?.problem` no fim
+       * dava sempre `null`. O botão "Atualizar preços" respondia "1 já estava em
+       * dia" a um investimento que não tem preço nenhum.
+       */
+      let porque: string | null = null;
       for (const c of candidatos) {
         // Com `force`, vai-se à fonte mesmo que a cotação guardada pareça
         // fresca: quem carregou no botão quer o valor de agora, não o de ontem.
         const tentativa = await getQuoteSeries(c, {
           latestOnly: true,
           force: options.force,
+          // Sem `force` isto está a correr no meio do desenho de uma página, e
+          // a espera não foi pedida por ninguém. Ver `TIMEOUT_NA_VISITA_MS`.
+          timeoutMs: options.force ? TIMEOUT_MS : TIMEOUT_NA_VISITA_MS,
         }).catch(() => null);
         if (tentativa && tentativa.quotes.length > 0) {
           series = tentativa;
@@ -424,6 +608,7 @@ export async function refreshStalePrices(
           }
           break;
         }
+        porque = tentativa?.problem ?? porque ?? "Não consegui falar com a fonte de cotações.";
       }
       const symbol = series?.symbol ?? a.symbol!;
       const quoteDate = series?.lastDate ?? null;
@@ -441,7 +626,7 @@ export async function refreshStalePrices(
           symbol,
           quoteDate,
           refreshed: false,
-          problem: series?.problem ?? null,
+          problem: series?.problem ?? porque,
           ...vazio,
         };
       }
@@ -465,8 +650,21 @@ export async function refreshStalePrices(
 
       // Só se escreve quando o preço mudou mesmo: poupa escritas em cada visita.
       if (emEuros !== a.unitPriceCents) {
-        await repo.updateAsset(a.id, spaceId, { unitPriceCents: emEuros }).catch(() => {});
-        return { assetId: a.id, symbol, quoteDate, refreshed: true, problem: null, ...original };
+        // Uma escrita que falha não é uma atualização. Devolver `refreshed:
+        // true` aqui fazia o botão dizer "1 preço atualizado" e o ecrã continuar
+        // a mostrar o preço velho — a mentira mais convincente das duas.
+        const gravou = await repo
+          .updateAsset(a.id, spaceId, { unitPriceCents: emEuros })
+          .then(() => true)
+          .catch(() => false);
+        return {
+          assetId: a.id,
+          symbol,
+          quoteDate,
+          refreshed: gravou,
+          problem: gravou ? null : "Fui buscar a cotação mas não a consegui guardar.",
+          ...original,
+        };
       }
       return { assetId: a.id, symbol, quoteDate, refreshed: false, problem: null, ...original };
     }),

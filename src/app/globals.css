@@ -21,6 +21,9 @@
     --c-fg-faint: 109 108 103;
     --c-credit: 98 209 150;
     --c-debt: 240 116 111;
+    /* Âmbar de aviso: para o que não é erro nem é bom — uma nota interna a ser
+       escrita, por exemplo. Verde e vermelho já significam outra coisa. */
+    --c-warn: 222 170 74;
 
     --glow-1: rgba(99, 102, 241, 0.07);
     --glow-2: rgba(98, 209, 150, 0.05);
@@ -46,6 +49,8 @@
        contraste suficiente para texto. */
     --c-credit: 15 122 69;
     --c-debt: 192 52 44;
+    /* Mais escuro sobre papel, pela mesma razão do verde e do vermelho. */
+    --c-warn: 146 96 8;
 
     --glow-1: rgba(99, 102, 241, 0.06);
     --glow-2: rgba(15, 122, 69, 0.05);

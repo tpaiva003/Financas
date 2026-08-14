@@ -1,38 +1,26 @@
 /**
  * Proteção de rotas (REQ-AUTH-4): tudo o que não seja público exige sessão.
  *
- * Público: a landing (/), o login, a submissão de contacto, ativos estáticos e
- * as rotas de auth. Todo o resto é privado. Usa a config edge-safe.
+ * A lista do que é público está em `lib/public-routes.ts`, para ser testável —
+ * aqui dentro não era, e faltavam-lhe a recuperação de palavra-chave e as
+ * páginas legais sem que nada se queixasse.
  *
- * `api/cron` fica de fora porque quem lhe bate é a Vercel, não um browser com
- * sessão. Não é uma porta aberta: essa rota exige o `CRON_SECRET` e não lê nem
- * devolve dados de ninguém, só enche a cache de cotações, que são públicas.
+ * `api/cron` fica de fora do matcher porque quem lhe bate é a Vercel, não um
+ * browser com sessão. Não é uma porta aberta: essa rota exige o `CRON_SECRET`
+ * (e recusa quando ele não está definido) e não lê nem devolve dados de
+ * ninguém, só enche a cache de cotações, que são públicas.
  */
 
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
+import { isPublicPath } from "@/lib/public-routes";
 
 const { auth } = NextAuth(authConfig);
 
-/**
- * Páginas que têm mesmo de abrir sem sessão.
- *
- * A `/recuperar` é o caso que mais depressa se percebe: quem perdeu a
- * palavra-chave não pode ter de entrar para a repor. As `/privacidade` e
- * `/termos` estão aqui pela mesma razão por que existem, a Google exige-as
- * acessíveis sem sessão para aprovar o ecrã de consentimento do SSO, e o
- * rodapé da landing aponta para as duas.
- */
-const PUBLIC_EXACT = ["/", "/login", "/privacidade", "/termos", "/recuperar"];
-
 export default auth((req) => {
   const { pathname } = req.nextUrl;
-  const isPublic =
-    PUBLIC_EXACT.includes(pathname) ||
-    pathname.startsWith("/login/") ||
-    // O link de reposição traz o código no caminho: /recuperar/<token>.
-    pathname.startsWith("/recuperar/");
+  const isPublic = isPublicPath(pathname);
 
   if (isPublic) {
     if (req.auth && pathname === "/login") {

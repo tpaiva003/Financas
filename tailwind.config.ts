@@ -19,6 +19,7 @@ const config: Config = {
         "fg-faint": "rgb(var(--c-fg-faint) / <alpha-value>)",
         credit: "rgb(var(--c-credit) / <alpha-value>)",
         debt: "rgb(var(--c-debt) / <alpha-value>)",
+        warn: "rgb(var(--c-warn) / <alpha-value>)",
         accent: "rgb(var(--c-fg) / <alpha-value>)",
       },
       fontFamily: {

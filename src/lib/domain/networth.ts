@@ -45,6 +45,28 @@ export interface AssetInput {
   termMonths?: number | null;
   /** "fixa" ou "variavel". */
   rateKind?: string | null;
+  /** Crédito: data do último pagamento. */
+  maturityDate?: string | null;
+  /** Crédito com períodos de taxa. Cru: ler com `parseCreditTerms`. */
+  creditTerms?: unknown;
+  /**
+   * Que fatia deste bem é deste ambiente, em percentagem. `null` = tudo.
+   *
+   * Uma casa comprada a meias com alguém não é um bem de 300 mil no teu
+   * património: são 150 mil teus. E o crédito que a paga também é metade. Sem
+   * isto, quem compra a meias vê o património e a dívida inflacionados ao dobro
+   * — os dois erros até se disfarçam um ao outro no valor líquido, e depois
+   * mentem os dois no valor bruto, na prestação e no plano.
+   */
+  ownershipPct?: number | null;
+  /**
+   * Quem tem o resto, quando é alguém deste ambiente. Só para o registo.
+   *
+   * Não mexe na conta de propósito: a quota diz sempre e só quanto conta, sem
+   * exceções escondidas. Serve para a app poder avisar que, se as duas metades
+   * estão as duas cá dentro, provavelmente a quota devia ser 100%.
+   */
+  coOwnerMemberId?: string | null;
 }
 
 export interface AssetView extends AssetInput {
@@ -77,7 +99,22 @@ export interface NetWorth {
 }
 
 /** Valor atual de um bem, em cêntimos. */
-export function assetValueCents(a: AssetInput): number {
+/**
+ * A quota deste ambiente no bem, entre 0 e 1. Sem quota escrita, é tudo.
+ *
+ * Nunca devolve zero por engano: um campo em branco, um texto, ou um número
+ * fora do intervalo valem "tudo", não "nada". Um bem que valesse zero por causa
+ * de um campo mal preenchido desaparecia do património sem dizer nada.
+ */
+export function ownershipShare(a: Pick<AssetInput, "ownershipPct">): number {
+  const pct = a.ownershipPct;
+  if (typeof pct !== "number" || !Number.isFinite(pct)) return 1;
+  if (pct <= 0 || pct > 100) return 1;
+  return pct / 100;
+}
+
+/** Quanto o bem vale por inteiro, sem olhar à quota. */
+export function assetTotalValueCents(a: AssetInput): number {
   if (a.kind === "investimento") {
     const qty = a.quantity ?? 0;
     // Sem preço atual, vale o que custou: melhor do que fingir uma valorização.
@@ -87,10 +124,23 @@ export function assetValueCents(a: AssetInput): number {
   return Math.round(a.valueCents ?? 0);
 }
 
+/**
+ * Quanto do bem conta para este ambiente, em cêntimos.
+ *
+ * É esta que manda em tudo o que soma: património, dívidas, prestações, plano
+ * do crédito. O valor por inteiro fica no `assetTotalValueCents`, para se poder
+ * mostrar a casa toda ao lado da parte que é tua.
+ */
+export function assetValueCents(a: AssetInput): number {
+  return Math.round(assetTotalValueCents(a) * ownershipShare(a));
+}
+
 /** Quanto custou um investimento, em cêntimos. Null se não for investimento. */
 export function assetCostCents(a: AssetInput): number | null {
   if (a.kind !== "investimento") return null;
-  return Math.round((a.quantity ?? 0) * (a.unitCostCents ?? 0));
+  // Também pela quota: senão uma carteira a meias mostrava um ganho sobre um
+  // custo que não é o que saiu do bolso de ninguém.
+  return Math.round((a.quantity ?? 0) * (a.unitCostCents ?? 0) * ownershipShare(a));
 }
 
 export function buildNetWorth(input: AssetInput[]): NetWorth {

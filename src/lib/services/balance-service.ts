@@ -29,7 +29,17 @@ export async function getSpaceBalance(
     repo.listSettlements(spaceId),
   ]);
 
-  const balance = computeBalance({ users: memberIds, expenses, settlements });
+  // Desde quando cada pessoa divide. Sem isto, acrescentar alguém ao ambiente
+  // redividia o histórico todo e mexia no saldo de quem já cá estava.
+  const participatesFrom: Record<string, string | null> = {};
+  for (const m of members) participatesFrom[m.id] = m.participatesFrom ?? null;
+
+  const balance = computeBalance({
+    users: memberIds,
+    expenses,
+    settlements,
+    participatesFrom,
+  });
   const transfers = simplifyDebts(balance.netByUser);
 
   return { balance, transfers, isPair: members.length === 2 };
