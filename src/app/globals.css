@@ -109,6 +109,109 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * Fichas da landing: superfícies elevadas e lavagens de fundo.
+   *
+   * A landing deixou de separar blocos com linhas. O contorno de um cartão
+   * passa a viver no `box-shadow` e não numa `border`: fica fora da caixa de
+   * layout (não empurra nada) e pode ser bem mais fraco do que o `--c-hair`,
+   * que é o que dava à página o aspeto de folha quadriculada.
+   */
+  :root {
+    --card-fill: rgba(255, 255, 255, 0.024);
+    --card-ring: rgba(255, 255, 255, 0.07);
+    --card-sheen: rgba(255, 255, 255, 0.05);
+    --shadow-card:
+      0 1px 0 0 rgba(255, 255, 255, 0.045) inset,
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 14px 30px -20px rgba(0, 0, 0, 0.95);
+    --shadow-card-hi:
+      0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+      0 2px 5px rgba(0, 0, 0, 0.5),
+      0 30px 60px -28px rgba(0, 0, 0, 1);
+    --shadow-device:
+      0 2px 6px rgba(0, 0, 0, 0.5),
+      0 40px 80px -40px rgba(0, 0, 0, 1);
+
+    /*
+     * A carcaça dos aparelhos das capturas.
+     *
+     * Escura nos dois temas, porque é o que um telemóvel e a barra de um
+     * browser são. Vive aqui, e não solta no componente, pela mesma razão que
+     * todo o resto da marca vive aqui: uma cor escrita à mão dentro de um
+     * ficheiro de React é uma cor que ninguém encontra quando a marca mudar.
+     */
+    --aparelho-topo: #3a3a40;
+    --aparelho-fundo: #17161a;
+    --aparelho-barra-topo: #2a2a30;
+    --aparelho-barra-fundo: #1d1d22;
+    --aparelho-fio: rgba(255, 255, 255, 0.06);
+  }
+
+  html[data-theme="light"] {
+    --card-fill: rgb(255 255 255);
+    --card-ring: rgba(23, 22, 26, 0.055);
+    --card-sheen: rgba(255, 255, 255, 0.9);
+    /* Sombra quente (23 22 26), nunca preta: sobre papel, o preto suja. */
+    --shadow-card:
+      0 1px 1px rgba(23, 22, 26, 0.04),
+      0 6px 16px -8px rgba(23, 22, 26, 0.1),
+      0 22px 44px -26px rgba(23, 22, 26, 0.16);
+    --shadow-card-hi:
+      0 1px 1px rgba(23, 22, 26, 0.05),
+      0 12px 26px -10px rgba(23, 22, 26, 0.14),
+      0 36px 64px -32px rgba(23, 22, 26, 0.22);
+    --shadow-device:
+      0 4px 10px rgba(23, 22, 26, 0.08),
+      0 40px 80px -36px rgba(23, 22, 26, 0.3);
+  }
+
+  /*
+   * O fundo respira, muito devagar.
+   *
+   * Um gradiente absolutamente parado é metade da sensação de coisa estanque.
+   * A amplitude é de 2,5% em quarenta segundos: se o ciclo se notar, está mal,
+   * e é a primeira coisa a cair se der solavancos em Android.
+   */
+  @keyframes drift {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(-1.5%, 1%, 0) scale(1.025);
+    }
+  }
+
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
+    animation: drift 40s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /*
+   * Entrada de página, dentro da app.
+   *
+   * O App Router mantém o layout e troca só o conteúdo, por isso sem uma
+   * chave por rota não há transição nenhuma: a página seguinte aparece de
+   * repente, e é isso que dá a sensação de ecrã estático a piscar. Com a
+   * chave, cada navegação sobe seis píxeis em 380ms. Curto de propósito:
+   * quem anda a registar despesas passa por aqui dezenas de vezes ao dia.
+   */
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .page-in {
+    animation: page-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
 }
 
 @layer components {
@@ -116,8 +219,36 @@
     @apply font-mono text-[11px] uppercase tracking-[0.18em] text-fg-faint;
   }
 
+  /*
+   * Cartão. O contorno vive na sombra, não numa borda.
+   *
+   * Com `border`, um ecrã com oito cartões desenha oito retângulos a cheio e a
+   * app lê-se como uma folha quadriculada. No `box-shadow` o fio fica fora da
+   * caixa de layout (não empurra nada, não soma um píxel a cada lado) e pode
+   * ser mais fraco, porque a sombra por baixo já separa o cartão do fundo.
+   */
   .card {
-    @apply rounded-2xl border border-hair bg-panel/80 backdrop-blur-sm;
+    @apply rounded-2xl bg-panel/80 backdrop-blur-sm;
+    box-shadow: var(--shadow-card), 0 0 0 1px var(--card-ring);
+  }
+
+  /*
+   * Menus suspensos: a mesma superfície, e sem fios lá dentro.
+   *
+   * Separar as opções de um menu com linhas era o que mais depressa dava à app
+   * o ar de formulário antigo. O que separa passa a ser o ar à volta e o
+   * realce ao passar por cima.
+   */
+  .menu {
+    @apply overflow-hidden rounded-xl bg-panel p-1;
+    box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+  }
+  .menu-item {
+    @apply flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-muted transition-colors duration-150 hover:bg-panel2 hover:text-fg;
+  }
+  /* Cabeçalho de um menu (quem está com sessão iniciada, por exemplo). */
+  .menu-head {
+    @apply flex items-center gap-2 rounded-lg px-3 pb-2 pt-2 text-sm text-fg-muted;
   }
 
   .btn {
@@ -125,6 +256,25 @@
   }
   .btn-primary {
     @apply btn bg-fg text-bg hover:opacity-90 active:scale-[0.98];
+  }
+  /*
+   * O botão principal da landing leva a cor da marca, não o branco.
+   *
+   * A página inteira era a preto e branco, com o verde e o vermelho guardados
+   * para os números. Lia-se séria e lia-se apagada: sem uma cor a dizer "é
+   * aqui", o olho não tem para onde ir. É o mesmo verde de quem recebe dentro
+   * da app, por isso não se está a inventar uma cor de marca nenhuma.
+   *
+   * Fica só neste botão. Uma cor que aparece em todo o lado deixa de apontar
+   * para alguma coisa.
+   */
+  .btn-marca {
+    @apply btn font-semibold active:scale-[0.98];
+    background: rgb(var(--c-credit));
+    color: rgb(var(--c-bg));
+  }
+  .btn-marca:hover {
+    filter: brightness(1.08);
   }
   .btn-secondary {
     @apply btn border border-hair bg-transparent text-fg hover:border-fg/30 hover:bg-panel2 active:scale-[0.98];
@@ -153,9 +303,272 @@
     @apply border-hair;
   }
 
-  /* Linha de despesa: estilo lista editorial (hairline em vez de cartões pesados). */
+  /*
+   * Linha de despesa: estilo lista editorial (hairline em vez de cartões
+   * pesados). O fio fica: numa lista densa de valores, é ele que diz onde
+   * acaba uma linha e começa a outra, e isso é anatomia da lista, não uma
+   * divisória entre blocos. Ganha realce ao passar por cima, para a lista
+   * responder ao rato em vez de ficar um bloco morto.
+   */
   .row {
-    @apply flex items-center gap-4 border-b border-hair2 py-3.5 transition-colors;
+    @apply -mx-2 flex items-center gap-4 rounded-lg border-b border-hair2 px-2 py-3.5 transition-colors duration-150;
+  }
+  @media (hover: hover) {
+    .row:hover {
+      background: rgb(var(--c-panel2) / 0.45);
+    }
+  }
+
+  /* =====================================================================
+   * Landing
+   *
+   * Regra desta página: uma linha só existe se significar sequência, se
+   * estiver a desenhar-se, ou se for anatomia de um componente (moldura de
+   * aparelho, campo de formulário, linha de despesa dentro de um ecrã).
+   * Divisórias estáticas entre blocos, nenhuma. Dentro da app não se aplica.
+   * ===================================================================== */
+
+  .surface {
+    @apply relative rounded-2xl;
+    background: var(--card-fill);
+    box-shadow: var(--shadow-card), 0 0 0 1px var(--card-ring);
+    transition:
+      box-shadow 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Brilho de topo, só ao passar por cima. */
+  .surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 240ms ease;
+    background: radial-gradient(120% 90% at 50% -20%, var(--card-sheen), transparent 62%);
+  }
+
+  /*
+   * O `hover: hover` não é opcional: sem ele o cartão fica levantado depois de
+   * um toque no telemóvel, e parece avariado.
+   */
+  @media (hover: hover) {
+    .surface-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+    }
+    .surface-lift:hover::after {
+      opacity: 1;
+    }
+  }
+
+  /*
+   * Mudança de fundo sem aresta. O `inset` negativo põe a transição FORA da
+   * secção, por isso não há nenhum sítio onde se possa ver uma linha.
+   * O `isolate` no elemento é obrigatório: senão este `z-index: -1` compete
+   * com o do `body::before` e a lavagem desaparece.
+   */
+  .wash::before {
+    content: "";
+    position: absolute;
+    inset: -6rem 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(var(--c-panel) / 0.55) 16%,
+      rgb(var(--c-panel) / 0.55) 84%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * O interior das molduras mostra sempre O CONTRÁRIO do tema da página.
+   *
+   * Página escura, ecrã claro. Página clara, ecrã escuro. É o que dá contraste
+   * máximo nos dois casos: escuro sobre escuro é uma mancha que se confunde com
+   * a página, e branco sobre papel é um retângulo a flutuar.
+   *
+   * Isto tem de bater certo com as capturas, que são tiradas nos dois temas e
+   * trocadas pelas mesmas regras (ver `scripts/shots.mjs` e `[data-shot]` mais
+   * abaixo). Se as duas coisas se desencontrarem, fica uma orla da cor errada à
+   * volta da imagem.
+   */
+  .screen {
+    color-scheme: light;
+    --c-bg: 250 248 244;
+    --c-panel: 255 255 255;
+    --c-panel2: 241 237 229;
+    --c-hair: rgba(23, 22, 26, 0.12);
+    --c-hair2: rgba(23, 22, 26, 0.07);
+    --c-fg: 23 22 26;
+    --c-fg-muted: 93 91 85;
+    --c-fg-faint: 138 136 127;
+    --c-credit: 15 122 69;
+    --c-debt: 192 52 44;
+    background: rgb(var(--c-bg));
+    color: rgb(var(--c-fg));
+  }
+
+  html[data-theme="light"] .screen {
+    color-scheme: dark;
+    --c-bg: 8 8 10;
+    --c-panel: 16 16 18;
+    --c-panel2: 22 22 26;
+    --c-hair: rgba(255, 255, 255, 0.09);
+    --c-hair2: rgba(255, 255, 255, 0.06);
+    --c-fg: 243 242 238;
+    --c-fg-muted: 163 162 156;
+    --c-fg-faint: 109 108 103;
+    --c-credit: 98 209 150;
+    --c-debt: 240 116 111;
+  }
+
+  /*
+   * A captura certa para o tema em que a página está.
+   *
+   * `claro` e `escuro` dizem respeito ao tema DA CAPTURA, não ao da página: a
+   * clara aparece na página escura, e vice-versa. A que não se vê fica em
+   * `display: none` e com `loading="lazy"`, e o browser não a chega a
+   * transferir. Duplica o peso no disco, não o peso de quem visita.
+   */
+  [data-shot="escuro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="claro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="escuro"] {
+    display: block;
+  }
+
+  /*
+   * Cabeçalho colado ao topo, na landing e na app: nasce transparente e ganha
+   * fundo ao sair do topo. O que o separa do conteúdo é sombra, nunca uma
+   * borda. Bónus: no primeiro pintar não há `backdrop-filter` nenhum, que é
+   * caro em Android.
+   */
+  [data-sticky] {
+    transition:
+      background 260ms ease,
+      box-shadow 260ms ease,
+      backdrop-filter 260ms ease;
+  }
+  :root[data-scrolled] header[data-sticky] {
+    background: rgb(var(--c-bg) / 0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    box-shadow: 0 12px 30px -22px rgba(0, 0, 0, 0.85);
+  }
+  /* A barra de baixo faz o mesmo, com a sombra a subir em vez de descer. */
+  nav[data-sticky] {
+    box-shadow: 0 -12px 30px -22px rgba(0, 0, 0, 0.85);
+  }
+
+  /*
+   * Tamanhos que contam com a ALTURA do ecrã, não só com a largura.
+   *
+   * Este foi o erro: a página foi desenhada num 1440x900 e os pontos de
+   * corte do Tailwind só olham para a largura. Um portátil de 1366x768, ou um
+   * 1920 com o escalonamento do Windows a 150% (que dá 1280x720 de CSS),
+   * tem a mesma largura e menos 130 a 180 píxeis de altura. O telemóvel do
+   * herói passava a ocupar 96% do ecrã: a pessoa abre a página e vê um
+   * aparelho gigante, sem contexto nenhum à volta.
+   *
+   * A regra passa a ser: nenhuma peça de produto passa de uma fatia da altura
+   * disponível. O `min()` escolhe sozinho, sem pontos de corte, e por isso
+   * também acerta nos tamanhos que ninguém testou.
+   */
+
+  /* Telemóvel: 390/844 de rácio, ou seja 0,462 de largura por altura. */
+  .peca-telemovel {
+    max-width: min(20rem, 62vh * 0.462);
+  }
+
+  /* Moldura de browser: 1480/924, ou seja 1,6 de largura por altura. */
+  .peca-browser {
+    max-width: min(100%, 52vh * 1.6);
+  }
+
+  /* O telemóvel dentro de uma cena, mais pequeno que o do herói. */
+  .peca-telemovel-cena {
+    max-width: min(17rem, 52vh * 0.462);
+  }
+
+  /*
+   * O brilho por trás do produto.
+   *
+   * A página era monocromática e lia-se séria, mas também apagada. O verde já
+   * é a cor da marca dentro da app (é a cor de quem recebe); aqui sai dos
+   * números e passa a iluminar o produto por trás. Um só, no herói, e
+   * suficientemente fraco para não competir com o ecrã que está à frente.
+   */
+  .brilho::before {
+    content: "";
+    position: absolute;
+    inset: -18% -12%;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: 50%;
+    background: radial-gradient(
+      55% 45% at 50% 45%,
+      rgb(var(--c-credit) / 0.22),
+      transparent 70%
+    );
+    filter: blur(28px);
+  }
+  html[data-theme="light"] .brilho::before {
+    background: radial-gradient(
+      55% 45% at 50% 45%,
+      rgb(var(--c-credit) / 0.16),
+      transparent 70%
+    );
+  }
+
+  /*
+   * Deslocamento ao scroll, feito pelo browser e não por JavaScript.
+   *
+   * O `animation-timeline: view()` corre fora da linha principal, por isso não
+   * dá solavancos, e onde não existe simplesmente não acontece nada: a peça
+   * fica quieta e a página continua igual. É a única forma de parallax que
+   * vale a pena, porque não obriga a manter um segundo caminho em JavaScript.
+   */
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+      @keyframes flutuar {
+        from {
+          transform: translateY(2.2rem);
+        }
+        to {
+          transform: translateY(-2.2rem);
+        }
+      }
+      .flutua {
+        animation: flutuar linear both;
+        animation-timeline: view();
+        animation-range: entry 10% exit 90%;
+      }
+    }
+  }
+
+  /* Traço que se desenha ao lado da sobrancelha: acento, não divisória. */
+  .eyebrow-tick::before {
+    content: "";
+    display: inline-block;
+    vertical-align: middle;
+    width: 20px;
+    height: 1px;
+    margin-right: 0.6rem;
+    background: currentColor;
+    opacity: 0.5;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+  }
+  [data-shown] .eyebrow-tick::before,
+  [data-shown].eyebrow-tick::before {
+    transform: scaleX(1);
   }
 }
 
@@ -165,6 +578,81 @@
   }
   .text-balance {
     text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/*
+ * Revelação ao scroll.
+ *
+ * Uma vez e nunca mais: re-animar ao subir é das coisas mais irritantes que
+ * uma landing faz. A cascata trava ao quarto item, senão o oitavo cartão chega
+ * meio segundo depois do primeiro e a página parece estar a carregar.
+ *
+ * O estado de partida é invisível, o que traz um risco conhecido: sem
+ * JavaScript ficava tudo escondido. Por isso a página traz um <noscript> que
+ * anula isto, e o observador marca tudo se o IntersectionObserver não existir.
+ */
+[data-reveal],
+[data-reveal-group] > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-reveal][data-shown],
+[data-reveal-group][data-shown] > * {
+  opacity: 1;
+  transform: none;
+}
+
+[data-reveal-group][data-shown] > *:nth-child(2) {
+  transition-delay: 70ms;
+}
+[data-reveal-group][data-shown] > *:nth-child(3) {
+  transition-delay: 140ms;
+}
+[data-reveal-group][data-shown] > *:nth-child(n + 4) {
+  transition-delay: 210ms;
+}
+
+/*
+ * O trilho do "Como funciona" desenha-se: é a única linha animada da página, e
+ * está lá porque mede sequência (passo 1 → 4), não porque separa nada.
+ */
+.track {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+}
+@media (max-width: 1023px) {
+  .track {
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+}
+[data-shown] .track {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sem movimento, mas nada pode ficar escondido. */
+  [data-reveal],
+  [data-reveal-group] > *,
+  .track {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
+    animation: none !important;
+  }
+  .page-in {
+    animation: none !important;
   }
 }
 

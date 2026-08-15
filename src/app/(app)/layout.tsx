@@ -8,6 +8,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { SectionNav } from "@/components/SectionNav";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickAdd } from "@/components/QuickAdd";
+import { BottomLink } from "@/components/BottomLink";
+import { PageTransition } from "@/components/PageTransition";
+import { ScrollState } from "@/components/ScrollState";
 import { ChatDock } from "@/components/ChatDock";
 import { conversaAvailable } from "@/lib/services/conversa-service";
 
@@ -21,8 +24,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pendingApprovals = isSubmitter ? 0 : await repo.countPendingApprovals(ctx.space.id);
 
   return (
-    <div className="min-h-[100dvh]">
-      <header className="sticky top-0 z-20 border-b border-hair bg-bg/70 backdrop-blur-xl">
+    <div data-app className="min-h-[100dvh]">
+      <ScrollState />
+      {/*
+        Sem borda: o cabeçalho ganha fundo e sombra quando a página sai do
+        topo, e no topo não há linha nenhuma a cortar o ecrã ao meio.
+      */}
+      <header data-sticky className="sticky top-0 z-20">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
           <div className="flex items-center gap-3">
             <Link
@@ -53,12 +61,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl animate-fade-in px-5 pb-32 pt-7 sm:pb-14">
+      <main className="mx-auto max-w-3xl px-5 pb-32 pt-7 sm:pb-14">
         {/* Páginas da secção atual (ex.: Lista, Importar, Recorrentes). */}
         <div className="mb-6 empty:hidden">
           <SectionNav />
         </div>
-        {children}
+        {/* Anima a cada mudança de rota, e não só ao carregar a app. */}
+        <PageTransition>{children}</PageTransition>
       </main>
 
       <QuickAdd />
@@ -73,8 +82,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       */}
       {!isSubmitter && conversaAvailable() ? <ChatDock /> : null}
 
-      {/* Navegação inferior (mobile). */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
+      {/* Navegação inferior (mobile). Sombra a subir, em vez de uma borda. */}
+      <nav data-sticky className="fixed inset-x-0 bottom-0 z-20 bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
         <div className="mx-auto flex max-w-3xl items-stretch justify-around">
           {isSubmitter ? (
             <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
@@ -91,18 +100,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </nav>
     </div>
-  );
-}
-
-function BottomLink({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-1 flex-col items-center gap-1 py-2.5 text-fg-muted transition-colors hover:text-fg"
-    >
-      <span aria-hidden>{icon}</span>
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em]">{label}</span>
-    </Link>
   );
 }
 

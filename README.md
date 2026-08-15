@@ -25,6 +25,8 @@ disso.
   índices e calculadora FIRE.
 - **Relatórios** e exportação CSV.
 - **PWA** instalável (Android/iOS), responsiva.
+- **Landing pública** em [rachar.pt](https://rachar.pt), com capturas de ecrã
+  geradas a partir da própria app (`npm run shots`).
 
 ## Stack
 
@@ -57,6 +59,15 @@ Entra com um dos emails do `ALLOWED_EMAILS`. **Na primeira entrada, a
 palavra-chave que escreveres passa a ser a palavra-chave daquela conta** — é
 cómodo em local e é uma dívida conhecida em produção (ver `RETOMAR.md`).
 
+> **O `AUTH_URL` local não é um detalhe.** Com um URL `https`, o Auth.js marca
+> os cookies de sessão como `Secure` e o browser recusa-os em
+> `http://localhost`. O login falha **sem dar erro**: volta à página de login
+> como se a palavra-chave estivesse errada.
+
+Os dados de exemplo cobrem a app toda (despesas de um ano, património,
+investimentos com movimentos datados, cotações e rendimentos), para nenhum ecrã
+abrir vazio.
+
 ## Configurar Supabase (produção)
 
 1. **Supabase**: cria um projeto. Em *Project Settings → API* copia o URL, a
@@ -85,7 +96,12 @@ npm run lint        # ESLint
 npm run typecheck   # TypeScript (tsc --noEmit)
 npm test            # testes (Vitest)
 npm run seed        # semear o Supabase (requer credenciais)
+npm run shots       # refazer as capturas da landing (ver o cabeçalho do script)
 ```
+
+As capturas da landing são a app a correr em modo mock. Sempre que um desses
+ecrãs mudar de aspeto, vale a pena voltar a correr o `npm run shots`: uma
+landing com capturas de uma versão que já não existe promete o que não entrega.
 
 ## Estrutura
 
@@ -97,14 +113,19 @@ src/
     api/                # auth, cron, export, fx, recibos
     error.tsx  global-error.tsx  not-found.tsx  # ecrãs de falha
   components/           # componentes de UI
+    landing/            # só da página pública (molduras, revelação ao scroll)
   lib/
     domain/             # ⭐ lógica pura + testes (saldo, divisão, dedup, posições, câmbio)
     import/             # leitura de ficheiros e deteção de colunas (+ testes)
     data/               # interface Repository + Mock + Supabase + seed
-    services/           # serviços que juntam dados e domínio
-    public-routes.ts    # o que se alcança sem sessão (com testes)
-supabase/migrations/    # modelo de dados, por ordem
-scripts/seed.ts         # seed do Supabase
+- O **saldo** é sempre **explicável** até às despesas que o compõem, e mexer nos
+  membros não reescreve o passado.
+- **Sem taxa de câmbio não se grava preço nenhum.**
+- A IA escolhe **colunas**, nunca lê valores.
+- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
+- Uma página pública **verifica-se sem sessão**, não se assume: quem testa está
+  quase sempre autenticado, e foi assim que as páginas legais e a recuperação de
+  palavra-chave passaram tempo a redirecionar para o login sem ninguém notar.
 ```
 
 ## Invariantes (nunca violar)
@@ -118,6 +139,10 @@ scripts/seed.ts         # seed do Supabase
 - **Sem taxa de câmbio não se grava preço nenhum.**
 - A IA escolhe **colunas**, nunca lê valores.
 
+As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
+participantes chamados André e Maria: são imagens numa página pública e não
+levam lá dados de ninguém.
+
 ## Privacidade e segurança
 
 Fora as páginas públicas (landing, login, recuperação e páginas legais), nada é
@@ -129,3 +154,7 @@ chave de serviço, que o ignora; as políticas existem mas nenhuma olha para o
 `space_id`. O isolamento é o `space_id` que o código passa a cada consulta — uma
 consulta por `id` sem filtrar o ambiente é uma falha de segurança. Ver
 `src/lib/data/isolation.test.ts`.
+
+As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
+participantes chamados André e Maria: são imagens numa página pública e não
+levam lá dados de ninguém.

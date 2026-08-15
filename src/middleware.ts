@@ -39,7 +39,11 @@ export default auth((req) => {
 });
 
 export const config = {
+  // `landing/` são as capturas de ecrã da página pública, e os ícones são
+  // pedidos pelo browser antes de haver sessão nenhuma. Passar por aqui punha
+  // o middleware a responder-lhes com um redirecionamento para o login, que é
+  // o que estragava as imagens da landing.
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)",
+    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|landing/|icon.svg|apple-icon.svg).*)",
   ],
 };
