@@ -46,11 +46,23 @@ providers.push(
       if (!u) return null;
 
       const existing = await repo.getUserPasswordHash(u.id);
-      if (!existing) {
-        // Primeira entrada: define a palavra-chave.
-        await repo.setUserPasswordHash(u.id, await hashPassword(password));
-        return { id: u.id, email: u.email, name: u.name };
-      }
+      /**
+       * **Uma conta sem palavra-chave definida não se entra: define-se.**
+       *
+       * Isto era "primeira entrada define a palavra-chave", e enquanto a app
+       * era de duas pessoas conhecidas passava. Com contas convidadas deixa de
+       * passar: entre o convite ser criado e a pessoa entrar, **quem souber o
+       * email é a primeira entrada** — escreve uma palavra-chave qualquer e
+       * fica com a conta e com o ambiente que foi criado para outra pessoa. Não
+       * é preciso adivinhar nada; a janela é a espera de quem foi convidado.
+       *
+       * A primeira palavra-chave passa pelo mesmo caminho da reposição, que já
+       * existe e já prova que a pessoa recebe o email daquele endereço. Aqui só
+       * se recusa — e recusa-se com a mesma resposta de uma palavra-chave
+       * errada, para o ecrã de entrada não dizer a estranhos quais são os
+       * emails que existem.
+       */
+      if (!existing) return null;
       const ok = await verifyPassword(password, existing);
       return ok ? { id: u.id, email: u.email, name: u.name } : null;
     },

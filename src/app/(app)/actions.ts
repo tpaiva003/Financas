@@ -4,10 +4,11 @@ import { z } from "zod";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
+import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
@@ -1366,9 +1367,29 @@ export async function inviteUserAction(
     // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
   }
 
-  // Sem email, a pessoa não sabe que foi convidada, e o convite não serve de
-  // nada. Por isso o resultado diz sempre se a mensagem chegou a sair.
-  const mail = await sendInvite(email, name);
+  /**
+   * O convite leva a ligação que define a primeira palavra-chave.
+   *
+   * **É a mesma máquina da reposição, e de propósito.** Enquanto a entrada
+   * definia a palavra-chave, a conta ficava ao alcance de quem soubesse o email
+   * antes de a pessoa entrar — e a janela era exactamente a espera dela. Com a
+   * ligação, quem a define é quem recebe o email daquele endereço.
+   *
+   * Sem email, a pessoa não sabe que foi convidada e não tem como entrar. Por
+   * isso o resultado diz sempre se a mensagem saiu, e o que fazer se não saiu.
+   */
+  const token = randomBytes(32).toString("base64url");
+  const convite = await repo
+    .createPasswordResetToken({
+      userId,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + TOKEN_VALIDITY_MS).toISOString(),
+    })
+    .then(() => true)
+    .catch(() => false);
+  const mail = convite
+    ? await sendInvite(email, name, token)
+    : { sent: false as const, reason: "não consegui preparar a ligação de acesso" };
 
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
@@ -1378,7 +1399,7 @@ export async function inviteUserAction(
       ? `${name} recebeu um email com as instruções. Ambiente "${spaceName}" criado, só com ela.`
       : `Conta criada e ambiente "${spaceName}" pronto, mas o email NÃO foi enviado${
           emailConfigured() ? ` (${mail.reason})` : " (envio de email por configurar)"
-        }. Diz-lhe tu para entrar em rachar.pt com ${email}.`,
+        }. Manda-lhe tu o link de "Recuperar palavra-chave" em rachar.pt/recuperar, com ${email}.`,
   };
 }
 

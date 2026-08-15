@@ -66,17 +66,30 @@ export function siteUrl(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://rachar.pt").replace(/\/$/, "");
 }
 
-export async function sendInvite(to: string, name: string): Promise<SendResult> {
+/**
+ * O convite leva a ligação que define a primeira palavra-chave.
+ *
+ * **Não é "escreve o que quiseres da primeira vez".** Era assim, e isso deixava
+ * a conta ao alcance de quem soubesse o email antes de a pessoa entrar. A
+ * primeira palavra-chave passa pelo mesmo caminho da reposição — uma ligação
+ * com prazo, enviada para aquele endereço — que é o que prova que quem a define
+ * é mesmo quem recebe o email.
+ */
+export async function sendInvite(
+  to: string,
+  name: string,
+  token: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/recuperar/${token}`;
   return sendEmail(to, "Tens acesso à Rachar", {
     heading: `Olá ${name}, já podes entrar.`,
     paragraphs: [
       "Foi-te criado acesso à <strong style=\"color:#f3f2ee\">Rachar</strong>, uma app para registar despesas partilhadas, dividi-las e saber num instante quem deve a quem.",
       `Entra com este email: <strong style="color:#f3f2ee">${to}</strong>.`,
-      "<strong style=\"color:#f3f2ee\">A palavra-chave que escreveres da primeira vez fica a ser a tua.</strong> Não há nenhuma para decorar antes.",
+      "Carrega no botão para escolheres a tua palavra-chave. A ligação é válida durante uma hora e só pode ser usada uma vez.",
     ],
-    action: { label: "Entrar na Rachar", url: `${siteUrl()}/login` },
-    footnote:
-      "Tens um espaço só teu: ninguém vê as tuas contas. Se não estavas à espera deste email, ignora-o.",
+    action: { label: "Escolher palavra-chave", url },
+    footnote: `Tens um espaço só teu: ninguém vê as tuas contas. Se não estavas à espera deste email, ignora-o. Se o botão não funcionar, copia esta ligação: ${url}`,
   });
 }
 
