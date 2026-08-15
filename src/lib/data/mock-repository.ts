@@ -73,6 +73,7 @@ import {
   seedSettlements,
   seedSpaces,
   seedMembers,
+  seedPasswords,
 } from "./seed-data";
 
 interface Store {
@@ -120,7 +121,7 @@ function getStore(): Store {
       settlements: seedSettlements(),
       categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, spaceId: null })),
       rules: DEFAULT_RULES,
-      passwords: {},
+      passwords: seedPasswords(),
       contacts: [],
       recurring: [],
       appUsers: [],

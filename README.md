@@ -55,9 +55,15 @@ ALLOWED_EMAILS="tiago@example.com,clara@example.com"
 APP_DATA_MODE="mock"               # repositório em memória, com seed
 ```
 
-Entra com um dos emails do `ALLOWED_EMAILS`. **Na primeira entrada, a
-palavra-chave que escreveres passa a ser a palavra-chave daquela conta** — é
-cómodo em local e é uma dívida conhecida em produção (ver `RETOMAR.md`).
+Entra com um dos emails do `ALLOWED_EMAILS` e a palavra-chave **`demo1234`**,
+que vem já definida nos dados de exemplo.
+
+> A primeira entrada **já não** define a palavra-chave: fazia-o enquanto a app
+> era de duas pessoas conhecidas, e com contas convidadas passou a ser uma
+> janela para quem soubesse o email ficar com a conta alheia. Passa pelo mesmo
+> caminho da reposição, que prova que a pessoa recebe o email daquele endereço.
+> Em modo mock isso deixaria ninguém entrar, por isso as contas de exemplo
+> trazem a palavra-chave já definida (só nesse modo).
 
 > **O `AUTH_URL` local não é um detalhe.** Com um URL `https`, o Auth.js marca
 > os cookies de sessão como `Secure` e o browser recusa-os em
@@ -118,14 +124,13 @@ src/
     domain/             # ⭐ lógica pura + testes (saldo, divisão, dedup, posições, câmbio)
     import/             # leitura de ficheiros e deteção de colunas (+ testes)
     data/               # interface Repository + Mock + Supabase + seed
-- O **saldo** é sempre **explicável** até às despesas que o compõem, e mexer nos
-  membros não reescreve o passado.
-- **Sem taxa de câmbio não se grava preço nenhum.**
-- A IA escolhe **colunas**, nunca lê valores.
-- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
-- Uma página pública **verifica-se sem sessão**, não se assume: quem testa está
-  quase sempre autenticado, e foi assim que as páginas legais e a recuperação de
-  palavra-chave passaram tempo a redirecionar para o login sem ninguém notar.
+    services/           # serviços que juntam dados e domínio
+    public-routes.ts    # o que se alcança sem sessão (com testes)
+supabase/migrations/    # modelo de dados, por ordem
+scripts/
+  seed.ts               # seed do Supabase
+  shots.mjs             # capturas da landing, tiradas da app a correr
+public/landing/         # essas capturas, em WebP (clara e escura de cada cena)
 ```
 
 ## Invariantes (nunca violar)
@@ -138,10 +143,10 @@ src/
   passado.
 - **Sem taxa de câmbio não se grava preço nenhum.**
 - A IA escolhe **colunas**, nunca lê valores.
-
-As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
-participantes chamados André e Maria: são imagens numa página pública e não
-levam lá dados de ninguém.
+- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
+- Uma página pública **verifica-se sem sessão**, não se assume: quem testa está
+  quase sempre autenticado, e foi assim que as páginas legais e a recuperação de
+  palavra-chave passaram tempo a redirecionar para o login sem ninguém notar.
 
 ## Privacidade e segurança
 
