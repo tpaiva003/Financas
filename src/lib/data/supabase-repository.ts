@@ -14,6 +14,8 @@ import type {
   AppUser,
   Category,
   ContactMessage,
+  RetentionRow,
+  WaitlistEntry,
   CreateImportBatchInput,
   ImportBatch,
   ImportTemplate,
@@ -229,6 +231,8 @@ export class SupabaseRepository implements Repository {
       plan: (r.plan as SpacePlan) ?? "free",
       createdBy: r.created_by,
       createdAt: r.created_at,
+      frozenAt: r.frozen_at ?? null,
+      lastActivityAt: r.last_activity_at ?? null,
     }));
   }
 
@@ -243,6 +247,8 @@ export class SupabaseRepository implements Repository {
       plan: (data.plan as SpacePlan) ?? "free",
       createdBy: data.created_by,
       createdAt: data.created_at,
+      frozenAt: data.frozen_at ?? null,
+      lastActivityAt: data.last_activity_at ?? null,
     };
   }
 
@@ -849,6 +855,133 @@ export class SupabaseRepository implements Repository {
     const db = getSupabaseAdmin();
     const { error } = await db.from("spaces").update({ name }).eq("id", spaceId);
     if (error) throw new Error(error.message);
+  }
+
+  async touchSpaceActivity(spaceId: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("spaces")
+      .update({ last_activity_at: atISO })
+      .eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listSpacesForRetention(): Promise<RetentionRow[]> {
+    const db = getSupabaseAdmin();
+    // `neq` sozinho deixaria de fora as linhas com `plan` nulo, que são
+    // gratuitas — em Postgres nada é igual nem diferente de `null`. Um ambiente
+    // sem plano é o caso mais antigo que existe, e era exactamente o que ficava
+    // de fora da retenção sem ninguém dar por isso.
+    const linhas = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("spaces")
+        .select("id, plan, created_at, last_activity_at, retention_warned_at, frozen_at")
+        .or("plan.is.null,plan.neq.full")
+        .order("created_at")
+        .range(de, ate),
+    );
+    if (linhas.length === 0) return [];
+
+    // Os emails de quem participa, numa leitura só. Um `select` por ambiente
+    // dentro do ciclo era o mesmo erro que já custou 48 idas à base de dados
+    // por cada abertura do património.
+    const membros = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("members")
+        .select("space_id, email")
+        .in(
+          "space_id",
+          linhas.map((l) => l.id),
+        )
+        .range(de, ate),
+    );
+    const porAmbiente = new Map<string, string[]>();
+    for (const m of membros) {
+      if (!m.email) continue;
+      const lista = porAmbiente.get(m.space_id) ?? [];
+      lista.push(m.email);
+      porAmbiente.set(m.space_id, lista);
+    }
+
+    return linhas.map((r) => ({
+      id: r.id,
+      plan: (r.plan as SpacePlan) ?? "free",
+      createdAt: r.created_at,
+      lastActivityAt: r.last_activity_at ?? null,
+      retentionWarnedAt: r.retention_warned_at ?? null,
+      frozenAt: r.frozen_at ?? null,
+      emails: [...new Set(porAmbiente.get(r.id) ?? [])],
+    }));
+  }
+
+  async markRetentionWarned(spaceId: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("spaces")
+      .update({ retention_warned_at: atISO })
+      .eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setSpaceFrozen(spaceId: string, atISO: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("spaces").update({ frozen_at: atISO }).eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async countAppUsersCreatedOn(day: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("app_users")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", `${day}T00:00:00Z`)
+      .lt("created_at", `${day}T23:59:59.999Z`);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  async addToWaitlist(input: {
+    email: string;
+    name?: string | null;
+    consent: boolean;
+    source?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const email = input.email.trim().toLowerCase();
+    // Insistir não faz subir na fila: quem já lá está fica com a data de
+    // entrada original. O `ignoreDuplicates` é o que garante que uma segunda
+    // submissão não reescreve o `created_at` de quem esperou mais tempo.
+    const { error } = await db
+      .from("waitlist")
+      .upsert(
+        {
+          email,
+          name: input.name?.trim() || null,
+          consent: input.consent,
+          source: input.source ?? null,
+        },
+        { onConflict: "email", ignoreDuplicates: true },
+      );
+    if (error) throw new Error(error.message);
+  }
+
+  async listWaitlist(): Promise<WaitlistEntry[]> {
+    const db = getSupabaseAdmin();
+    const linhas = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("waitlist")
+        .select("email, name, consent, source, created_at, invited_at")
+        .order("created_at")
+        .range(de, ate),
+    );
+    return linhas.map((r) => ({
+      email: r.email,
+      name: r.name ?? null,
+      consent: Boolean(r.consent),
+      source: r.source ?? null,
+      createdAt: r.created_at,
+      invitedAt: r.invited_at ?? null,
+    }));
   }
 
   async listAppUsers(): Promise<AppUser[]> {

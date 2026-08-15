@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSpaceContext } from "@/lib/space";
+import { ESCRITA_CONGELADA } from "@/lib/congelamento";
 import { getRepository } from "@/lib/data";
 import {
   buildBrokerPreview,
@@ -106,6 +107,7 @@ export async function commitBrokerAction(
 ): Promise<BrokerState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   let payload: {
     groups: TradeGroup[];

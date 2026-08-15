@@ -11,6 +11,7 @@ import { requireUser } from "./session";
 import { getRepository } from "./data";
 import type { Space, Member, MemberRole } from "./data";
 import { planForNewSpace } from "@/lib/domain";
+import { congelado, precisaDeMarcarAtividade } from "./congelamento";
 import { isEmailAllowed } from "./env";
 import type { HouseholdUser } from "./users";
 
@@ -28,6 +29,13 @@ export interface SpaceContext {
   viewerMemberId: string;
   /** Papel do utilizador no ambiente atual. */
   viewerRole: MemberRole;
+  /**
+   * O ambiente atual está congelado por inatividade: só de leitura.
+   *
+   * Vem no contexto e não numa consulta à parte para que nenhuma action tenha
+   * de se lembrar de a ir buscar. Ver `lib/congelamento.ts`.
+   */
+  congelado: boolean;
 }
 
 /** Ambiente de destino resolvido para uma operação (ex.: importar). */
@@ -37,6 +45,8 @@ export interface TargetSpace {
   fullMembers: Member[];
   viewerMemberId: string;
   viewerRole: MemberRole;
+  /** Congelado por inatividade: só de leitura. */
+  congelado: boolean;
 }
 
 /**
@@ -54,6 +64,7 @@ export async function getTargetSpace(
       fullMembers: ctx.fullMembers,
       viewerMemberId: ctx.viewerMemberId,
       viewerRole: ctx.viewerRole,
+      congelado: ctx.congelado,
     };
   }
 
@@ -70,6 +81,9 @@ export async function getTargetSpace(
     fullMembers,
     viewerMemberId: viewerMember?.id ?? members[0]?.id ?? ctx.user.id,
     viewerRole: viewerMember?.role ?? "full",
+    // O ambiente de destino tem o seu próprio estado: importar para um ambiente
+    // congelado é uma escrita nesse ambiente, não no que está aberto no ecrã.
+    congelado: congelado(space),
   };
 }
 
@@ -106,5 +120,27 @@ export async function getSpaceContext(): Promise<SpaceContext> {
   const viewerMemberId = viewerMember?.id ?? user.id;
   const viewerRole: MemberRole = viewerMember?.role ?? "full";
 
-  return { user, spaces, space, members, fullMembers, viewerMemberId, viewerRole };
+  // Entrar conta como atividade (regra 3 do `domain/retencao.ts`): quem abre a
+  // app todas as semanas para ver o saldo, e nunca lança nada, está a usar isto.
+  // Contar só despesas dava a esse ambiente o perfil de um abandonado.
+  //
+  // Grava no máximo uma vez por dia, e o erro é engolido de propósito: falhar a
+  // marcar a atividade não pode deitar abaixo a página. O pior que acontece é a
+  // marca ficar para a visita seguinte.
+  const agora = new Date().toISOString();
+  if (space && precisaDeMarcarAtividade(space.lastActivityAt, agora)) {
+    await repo.touchSpaceActivity(space.id, agora).catch(() => {});
+    space.lastActivityAt = agora;
+  }
+
+  return {
+    user,
+    spaces,
+    space,
+    members,
+    fullMembers,
+    viewerMemberId,
+    viewerRole,
+    congelado: congelado(space),
+  };
 }

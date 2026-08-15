@@ -12,6 +12,7 @@ import { BottomLink } from "@/components/BottomLink";
 import { PageTransition } from "@/components/PageTransition";
 import { ScrollState } from "@/components/ScrollState";
 import { ChatDock } from "@/components/ChatDock";
+import { AvisoCongelado } from "@/components/AvisoCongelado";
 import { conversaAvailable } from "@/lib/services/conversa-service";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mb-6 empty:hidden">
           <SectionNav />
         </div>
+        {/* Antes do conteúdo, e não depois de se tentar gravar alguma coisa:
+            descobrir que está congelado por causa de um erro é descobrir tarde. */}
+        {ctx.congelado ? <AvisoCongelado podeReativar={!isSubmitter} /> : null}
         {/* Anima a cada mudança de rota, e não só ao carregar a app. */}
         <PageTransition>{children}</PageTransition>
       </main>
