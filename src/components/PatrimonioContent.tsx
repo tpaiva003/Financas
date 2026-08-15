@@ -1018,6 +1018,26 @@ async function PortfolioReturnSection({
           <p className="mt-0.5 font-mono text-lg tnum text-fg">
             {formatCents(ret.currentValueCents)}
           </p>
+          {/*
+            O que já se vendeu não está aqui, e tinha de ser dito.
+
+            O "dinheiro que entrou" inclui as compras das posições já vendidas;
+            o "vale hoje" não inclui nada do que elas devolveram. Sem esta
+            linha, o ganho aparente ficava mais pequeno do que o real por todo o
+            dinheiro que passou por posições fechadas — e um resultado já
+            realizado é tão real como o que ainda está em carteira. Mais: já
+            está garantido.
+          */}
+          {ret.proceedsCents > 0 ? (
+            <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
+              Mais {formatCents(ret.proceedsCents)} que já saíram em vendas, com{" "}
+              <span className={ret.realizedGainCents >= 0 ? "text-credit" : "text-debt"}>
+                {ret.realizedGainCents >= 0 ? "+" : ""}
+                {formatCents(ret.realizedGainCents)}
+              </span>{" "}
+              de resultado já garantido.
+            </p>
+          ) : null}
         </div>
         <div>
           <p className="text-xs text-fg-muted">Taxa anual (TIR)</p>
@@ -1037,8 +1057,8 @@ async function PortfolioReturnSection({
         <div className="mt-3 text-xs text-fg-faint">
           <p>
             {ret.missingPrice === 1
-              ? "Um investimento sem preço atual: conta"
-              : `${ret.missingPrice} investimentos sem preço atual: contam`}{" "}
+              ? "Um investimento ainda em carteira está sem preço atual: conta"
+              : `${ret.missingPrice} investimentos ainda em carteira estão sem preço atual: contam`}{" "}
             pelo que custaram, por isso o valor de hoje está por baixo do real.
           </p>
           {/* Quais são, com link. A contagem sozinha era um beco: numa carteira

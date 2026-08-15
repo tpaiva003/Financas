@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
+import { normalizeAmount, parseAmountCents, porqueNaoGravou } from "@/lib/form-helpers";
 import { getRepository } from "@/lib/data";
 import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
@@ -115,17 +116,6 @@ async function handleReceipt(expenseId: string, spaceId: string, formData: FormD
   }
 }
 
-/** Normaliza valores monetários europeus ("1.234,56" / "12,34") para número. */
-function normalizeAmount(v: unknown): unknown {
-  if (typeof v !== "string") return v;
-  let s = v.trim().replace(/\s/g, "");
-  if (s.includes(",") && s.includes(".")) {
-    s = s.replace(/\./g, "").replace(",", "."); // ponto = milhares, vírgula = decimal
-  } else if (s.includes(",")) {
-    s = s.replace(",", ".");
-  }
-  return s;
-}
 
 const amountField = z.preprocess(
   normalizeAmount,
@@ -1010,13 +1000,6 @@ const recurringSchema = z.object({
   soleMemberId: z.string().optional(),
 });
 
-function parseAmountCents(raw: unknown): number | null {
-  const s = String(normalizeAmount(String(raw ?? "")) ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) return NaN as unknown as number; // sinaliza inválido
-  return toCents(n);
-}
 
 export async function createRecurringAction(
   _prev: ActionState,
@@ -1612,40 +1595,6 @@ function creditTermsFromForm(formData: FormData): CreditTerms | null {
   return { periods, indexanteRates };
 }
 
-/**
- * Porque é que a escrita falhou, em português e com o que fazer a seguir.
- *
- * **O caso que isto resolve.** O código escreve colunas que uma migração ainda
- * não criou, e o Postgres recusa a linha inteira. A mensagem antiga — "Não
- * consegui gravar. A tabela do património pode faltar." — mandava procurar uma
- * tabela que existe, e não dizia a única coisa acionável: falta correr uma
- * migração, e é esta coluna que não está lá.
- *
- * Nunca se deita fora a coluna e se grava o resto: quem escreveu o valor de
- * compra ficava a pensar que ele tinha sido guardado.
- */
-function porqueNaoGravou(e: unknown, oQue = "isto"): string {
-  const msg = e instanceof Error ? e.message : String(e ?? "");
-  const coluna = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/i);
-  const nome = coluna?.[1] ?? coluna?.[2] ?? null;
-  if (nome) {
-    return `A base de dados ainda não tem a coluna "${nome}". Falta correr a migração que a cria — até lá, não gravo para não perder o que escreveste.`;
-  }
-  if (/relation .* does not exist/i.test(msg)) {
-    return "A base de dados ainda não tem esta tabela. Falta correr as migrações.";
-  }
-  /**
-   * O resto vai com o motivo em cru, e é de propósito.
-   *
-   * "Não consegui gravar" é verdade e não serve para nada: não distingue uma
-   * migração por correr de um número que a coluna não aceita nem de uma falha
-   * de rede, e obriga a adivinhar em rondas. O texto do PostgREST é feio mas
-   * diz qual é a coluna e qual é o valor — e quem está a olhar para este ecrã
-   * é o dono dos dados, não um estranho.
-   */
-  const detalhe = msg.trim().slice(0, 200);
-  return detalhe ? `Não consegui gravar ${oQue}: ${detalhe}` : `Não consegui gravar ${oQue}.`;
-}
 
 export async function saveAssetAction(
   _prev: ActionState,

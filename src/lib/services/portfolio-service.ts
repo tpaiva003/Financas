@@ -75,7 +75,15 @@ export interface PortfolioReturn {
   annualPct: number | null;
   /** Data do primeiro movimento. */
   firstDate: string | null;
-  /** Investimentos sem preço atual: o valor de hoje está incompleto. */
+  /**
+   * Investimentos **abertos** sem preço atual: o valor de hoje está incompleto.
+   *
+   * Uma posição fechada sem preço não conta aqui, e a distinção não é um
+   * detalhe: numa posição fechada não falta nada — o valor de hoje é zero
+   * porque já não há unidades, e tudo o que lhe aconteceu está nos movimentos.
+   * Contá-la como "sem preço" dizia que o total estava por baixo do real quando
+   * não estava.
+   */
   missingPrice: number;
   /**
    * Quais são, com nome e id.
@@ -93,6 +101,19 @@ export interface PortfolioReturn {
    * comparação de tudo.
    */
   foraDaComparacaoCents: number;
+  /** Dinheiro que voltou das vendas. Não está no "vale hoje": já saiu. */
+  proceedsCents: number;
+  /**
+   * O que se ganhou ou perdeu no que já se vendeu.
+   *
+   * **Faltava, e a falta era só num sentido.** O "dinheiro que entrou" incluía
+   * as compras das posições já vendidas, e o "vale hoje" não incluía nada do
+   * que elas devolveram — por isso o ganho aparente ficava mais pequeno do que
+   * o real por todo o dinheiro que passou por posições fechadas. Um resultado
+   * já realizado é tão real como o que ainda está em carteira: aquele já está
+   * garantido.
+   */
+  realizedGainCents: number;
   benchmarks: BenchmarkResult[];
 }
 
@@ -165,6 +186,9 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   let foraDaComparacaoCents = 0;
   /** Os bens que entram na comparação, para reconstruir a carteira no tempo. */
   const comparaveis: { bem: (typeof investments)[number]; movimentos: Trade[] }[] = [];
+  /** Dinheiro que voltou das vendas, e o que se ganhou ou perdeu nelas. */
+  let proceedsCents = 0;
+  let realizedGainCents = 0;
 
   for (const a of investments) {
     const own = byAsset.get(a.id) ?? [];
@@ -176,12 +200,37 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     }
     const position = buildPosition(own);
     investedCents += position.investedCents;
+    proceedsCents += position.proceedsCents;
+    realizedGainCents += position.realizedGainCents;
+
+    /**
+     * **Uma posição fechada não precisa de preço atual, e entra sempre.**
+     *
+     * Já não há unidades: o valor de hoje é zero, não é "desconhecido". O que
+     * lhe aconteceu está inteiro nos movimentos — comprou-se por tanto, vendeu-
+     * se por tanto — e os fluxos dela são exatos. Excluí-la da comparação
+     * tirava ao índice dinheiro que lá esteve mesmo.
+     *
+     * Foi este o engano da primeira correção: olhava só para o preço e não para
+     * a posição. Nesta carteira, **as oito "sem preço atual" são todas
+     * fechadas** — nenhuma posição aberta está sem preço — por isso a correção
+     * excluía da comparação exatamente as que mais se sabem.
+     */
+    const fechada = position.quantity <= 0;
+    if (fechada) {
+      flows.push(...position.flows);
+      comparaveis.push({ bem: a, movimentos: own });
+      if (position.firstDate && (!firstDate || position.firstDate < firstDate)) {
+        firstDate = position.firstDate;
+      }
+      continue;
+    }
 
     if (a.unitPriceCents === null || a.unitPriceCents === undefined) {
+      // Aberta e sem preço: esta sim, não se sabe quanto vale hoje.
       missingPrice++;
       semPreco.push({ id: a.id, name: a.name });
       currentValueCents += position.costCents;
-      // Nem os fluxos nem o valor: nada desta posição entra na comparação.
       foraDaComparacaoCents += position.investedCents;
       continue;
     }
@@ -326,6 +375,8 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     firstDate,
     missingPrice,
     semPreco,
+    proceedsCents,
+    realizedGainCents,
     /** Quanto dinheiro ficou de fora da comparação e da taxa. */
     foraDaComparacaoCents,
     benchmarks,
