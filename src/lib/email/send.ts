@@ -93,6 +93,36 @@ export async function sendInvite(
   });
 }
 
+/**
+ * O aviso de que um ambiente está prestes a congelar.
+ *
+ * **O que este email tem de fazer, e é fácil falhar.** Quem o recebe esteve
+ * meses sem abrir a app: não se lembra do que lá pôs, e a palavra "congelar"
+ * lida à pressa parece "apagar". Por isso diz-se o contrário logo, e diz-se
+ * duas vezes — nada se perde, e basta entrar para tudo voltar ao sítio.
+ *
+ * Não leva número nenhum de dentro do ambiente: nem saldos, nem quantas
+ * despesas lá estão. Um email é a coisa menos privada que esta app envia, e o
+ * que o aviso precisa de dizer não depende do conteúdo de ninguém.
+ */
+export async function sendRetentionWarning(
+  to: string,
+  spaceName: string,
+  quando: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/dashboard`;
+  return sendEmail(to, "O teu ambiente na Rachar vai passar a só de leitura", {
+    heading: "Basta entrares para ficar tudo como estava",
+    paragraphs: [
+      `O ambiente <strong style="color:#f3f2ee">${spaceName}</strong> está há muito tempo sem ser aberto. ${quando === "hoje" ? "Hoje" : `A partir de ${quando}`} passa a só de leitura.`,
+      "<strong style=\"color:#f3f2ee\">Não se apaga nada.</strong> Fica tudo onde está — só deixa de se poder acrescentar ou alterar enquanto estiver assim.",
+      "Entrar chega para o reativar. Não é preciso pedir nada a ninguém.",
+    ],
+    action: { label: "Entrar na Rachar", url },
+    footnote: `Fazemos isto para não guardar indefinidamente dados de contas que ninguém usa. Se já não queres a conta, podes apagá-la dentro da app. Se o botão não funcionar, copia esta ligação: ${url}`,
+  });
+}
+
 export async function sendPasswordReset(to: string, token: string): Promise<SendResult> {
   const url = `${siteUrl()}/recuperar/${token}`;
   return sendEmail(to, "Recuperar a palavra-chave da Rachar", {

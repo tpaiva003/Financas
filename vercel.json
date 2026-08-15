@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/quotes",
       "schedule": "30 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/retencao",
+      "schedule": "15 6 * * *"
     }
   ]
 }

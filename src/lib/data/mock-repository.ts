@@ -15,6 +15,8 @@ import type {
   AppUser,
   Category,
   ContactMessage,
+  RetentionRow,
+  WaitlistEntry,
   CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
@@ -104,6 +106,7 @@ interface Store {
   quoteCurrencies: Record<string, string>;
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
+  waitlist: WaitlistEntry[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -145,6 +148,7 @@ function getStore(): Store {
       quoteCurrencies: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.currency])),
       income: seedIncomes(),
       resetTokens: [],
+      waitlist: [],
     };
   }
   return globalForStore.__financasStore;
@@ -554,7 +558,9 @@ export class MockRepository implements Repository {
 
   async createAppUser(input: AppUser): Promise<void> {
     const store = getStore();
-    if (!store.appUsers.some((u) => u.id === input.id)) store.appUsers.push({ ...input });
+    if (!store.appUsers.some((u) => u.id === input.id)) {
+      store.appUsers.push({ createdAt: new Date().toISOString(), ...input });
+    }
   }
 
   async deleteAppUser(id: string): Promise<void> {
@@ -592,6 +598,72 @@ export class MockRepository implements Repository {
   async renameSpace(spaceId: string, name: string): Promise<void> {
     const s = getStore().spaces.find((x) => x.id === spaceId);
     if (s) s.name = name;
+  }
+
+  async touchSpaceActivity(spaceId: string, atISO: string): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.lastActivityAt = atISO;
+  }
+
+  async listSpacesForRetention(): Promise<RetentionRow[]> {
+    const store = getStore();
+    return store.spaces
+      // O mesmo filtro do Supabase: os completos nem chegam a ser avaliados.
+      .filter((s) => (s.plan ?? "free") !== "full")
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        plan: s.plan ?? "free",
+        createdAt: s.createdAt,
+        lastActivityAt: s.lastActivityAt ?? null,
+        retentionWarnedAt: s.retentionWarnedAt ?? null,
+        frozenAt: s.frozenAt ?? null,
+        emails: [
+          ...new Set(
+            store.members
+              .filter((m) => m.spaceId === s.id && m.email)
+              .map((m) => m.email as string),
+          ),
+        ],
+      }));
+  }
+
+  async markRetentionWarned(spaceId: string, atISO: string): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.retentionWarnedAt = atISO;
+  }
+
+  async setSpaceFrozen(spaceId: string, atISO: string | null): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.frozenAt = atISO;
+  }
+
+  async countAppUsersCreatedOn(day: string): Promise<number> {
+    return getStore().appUsers.filter((u) => (u.createdAt ?? "").slice(0, 10) === day).length;
+  }
+
+  async addToWaitlist(input: {
+    email: string;
+    name?: string | null;
+    consent: boolean;
+    source?: string | null;
+  }): Promise<void> {
+    const store = getStore();
+    const email = input.email.trim().toLowerCase();
+    // Insistir não faz subir: quem já lá está fica onde estava.
+    if (store.waitlist.some((w) => w.email === email)) return;
+    store.waitlist.push({
+      email,
+      name: input.name?.trim() || null,
+      consent: input.consent,
+      source: input.source ?? null,
+      createdAt: new Date().toISOString(),
+      invitedAt: null,
+    });
+  }
+
+  async listWaitlist(): Promise<WaitlistEntry[]> {
+    return [...getStore().waitlist];
   }
 
   async listAppUsers(): Promise<AppUser[]> {

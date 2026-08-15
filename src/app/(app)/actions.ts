@@ -8,6 +8,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { normalizeAmount, parseAmountCents, porqueNaoGravou } from "@/lib/form-helpers";
+import { ESCRITA_CONGELADA } from "@/lib/congelamento";
 import { getRepository } from "@/lib/data";
 import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
@@ -199,6 +200,7 @@ export async function createExpenseAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "expenses");
   if (cheio) return { error: cheio };
   // O saldo/divisão é sempre entre os participantes plenos.
@@ -276,6 +278,7 @@ export async function createSettlementAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const parsed = settlementSchema.safeParse({
     fromUserId: formData.get("fromUserId"),
@@ -319,6 +322,7 @@ function revalidatePeriod() {
 export async function settleAndPayAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const { transfers } = await getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -344,6 +348,7 @@ export async function settleAndPayAction(): Promise<void> {
 export async function carryBalanceAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   await getRepository().settleOpenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
@@ -353,6 +358,7 @@ export async function carryBalanceAction(): Promise<void> {
 export async function reopenPeriodAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   await getRepository().reopenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
@@ -363,6 +369,7 @@ export async function reopenPeriodAction(): Promise<void> {
 export async function approveExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return; // só membros plenos aprovam
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().setExpenseApproval(id, ctx.space.id, "approved");
@@ -375,6 +382,7 @@ export async function approveExpenseAction(formData: FormData): Promise<void> {
 export async function rejectExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().setExpenseApproval(id, ctx.space.id, "rejected");
@@ -392,6 +400,7 @@ export async function grantSubmitterAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberId = String(formData.get("memberId") ?? "");
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
 
@@ -421,6 +430,7 @@ export async function grantSubmitterAction(
 export async function revokeSubmitterAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const memberId = String(formData.get("memberId") ?? "");
   const member = ctx.members.find((m) => m.id === memberId);
   // Só revoga submitters (nunca utilizadores base).
@@ -447,6 +457,7 @@ export async function transferBalanceToSpaceAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const targetId = String(formData.get("targetSpaceId") ?? "");
   if (!targetId || targetId === ctx.space.id) return { error: "Escolhe o ambiente destino." };
   if (!ctx.spaces.some((s) => s.id === targetId)) return { error: "Ambiente destino inválido." };
@@ -518,6 +529,7 @@ export async function updateExpenseAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
@@ -565,6 +577,7 @@ export async function updateExpenseAction(
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().softDeleteExpense(id, ctx.space.id, ctx.user.id);
@@ -676,6 +689,7 @@ export async function createCategoryAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
     color: formData.get("color") || "",
@@ -697,6 +711,7 @@ export async function createCategoryAction(
 export async function updateCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const parsed = categorySchema.safeParse({
@@ -717,6 +732,7 @@ export async function updateCategoryAction(formData: FormData): Promise<void> {
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteCategory(id, ctx.space.id);
@@ -733,6 +749,7 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
 export async function saveSpendingGoalAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
 
   const raw = String(formData.get("amount") ?? "").trim();
   // "__total__" é a meta do ambiente: na base de dados fica com categoria nula.
@@ -888,6 +905,9 @@ export async function saveImportReminderAction(formData: FormData): Promise<void
   const ctx = await getSpaceContext();
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
 
   const source = String(formData.get("source") ?? "").trim();
   if (!source) return;
@@ -918,6 +938,9 @@ export async function deleteImportReminderAction(formData: FormData): Promise<vo
   const ctx = await getSpaceContext();
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
   const source = String(formData.get("source") ?? "").trim();
   if (!source) return;
   await getRepository().deleteImportReminder(target.space.id, source).catch(() => {});
@@ -931,6 +954,7 @@ export async function commitImportAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   let payload: ImportCommitPayload;
   try {
@@ -975,6 +999,9 @@ export async function undoImportBatchAction(formData: FormData): Promise<void> {
   // O lote pode pertencer a outro ambiente do utilizador.
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
 
   await getRepository().undoImportBatch(id, target.space.id, ctx.user.id);
   revalidatePath("/importar");
@@ -1007,6 +1034,7 @@ export async function createRecurringAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
 
   const parsed = recurringSchema.safeParse({
@@ -1073,6 +1101,7 @@ export async function updateRecurringAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
 
   const id = String(formData.get("id") ?? "");
@@ -1154,6 +1183,7 @@ export async function updateRecurringAction(
 export async function recurringOpAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const op = String(formData.get("op") ?? "");
   if (!id) return;
@@ -1187,6 +1217,7 @@ export async function confirmRecurringExpenseAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
   const amountCents = parseAmountCents(formData.get("amount"));
@@ -1221,6 +1252,7 @@ export async function addMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "members");
   if (cheio) return { error: cheio };
 
@@ -1299,6 +1331,7 @@ export async function renameSpaceAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Indica um nome." };
   if (name.length > 80) return { error: "Nome demasiado longo." };
@@ -1307,6 +1340,35 @@ export async function renameSpaceAction(
   revalidatePath("/", "layout");
   revalidatePath("/ambiente");
   return { ok: true };
+}
+
+/**
+ * Descongela um ambiente que ficou parado tempo de mais.
+ *
+ * **Isto não pede nada a ninguém.** Não há aprovação, não há espera e não há
+ * contacto com o suporte: quem chega ao ambiente carrega no botão e volta a
+ * escrever. O congelamento existe para não guardar indefinidamente dados de
+ * quem nunca mais voltou — no momento em que alguém volta, deixou de ser esse
+ * o caso, e insistir seria castigar em vez de arrumar.
+ *
+ * A guarda de escrita não se aplica aqui, de propósito: uma verificação de
+ * congelamento nesta action trancava a porta pelo lado de dentro. O teste em
+ * `lib/congelamento-actions.test.ts` conhece a excepção pelo nome.
+ */
+export async function reativarAmbienteAction(): Promise<void> {
+  const ctx = await getSpaceContext();
+  // Quem só submete não decide o estado do ambiente, tal como não lhe muda o
+  // nome. Continua a poder ler tudo o que já lia.
+  if (ctx.viewerRole === "submitter") return;
+
+  await getRepository().setSpaceFrozen(ctx.space.id, null);
+  // A atividade de hoje fica marcada na mesma: sem isto, o cron da noite
+  // seguinte olhava para uma data velha e voltava a congelar o que se acabou
+  // de descongelar.
+  await getRepository()
+    .touchSpaceActivity(ctx.space.id, new Date().toISOString())
+    .catch(() => {});
+  revalidatePath("/", "layout");
 }
 
 /**
@@ -1419,6 +1481,7 @@ export async function linkMemberAccountAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const memberId = String(formData.get("memberId") ?? "");
   const userId = String(formData.get("userId") ?? "");
@@ -1487,6 +1550,7 @@ export async function updateMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
   const parsed = memberEditSchema.safeParse({
@@ -1512,6 +1576,7 @@ export async function deleteMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
 
@@ -1602,6 +1667,7 @@ export async function saveAssetAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Dá-lhe um nome." };
@@ -1765,6 +1831,7 @@ export async function saveAssetAction(
 export async function deleteAssetAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAsset(id, ctx.space.id).catch(() => {});
@@ -1776,6 +1843,7 @@ export async function deleteAssetAction(formData: FormData): Promise<void> {
 export async function updateAssetPriceAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const price = parseNumber(formData.get("unitPrice"));
   if (!id) return;
@@ -1802,6 +1870,7 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
 export async function updateAssetSymbolAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
 
@@ -1826,6 +1895,7 @@ export async function updateAssetSymbolAction(formData: FormData): Promise<void>
 export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const symbol = String(formData.get("symbol") ?? "").trim();
   if (!id || !symbol) return;
@@ -2007,6 +2077,7 @@ export async function applySymbolsAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const escolhidos = formData.getAll("apply").map((v) => String(v));
   if (escolhidos.length === 0) return { error: "Não escolheste nenhum." };
@@ -2054,6 +2125,9 @@ export async function refreshAllQuotesAction(
   if (ctx.viewerRole === "submitter") {
     return { error: "Não tens permissão para isto." };
   }
+  // Ir buscar cotações a uma fonte externa custa dinheiro e tempo. Num ambiente
+  // que ninguém abre há três meses, custa por nada.
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const freshness = await refreshStalePrices(ctx.space.id, { force: true }).catch(() => null);
   if (!freshness) return { error: "Não consegui atualizar os preços." };
@@ -2109,6 +2183,7 @@ export async function addAssetTradeAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   if (!assetId) return { error: "Falta o investimento." };
@@ -2206,6 +2281,7 @@ export async function addAssetTradeAction(
 export async function deleteAssetTradeAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAssetTrade(id, ctx.space.id).catch(() => {});
@@ -2223,6 +2299,7 @@ export async function saveIncomeAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const description = String(formData.get("description") ?? "").trim();
   if (!description) return { error: "Descreve o rendimento." };
@@ -2287,6 +2364,7 @@ export async function saveIncomeAction(
 export async function deleteIncomeAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteIncome(id, ctx.space.id).catch(() => {});
@@ -2555,6 +2633,7 @@ export async function conversarAction(
 ): Promise<ConversaState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   if (!conversaAvailable()) return { error: "A conversa assistida não está configurada." };
 
   const pergunta = String(formData.get("pergunta") ?? "").trim();
@@ -2853,6 +2932,7 @@ async function fotografarDepoisDoMovimento(spaceId: string): Promise<void> {
 export async function moverAtivoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
 
   const id = String(formData.get("id") ?? "").trim();
   const dir = String(formData.get("dir") ?? "");
@@ -2909,6 +2989,7 @@ export async function prepararAnexoAction(
 ): Promise<AnexoPreparado> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
@@ -2965,6 +3046,7 @@ export async function prepararAnexoAction(
 export async function confirmarAnexoAction(anexoId: string): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(anexoId ?? "").trim();
   if (!id) return { error: "Anexo inválido." };
 
@@ -2993,6 +3075,7 @@ export async function confirmarAnexoAction(anexoId: string): Promise<ActionState
 export async function apagarAnexoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
 
@@ -3134,6 +3217,7 @@ export async function buscarEuriborAction(
 ): Promise<EuriborState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const bruto = String(formData.get("indexante") ?? "");
   if (!(bruto in INDEXANTES)) return { error: "Indexante desconhecido." };
@@ -3169,6 +3253,7 @@ export async function confirmarSplitAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
@@ -3217,6 +3302,7 @@ export async function confirmarSplitAction(
 export async function apagarSplitAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "").trim();
   const assetId = String(formData.get("assetId") ?? "").trim();
   if (!id) return;
@@ -3241,6 +3327,7 @@ export async function descobrirMarcasAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const repo = getRepository();
   const bens = await repo.listAssets(ctx.space.id).catch(() => []);
@@ -3287,6 +3374,7 @@ export async function descobrirSetoresAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const r = await atualizarSetores(ctx.space.id).catch(() => null);
   if (!r) return { error: "Não consegui falar com a fonte dos dados. Tenta daqui a pouco." };
@@ -3425,6 +3513,7 @@ export async function guardarAvaliacaoAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const nome = String(formData.get("name") ?? "").trim();
   if (!nome) return { error: "Escreve o nome da empresa antes de guardar." };
@@ -3581,6 +3670,7 @@ export async function criarAvaliacaoAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const nome = String(formData.get("name") ?? "").trim();
   if (!nome) return { error: "Escreve o nome da empresa." };
@@ -3631,6 +3721,7 @@ export async function editarAvaliacaoAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { error: "Faltou a avaliação." };
@@ -3677,6 +3768,7 @@ export async function editarAvaliacaoAction(
 export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
 
   const id = String(formData.get("id") ?? "").trim();
   const etapa = String(formData.get("stage") ?? "");
@@ -3690,6 +3782,7 @@ export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<voi
 export async function apagarAvaliacaoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
@@ -3724,6 +3817,7 @@ export async function fundirAtivosAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const manterId = String(formData.get("manterId") ?? "").trim();
   const removerId = String(formData.get("removerId") ?? "").trim();
@@ -3820,6 +3914,7 @@ export async function prepararAnexoAvaliacaoAction(
 ): Promise<AnexoPreparado> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const valuationId = String(formData.get("valuationId") ?? "").trim();
   const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
@@ -3873,6 +3968,7 @@ export async function prepararAnexoAvaliacaoAction(
 export async function confirmarAnexoAvaliacaoAction(anexoId: string): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(anexoId ?? "").trim();
   if (!id) return { error: "Anexo inválido." };
 
@@ -3888,6 +3984,7 @@ export async function confirmarAnexoAvaliacaoAction(anexoId: string): Promise<Ac
 export async function apagarAnexoAvaliacaoAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
 
@@ -3919,6 +4016,7 @@ export async function resumirAnexosAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   if (!resumoAnexosAvailable()) return { error: "O resumo assistido não está configurado." };
 
   const id = String(formData.get("id") ?? "").trim();
@@ -3994,6 +4092,7 @@ export async function atualizarDatasAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const r = await atualizarDatasDeMercado(ctx.space.id, { force: true });
   revalidatePath("/patrimonio");

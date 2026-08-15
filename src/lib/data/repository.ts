@@ -637,6 +637,49 @@ export interface Space {
   position?: number;
   createdBy?: string | null;
   createdAt: string;
+  /**
+   * Congelado por inatividade: só de leitura. Nunca implica apagar nada.
+   *
+   * Vem no `Space` e não numa consulta à parte de propósito: quem tem o
+   * ambiente à frente tem sempre esta informação sem ter de a ir pedir, e é o
+   * que permite bloquear as escritas num sítio só. Ver `domain/retencao.ts`.
+   */
+  frozenAt?: string | null;
+  /** A última vez que alguém aqui entrou. Entrar conta como atividade. */
+  lastActivityAt?: string | null;
+  /** Quando se avisou do congelamento por inatividade, se se avisou. */
+  retentionWarnedAt?: string | null;
+}
+
+/**
+ * Um ambiente visto pelos olhos da retenção, e mais nada.
+ *
+ * Deliberadamente sem nome, sem participantes e sem uma única linha de
+ * conteúdo: o que decide congelar não precisa de saber de quem é o ambiente
+ * nem o que lá está dentro, e o que não se lê não se pode expor por engano.
+ */
+export interface RetentionRow {
+  id: string;
+  /** O nome, só para o email dizer de que ambiente fala. Nunca conteúdo. */
+  name: string;
+  plan?: SpacePlan;
+  createdAt: string;
+  lastActivityAt: string | null;
+  retentionWarnedAt: string | null;
+  frozenAt: string | null;
+  /** Emails de quem participa, para o aviso ter para onde ir. */
+  emails: string[];
+}
+
+export interface WaitlistEntry {
+  email: string;
+  name: string | null;
+  /** A pessoa aceitou ser contactada. Sem isto não se envia convite nenhum. */
+  consent: boolean;
+  /** De onde veio: "landing", "registo-cheio". Nunca conteúdo. */
+  source: string | null;
+  createdAt: string;
+  invitedAt: string | null;
 }
 
 export type MemberRole = "full" | "submitter";
@@ -660,6 +703,8 @@ export interface AppUser {
   id: string;
   email: string;
   name: string;
+  /** Quando a conta nasceu. Só o `countAppUsersCreatedOn` precisa dela. */
+  createdAt?: string;
 }
 
 /**
@@ -852,6 +897,26 @@ export interface Repository {
   createSpace(input: CreateSpaceInput): Promise<Space>;
   /** Muda o nome de um ambiente. */
   renameSpace(spaceId: string, name: string): Promise<void>;
+  /**
+   * Marca que alguém esteve aqui hoje.
+   *
+   * Chamada em cada abertura de ambiente, por isso escreve no máximo uma vez
+   * por dia: a data é tudo o que a retenção precisa, e uma escrita por cada
+   * página aberta era uma ida à base de dados a mais em todos os pedidos.
+   */
+  touchSpaceActivity(spaceId: string, atISO: string): Promise<void>;
+  /**
+   * Os ambientes que a retenção tem de avaliar: **só os gratuitos**.
+   *
+   * O filtro é aqui e não em quem chama porque é a última linha de defesa da
+   * regra 1 do `domain/retencao.ts` — um ambiente completo nunca deve sequer
+   * chegar às mãos de quem decide congelar.
+   */
+  listSpacesForRetention(): Promise<RetentionRow[]>;
+  /** Regista que se avisou do congelamento. */
+  markRetentionWarned(spaceId: string, atISO: string): Promise<void>;
+  /** Congela (`atISO`) ou descongela (`null`). Nunca apaga nada. */
+  setSpaceFrozen(spaceId: string, atISO: string | null): Promise<void>;
   /** Guarda a ordem escolhida pelo utilizador (índice na lista dada). */
   reorderSpaces(spaceIds: string[]): Promise<void>;
   /** Contas existentes (utilizadores base + adicionais), para associar a participantes. */
@@ -946,6 +1011,25 @@ export interface Repository {
   /** Utilizadores adicionais (submitters) com login próprio. */
   getAppUserByEmail(email: string): Promise<AppUser | null>;
   createAppUser(input: AppUser): Promise<void>;
+  /**
+   * Quantas contas nasceram neste dia ("AAAA-MM-DD", UTC).
+   *
+   * É o que alimenta o `decideSignup`: o tecto de contas novas por dia existe
+   * para o registo aberto não virar alojamento gratuito de dados por engano.
+   */
+  countAppUsersCreatedOn(day: string): Promise<number>;
+  /**
+   * Põe alguém na fila. Repetir não faz subir: o mesmo email fica onde estava,
+   * com a data de entrada original.
+   */
+  addToWaitlist(input: {
+    email: string;
+    name?: string | null;
+    consent: boolean;
+    source?: string | null;
+  }): Promise<void>;
+  /** A fila, para a consola do dono. */
+  listWaitlist(): Promise<WaitlistEntry[]>;
   deleteAppUser(id: string): Promise<void>;
   /** Desliga a conta dos participantes, sem apagar o histórico. */
   unlinkUserFromMembers(userId: string): Promise<void>;
