@@ -611,6 +611,7 @@ export class MockRepository implements Repository {
       .filter((s) => (s.plan ?? "free") !== "full")
       .map((s) => ({
         id: s.id,
+        name: s.name,
         plan: s.plan ?? "free",
         createdAt: s.createdAt,
         lastActivityAt: s.lastActivityAt ?? null,

@@ -875,7 +875,7 @@ export class SupabaseRepository implements Repository {
     const linhas = await todasAsLinhas<any>((de, ate) =>
       db
         .from("spaces")
-        .select("id, plan, created_at, last_activity_at, retention_warned_at, frozen_at")
+        .select("id, name, plan, created_at, last_activity_at, retention_warned_at, frozen_at")
         .or("plan.is.null,plan.neq.full")
         .order("created_at")
         .range(de, ate),
@@ -905,6 +905,7 @@ export class SupabaseRepository implements Repository {
 
     return linhas.map((r) => ({
       id: r.id,
+      name: r.name,
       plan: (r.plan as SpacePlan) ?? "free",
       createdAt: r.created_at,
       lastActivityAt: r.last_activity_at ?? null,

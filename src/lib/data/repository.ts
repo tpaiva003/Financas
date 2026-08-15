@@ -660,6 +660,8 @@ export interface Space {
  */
 export interface RetentionRow {
   id: string;
+  /** O nome, só para o email dizer de que ambiente fala. Nunca conteúdo. */
+  name: string;
   plan?: SpacePlan;
   createdAt: string;
   lastActivityAt: string | null;
