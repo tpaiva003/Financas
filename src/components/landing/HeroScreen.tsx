@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * O ecrã do herói, em HTML vivo e não numa imagem.
@@ -16,7 +16,16 @@ import { useEffect, useState } from "react";
  *
  * Anda sozinho uma vez, ao fim de 1,8s, e fica quieto a seguir. Repetir em
  * ciclo dava um anúncio a piscar ao lado do texto que se está a ler.
+ *
+ * O conteúdo é desenhado num tamanho fixo e depois **escalado** para a moldura,
+ * como um telemóvel a sério faz. Sem isto, num portátil de 1366x768 a moldura
+ * encolhia (para não ocupar o ecrã todo) mas as letras não, e o ecrã ficava
+ * cortado a meio de uma frase.
  */
+
+/** Tamanho em que este ecrã foi desenhado. O resto é regra de três. */
+const LARGURA_BASE = 320;
+const ALTURA_BASE = 692;
 
 const TOTAL_CENTS = 5240;
 
@@ -32,6 +41,18 @@ function euros(cents: number): string {
 export function HeroScreen() {
   const [divisao, setDivisao] = useState<Divisao>("meias");
   const [mexido, setMexido] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [escala, setEscala] = useState(1);
+
+  useEffect(() => {
+    const moldura = ref.current?.parentElement;
+    if (!moldura || typeof ResizeObserver === "undefined") return;
+    const medir = () => setEscala(moldura.clientWidth / LARGURA_BASE);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(moldura);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (mexido) return;
@@ -48,7 +69,16 @@ export function HeroScreen() {
   const mariaCents = TOTAL_CENTS - andreCents;
 
   return (
-    <div className="flex h-full flex-col px-5 pb-5 pt-9 text-left">
+    <div
+      ref={ref}
+      className="absolute left-0 top-0 flex flex-col px-5 pb-5 pt-9 text-left"
+      style={{
+        width: LARGURA_BASE,
+        height: ALTURA_BASE,
+        transform: `scale(${escala})`,
+        transformOrigin: "top left",
+      }}
+    >
       <p className="chip self-start">Exemplo</p>
 
       <p className="mt-5 font-display text-lg font-semibold leading-tight text-fg">
@@ -109,7 +139,7 @@ export function HeroScreen() {
         Segue as linhas, não vai colado ao fundo: encostado lá em baixo abria
         um buraco a meio do ecrã, que é o contrário do que uma app faz.
       */}
-      <div className="mt-7">
+      <div className="mt-7 pb-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
           Fica a dever
         </p>
@@ -119,6 +149,35 @@ export function HeroScreen() {
             {euros(mariaCents)}
           </span>
         </p>
+      </div>
+
+      {/*
+        A barra de baixo, como na app a sério em telemóvel. Sem ela o ecrã
+        acabava a meio e ficava um terço de vazio por baixo do último número,
+        que é o que denuncia uma maqueta.
+      */}
+      <div className="mt-auto flex items-stretch justify-around pt-4">
+        {[
+          ["Saldo", true],
+          ["Movimentos", false],
+          ["Análise", false],
+          ["Património", false],
+        ].map(([rotulo, ativo]) => (
+          <span
+            key={rotulo as string}
+            className={`relative flex flex-1 flex-col items-center gap-1 ${
+              ativo ? "text-fg" : "text-fg-faint"
+            }`}
+          >
+            {ativo ? (
+              <span aria-hidden className="absolute -top-1 h-1 w-1 rounded-full bg-fg" />
+            ) : null}
+            <span aria-hidden className="h-3.5 w-3.5 rounded-[3px] border border-current opacity-70" />
+            <span className="font-mono text-[7px] uppercase tracking-[0.08em]">
+              {rotulo as string}
+            </span>
+          </span>
+        ))}
       </div>
     </div>
   );

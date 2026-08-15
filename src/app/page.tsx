@@ -92,7 +92,7 @@ const AREAS = [
 
 function Hero() {
   return (
-    <section className="mx-auto max-w-6xl px-6 pb-28 pt-20 sm:pt-28 lg:pb-36">
+    <section className="mx-auto max-w-6xl px-6 pb-20 pt-14 sm:pt-20 lg:pb-28">
       <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
         <div>
           <p className="eyebrow animate-fade-in">Contas à moda do Porto</p>
@@ -114,7 +114,7 @@ function Hero() {
             className="mt-9 flex animate-fade-up flex-wrap gap-3"
             style={{ animationDelay: "120ms" }}
           >
-            <a href="#contacto" className="btn-primary px-6 py-3 text-base">Quero saber mais</a>
+            <a href="#contacto" className="btn-marca px-6 py-3 text-base">Quero saber mais</a>
             <Link href="/login" className="btn-secondary px-6 py-3 text-base">Já tenho acesso</Link>
           </div>
 
@@ -135,12 +135,57 @@ function Hero() {
 
         {/* O produto a funcionar, ao lado da promessa. */}
         <div
-          className="mx-auto w-full max-w-[19rem] animate-fade-up lg:max-w-[20rem]"
+          className="relative mx-auto w-full max-w-sm animate-fade-up lg:max-w-none"
           style={{ animationDelay: "220ms" }}
         >
-          <PhoneFrame>
-            <HeroScreen />
-          </PhoneFrame>
+          {/*
+            Arcos por trás do aparelho. Não querem dizer nada: servem para o
+            telemóvel deixar de estar sozinho no meio do vazio, e para o olho
+            ter para onde ir a seguir ao ecrã.
+          */}
+          <Arcos />
+
+          <div className="brilho peca-telemovel relative isolate mx-auto w-full">
+            <PhoneFrame>
+              <HeroScreen />
+            </PhoneFrame>
+          </div>
+
+          {/*
+            Fichas a sair da moldura, com números do ambiente de exemplo, os
+            mesmos das capturas mais abaixo. É o que dá profundidade ao herói:
+            sem elas, é um retângulo ao lado de um texto.
+
+            As duas maiores aparecem a partir do `sm`; as duas pequenas só em
+            ecrãs largos, onde há coluna que chegue para elas não taparem o
+            ecrã do telemóvel.
+          */}
+          <FichaFlutuante
+            className="-left-10 top-[12%] hidden sm:block"
+            titulo="Extrato importado"
+            valor="7 despesas"
+            nota="0 duplicadas"
+          />
+          <FichaFlutuante
+            className="-right-10 bottom-[18%] hidden sm:block"
+            destaque
+            titulo="Património líquido"
+            valor="53 845,10 €"
+            nota="casa, carteira e dívidas"
+          />
+          <FichaFlutuante
+            className="-left-12 bottom-[6%] hidden xl:block"
+            titulo="Taxa anual"
+            valor="+11,1%"
+            nota="da carteira, com as datas"
+          />
+          <FichaFlutuante
+            className="-right-12 top-[4%] hidden xl:block"
+            titulo="Este mês"
+            valor="128,40 €"
+            nota="contra 510,15 € em julho"
+          />
+
           <p className="mt-4 text-center text-xs leading-relaxed text-fg-faint">
             Carrega em <span className="text-fg-muted">Meias</span> ou{" "}
             <span className="text-fg-muted">60/40</span>. Quem pagou não muda,
@@ -149,6 +194,65 @@ function Hero() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Ficha que sai da moldura do telemóvel, no herói.
+ *
+ * Os números são os do ambiente de exemplo, iguais aos das capturas mais
+ * abaixo na página. Não são métricas da plataforma nem prova social: são o
+ * produto a mostrar-se, e batem certo com o que se vê a seguir.
+ */
+function FichaFlutuante({
+  titulo,
+  valor,
+  nota,
+  destaque = false,
+  className = "",
+}: {
+  titulo: string;
+  valor: string;
+  nota: string;
+  /** Uma ficha, e só uma, leva a cor da marca. Duas já é um sinal a competir. */
+  destaque?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`surface absolute z-10 w-36 p-3 backdrop-blur-md ${className}`}
+      style={destaque ? { boxShadow: "var(--shadow-card-hi), 0 0 0 1px rgb(var(--c-credit) / 0.45)" } : undefined}
+    >
+      <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-fg-faint">{titulo}</p>
+      <p className={`mt-1 font-mono text-sm tnum ${destaque ? "text-credit" : "text-fg"}`}>
+        {valor}
+      </p>
+      <p className="mt-0.5 text-[10px] leading-snug text-fg-faint">{nota}</p>
+    </div>
+  );
+}
+
+/** Arcos concêntricos por trás do aparelho, puramente decorativos. */
+function Arcos() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 400 400"
+      className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-auto w-[150%] -translate-x-1/2 -translate-y-1/2 text-fg"
+    >
+      {[120, 165, 200].map((r, i) => (
+        <circle
+          key={r}
+          cx="200"
+          cy="200"
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          opacity={0.1 - i * 0.025}
+        />
+      ))}
+    </svg>
   );
 }
 
@@ -260,37 +364,37 @@ const AREAS_DETALHE = [
     k: "Dividir",
     t: "Dividir sem fazer contas",
     d: "Meias, percentagem, valor fixo ou quotas, e por despesa. Quem pagou é independente de como se divide. Tocas no saldo e vês exatamente as despesas que o compõem, até ao cêntimo. Acertas e fica a zero, com histórico.",
-    span: "sm:col-span-7",
+    span: "sm:col-span-12 lg:col-span-7 lg:row-span-2",
   },
   {
     k: "Importar",
     t: "Carregas o extrato, ela escreve por ti",
     d: "Excel e CSV do banco, PDF do cartão de crédito e ficheiros de corretora. As colunas são reconhecidas sozinhas, com ajuda de um modelo quando o formato é novo, e cada transação entra uma só vez, mesmo que carregues o mesmo ficheiro duas vezes.",
-    span: "sm:col-span-5",
+    span: "sm:col-span-6 lg:col-span-5",
   },
   {
     k: "Rendimentos",
     t: "Metade da história que faltava",
     d: "Não é só para onde o dinheiro vai: é também de onde vem. Salário e trabalhos paralelos de um lado, juros, dividendos e rendas do outro. Daí sai a taxa de poupança e a percentagem das despesas já paga por rendimento passivo.",
-    span: "sm:col-span-5",
+    span: "sm:col-span-6 lg:col-span-5",
   },
   {
     k: "Análise",
     t: "O mês comparado com o que é normal",
     d: "Por categoria, por comerciante e por mês. As dezenas de formas de escrever “Continente” contam como uma só. E a meio de agosto compara-se com os primeiros dias de agosto do ano passado, não com o mês inteiro. Senão parece sempre que se gastou pouco.",
-    span: "sm:col-span-7",
+    span: "sm:col-span-12 lg:col-span-7",
   },
   {
     k: "Património",
     t: "O que tens menos o que deves",
     d: "Contas, depósitos, imóveis, investimentos e dívidas na mesma conta. Ao crédito à habitação juntas a prestação e a taxa e ficas a saber a data do último pagamento e quanto pagas de juros até lá.",
-    span: "sm:col-span-6",
+    span: "sm:col-span-6 lg:col-span-5",
   },
   {
     k: "FIRE",
     t: "O ano em que trabalhar é opcional",
     d: "O gasto anual a dividir pela taxa de levantamento segura dá o número. Com o que poupas por mês e o retorno esperado, sai quantos anos faltam. Em termos reais, já descontada a inflação, e com as regras ajustáveis: a dos 4% é um ponto de partida, não uma lei da física.",
-    span: "sm:col-span-6",
+    span: "sm:col-span-6 lg:col-span-7",
   },
 ];
 
@@ -309,10 +413,14 @@ function OQueFaz() {
       </Reveal>
 
       <Reveal group className="mt-14 grid gap-4 sm:grid-cols-12 sm:gap-5">
-        {AREAS_DETALHE.map((c) => (
+        {AREAS_DETALHE.map((c, i) => (
           <article key={c.k} className={`surface surface-lift p-6 sm:p-8 ${c.span}`}>
             <p className="eyebrow">{c.k}</p>
-            <p className="mt-3 font-display text-lg font-semibold leading-snug tracking-tight">
+            <p
+              className={`mt-3 font-display font-semibold leading-snug tracking-tight ${
+                i === 0 ? "text-xl sm:text-2xl" : "text-lg"
+              }`}
+            >
               {c.t}
             </p>
             <p className="mt-2.5 text-[15px] leading-relaxed text-fg-muted text-pretty">{c.d}</p>
@@ -348,7 +456,7 @@ function ProvaImportar() {
 
         <div className="lg:-mr-6">
           <div className="md:hidden">
-            <PhoneFrame className="mx-auto max-w-[17rem]">
+            <PhoneFrame className="peca-telemovel-cena mx-auto">
               <Shot
                 base="/landing/importar-mobile"
                 alt={ALT_IMPORTAR}
@@ -357,7 +465,7 @@ function ProvaImportar() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/importar" className="hidden md:block">
+          <BrowserFrame url="rachar.pt/importar" className="peca-browser flutua mx-auto hidden md:block">
             <Shot
               base="/landing/importar-desktop"
               alt={ALT_IMPORTAR}
@@ -429,7 +537,7 @@ function Investimentos() {
 
         <Reveal className="mt-12 lg:-mr-16">
           <div className="md:hidden">
-            <PhoneFrame className="mx-auto max-w-[17rem]">
+            <PhoneFrame className="peca-telemovel-cena mx-auto">
               <Shot
                 base="/landing/carteira-mobile"
                 alt={ALT_CARTEIRA}
@@ -438,7 +546,7 @@ function Investimentos() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/patrimonio/ativos" className="hidden md:block">
+          <BrowserFrame url="rachar.pt/patrimonio/ativos" className="peca-browser flutua mx-auto hidden md:block">
             <Shot
               base="/landing/carteira-desktop"
               alt={ALT_CARTEIRA}
@@ -549,7 +657,7 @@ function ProvaAnalise() {
 
         <div className="mx-auto mt-12 max-w-4xl">
           <div className="md:hidden">
-            <PhoneFrame className="mx-auto max-w-[17rem]">
+            <PhoneFrame className="peca-telemovel-cena mx-auto">
               <Shot
                 base="/landing/analise-mobile"
                 alt={ALT_ANALISE}
@@ -558,7 +666,7 @@ function ProvaAnalise() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/relatorios" className="hidden md:block">
+          <BrowserFrame url="rachar.pt/relatorios" className="peca-browser flutua mx-auto hidden md:block">
             <Shot
               base="/landing/analise-desktop"
               alt={ALT_ANALISE}

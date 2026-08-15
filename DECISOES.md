@@ -92,6 +92,12 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - Redesenho para tema **escuro editorial premium**: tipografia *Space Grotesk*
   (títulos) + *JetBrains Mono* (números) + *Inter* (corpo); hairlines, muito
   espaço, micro-animações. Tokens em `tailwind.config.ts` + `globals.css`.
+  > **Atualizado em 13/08:** os *hairlines* deixaram de ser o que separa blocos.
+  > O contorno passou para a sombra e as divisórias estáticas foram removidas,
+  > na landing e na app. O que fica desta linha é o resto: as três fontes, o
+  > muito espaço, as micro-animações, e **os tokens viverem no `globals.css`**.
+  > Ver "O ecrã de quem visita não é o ecrã de quem desenha" e as entradas de
+  > 12 e 13/08.
 - **Sem travessões (—)** no texto visível (decisão de estilo do produto).
 
 ### Login por palavra-chave (interim)
@@ -2583,3 +2589,102 @@ Fica por resolver, e é irrelevante para a página pública: em modo de exemplo,
 nome da **conta com sessão iniciada** continua a vir do `lib/users.ts` e a dizer
 "Tiago". Não aparece em captura nenhuma (o nome vive dentro do menu "Mais", que
 está fechado), e mexer nisso era mexer na identidade de produção.
+
+## O ecrã de quem visita não é o ecrã de quem desenha — 2026-08-15
+
+O Tiago abriu a página num Lenovo e o telemóvel do herói ocupava-lhe o ecrã
+todo. Não era impressão: era um bug, e mediu-se.
+
+A página foi desenhada e verificada em 1440x900 e 390x844. **Os pontos de corte
+do Tailwind só olham para a largura**, e é aí que isto falha: um portátil de
+1366x768, ou um 1920 com o escalonamento do Windows a 150% (que dá 1280x720 de
+CSS, e é o mais comum nos portáteis Windows), tem largura de desktop e menos 130
+a 180 píxeis de altura. Medido antes de mexer:
+
+| Ecrã | Telemóvel do herói | Maior captura |
+|---|---|---|
+| 1280x720 | **96% da altura** | 79% |
+| 1366x768 | 90% | 74% |
+| 1440x900 (o que eu tinha testado) | 77% | 63% |
+
+Passa a haver três tamanhos ligados à **altura** disponível, com `min()` e sem
+pontos de corte: `.peca-telemovel`, `.peca-telemovel-cena` e `.peca-browser`.
+Depois: 62% da altura para o telemóvel e 52% para a maior captura, **em todos
+os ecrãs testados**, do 1280x720 ao 1920x1080.
+
+**O ecrã do herói passa a escalar com a moldura.** Com a moldura a encolher e as
+letras a ficarem do mesmo tamanho, a 1366x768 o conteúdo saía cortado a meio de
+uma frase. Agora é desenhado a 320x692 e escalado por um `ResizeObserver`, como
+um telemóvel a sério: muda de tamanho, não de conteúdo.
+
+**A lição, que fica:** verificar uma página em dois tamanhos não é verificar uma
+página. A matriz mínima leva alturas curtas com larguras de desktop, porque é o
+que a maior parte dos portáteis Windows é depois do escalonamento.
+
+## O que se tira de uma referência que não se pode abrir — 2026-08-15
+
+O Tiago mandou quatro referências do Dribbble. O proxy da rede bloqueia o
+Dribbble, por isso **não as consegui abrir**; ele mandou os vídeos, e daí
+tiraram-se fotogramas para ver o que era.
+
+Valeu a pena, porque contrariou o que eu teria assumido: **as duas referências
+de finanças são páginas CLARAS**, não escuras. E o padrão que se repete nas
+quatro é este:
+
+- Um **acento saturado**, usado em pouca coisa (o botão principal, uma ficha).
+- **Fichas de interface a flutuar à volta do produto**, de tamanhos diferentes.
+- **Números grandes** como âncora visual.
+- Muito ar, e tipografia grande e apertada.
+
+O que se adotou, e porquê:
+
+- **O botão principal passa a levar a cor da marca** (`.btn-marca`), em vez do
+  branco. A página era a preto e branco com o verde guardado para os números:
+  lia-se séria e lia-se apagada. É o mesmo verde de quem recebe dentro da app,
+  por isso não se inventou cor nenhuma. Fica só neste botão: uma cor que aparece
+  em todo o lado deixa de apontar para alguma coisa.
+- **Quatro fichas à volta do telemóvel**, com números do ambiente de exemplo,
+  os mesmos das capturas mais abaixo na página. Duas em ecrãs médios, quatro nos
+  largos. À primeira tentativa tapavam o ecrã do telemóvel, que é justamente o
+  que se quer mostrar: passaram a encostar por fora.
+- **Arcos concêntricos** por trás do aparelho, decorativos, para o telemóvel
+  deixar de estar sozinho no vazio.
+- **Deslocamento ao scroll** nas capturas, por `animation-timeline: view()`:
+  corre fora da linha principal e, onde não existe, simplesmente não acontece.
+  Sem segundo caminho em JavaScript para manter.
+
+O que **não** se adotou: os números grandes de tração ("2500 utilizadores",
+"92%"). São o que dá o ar de página cara, e são exatamente o que esta app ainda
+não pode dizer sem mentir. As fichas do herói dão o mesmo ritmo visual com
+números que são verdade.
+
+**Por decidir, e é do Tiago:** as duas referências de finanças são claras, e a
+landing abre escura. Trocar o tema por omissão é uma decisão de marca, não de
+implementação, e o botão de tema já lá está para experimentar as duas.
+
+## A marca, verificada em vez de assumida — 2026-08-15
+
+O Tiago pediu para garantir que o branding se mantém. Auditado contra o que
+está escrito neste ficheiro (tema escuro editorial premium, as três fontes,
+tokens no `globals.css`, sem travessões, e a landing sem nomes pessoais):
+
+| Regra da marca | Estado |
+|---|---|
+| Tipografia Space Grotesk + JetBrains Mono + Inter | intacta |
+| Tema escuro por omissão | mantido |
+| Sem travessões no texto visível | zero na landing |
+| A landing não refere nomes pessoais | os exemplos são o André e a Maria |
+| O símbolo da marca no cabeçalho e no rodapé | presente |
+| Cores e sombras em tokens no `globals.css` | **estava a falhar, corrigido** |
+
+**O que estava a falhar:** as carcaças dos aparelhos das capturas tinham cores
+escritas à mão dentro do `Frames.tsx` (`#3a3a40`, `#2a2a30` e afins). Passaram a
+tokens `--aparelho-*` no `globals.css`, pela mesma razão que todo o resto da
+marca lá vive: uma cor escrita dentro de um ficheiro de React é uma cor que
+ninguém encontra no dia em que a marca mudar.
+
+**Uma mudança de marca que é decisão, não descuido:** o verde deixou de estar só
+nos números e passa a ser o acento do botão principal da landing. Não é uma cor
+nova, é o `--c-credit` que já era o da app, mas é uma promoção de "cor de dado"
+a "cor de marca" e fica registada como tal. Fica só nesse botão: uma cor que
+aparece em todo o lado deixa de apontar para alguma coisa.
