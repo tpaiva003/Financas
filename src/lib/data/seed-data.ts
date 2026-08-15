@@ -34,6 +34,30 @@ export function seedSpaces(): Space[] {
 }
 
 /**
+ * Palavra-chave das contas de exemplo, **só do modo mock**.
+ *
+ * A entrada com credenciais deixou de definir a palavra-chave na primeira vez
+ * (e ainda bem: entre um convite ser criado e a pessoa entrar, quem soubesse o
+ * email ficava com a conta). Só que em modo mock ninguém define palavra-chave
+ * nenhuma, e o resultado foi que **deixou de se conseguir entrar de todo**: o
+ * arranque que o README documenta, a demonstração e as capturas da landing
+ * ficaram todos de fora.
+ *
+ * Isto é o hash de `demo1234`, gerado pela `hashPassword` da app. Vive aqui, em
+ * dados de exemplo que só existem no repositório em memória, e **não é uma
+ * credencial de nada**: em `supabase` as palavras-chave vêm da base de dados e
+ * este valor nunca é lido. Se um dia servir para entrar nalgum sítio a sério, o
+ * erro está noutro lado.
+ */
+export const DEMO_PASSWORD_HASH =
+  "pbkdf2$100000$3kJE9q/d35E6MymrMw5grA==$HSoKNS3YNv6A7a/LvfHzGcBmdMaicbTAEfDLwelGPyc=";
+
+/** As contas de exemplo, com a palavra-chave de demonstração já definida. */
+export function seedPasswords(): Record<string, string> {
+  return { [TIAGO]: DEMO_PASSWORD_HASH, [CLARA]: DEMO_PASSWORD_HASH };
+}
+
+/**
  * Os participantes de exemplo chamam-se **André e Maria**, não Tiago e Clara.
  *
  * Estes nomes aparecem nas capturas de ecrã da landing, que é uma página

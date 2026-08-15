@@ -221,10 +221,17 @@ function FichaFlutuante({
   return (
     <div
       className={`surface absolute z-10 w-36 p-3 backdrop-blur-md ${className}`}
-      style={destaque ? { boxShadow: "var(--shadow-card-hi), 0 0 0 1px rgb(var(--c-credit) / 0.45)" } : undefined}
+      // O azul da marca, e não o verde: este número não é um saldo a favor de
+      // ninguém, é o que a app sabe dizer. O verde aqui prometia uma leitura
+      // que o número não tem.
+      style={
+        destaque
+          ? { boxShadow: "var(--shadow-card-hi), 0 0 0 1px rgb(var(--c-marca-tinta) / 0.45)" }
+          : undefined
+      }
     >
       <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-fg-faint">{titulo}</p>
-      <p className={`mt-1 font-mono text-sm tnum ${destaque ? "text-credit" : "text-fg"}`}>
+      <p className={`mt-1 font-mono text-sm tnum ${destaque ? "text-marca-tinta" : "text-fg"}`}>
         {valor}
       </p>
       <p className="mt-0.5 text-[10px] leading-snug text-fg-faint">{nota}</p>
@@ -326,34 +333,61 @@ const OUVE_SE = [
   },
 ];
 
+/**
+ * As frases num anel que roda com o scroll.
+ *
+ * Em coluna eram uma parede de texto: lia-se as duas primeiras e saltava-se o
+ * resto. Aqui ficam dispostas em círculo e é o scroll que traz cada uma à
+ * frente, com uma paragem em cada — a rodar sem parar não havia onde pousar os
+ * olhos.
+ *
+ * **O que está escrito no HTML continua a ser a lista.** O anel é uma camada de
+ * CSS por cima, e só existe onde há suporte a linhas de tempo de scroll, ecrã
+ * largo e ninguém a pedir menos movimento. Nos outros casos lê-se a lista de
+ * sempre. Uma secção onde cinco de seis frases só aparecem se o browser souber
+ * girar um anel seria uma secção que esconde conteúdo.
+ *
+ * Por isso a lista **não** leva `Reveal group`: a revelação em cascata mexe no
+ * `transform` de cada filho, que é precisamente onde o anel escreve a posição
+ * de cada frase no círculo. Ganhava a revelação e o anel ficava achatado.
+ */
 function OQueSeOuve() {
   return (
     <section className="wash relative isolate py-20 sm:py-28">
-      <div className="mx-auto max-w-4xl px-6">
-        <Reveal>
-          <p className="eyebrow eyebrow-tick">O que se ouve</p>
-          <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            Se já disseste alguma destas, isto é para ti.
-          </h2>
-          <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fg-muted text-pretty">
-            Não são testemunhos e não têm dono: são as frases que aparecem sempre
-            que a conversa chega ao dinheiro, e que também já dissemos.
-          </p>
-        </Reveal>
+      <div className="anel-cena">
+        <div className="anel-palco">
+          <div className="mx-auto w-full max-w-4xl px-6">
+            <Reveal className="anel-cabeca">
+              <p className="eyebrow eyebrow-tick">O que se ouve</p>
+              <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+                Se já disseste alguma destas, isto é para ti.
+              </h2>
+              <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fg-muted text-pretty">
+                Não são testemunhos e não têm dono: são as frases que aparecem
+                sempre que a conversa chega ao dinheiro, e que também já
+                dissemos.
+              </p>
+            </Reveal>
 
-        <Reveal group as="ul" className="mt-12 space-y-9">
-          {OUVE_SE.map((q) => (
-            <li key={q.frase} className="max-w-2xl">
-              <p className="font-display text-xl font-medium leading-snug tracking-tight text-fg text-balance sm:text-2xl">
-                &ldquo;{q.frase}&rdquo;
-              </p>
-              <p className="mt-2.5 flex gap-3 text-[15px] leading-relaxed text-fg-muted text-pretty">
-                <span aria-hidden className="mt-2.5 h-px w-4 shrink-0 bg-credit/60" />
-                <span>{q.resposta}</span>
-              </p>
-            </li>
-          ))}
-        </Reveal>
+            <ul className="anel">
+              {OUVE_SE.map((q, i) => (
+                <li
+                  key={q.frase}
+                  className="anel-frase max-w-2xl"
+                  style={{ "--i": i } as React.CSSProperties}
+                >
+                  <p className="anel-frase-texto font-display text-xl font-medium leading-snug tracking-tight text-fg text-balance sm:text-2xl">
+                    &ldquo;{q.frase}&rdquo;
+                  </p>
+                  <p className="mt-2.5 flex gap-3 text-[15px] leading-relaxed text-fg-muted text-pretty">
+                    <span aria-hidden className="mt-2.5 h-px w-4 shrink-0 bg-marca-tinta/70" />
+                    <span>{q.resposta}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
   );

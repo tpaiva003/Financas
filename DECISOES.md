@@ -2688,3 +2688,55 @@ nos números e passa a ser o acento do botão principal da landing. Não é uma 
 nova, é o `--c-credit` que já era o da app, mas é uma promoção de "cor de dado"
 a "cor de marca" e fica registada como tal. Fica só nesse botão: uma cor que
 aparece em todo o lado deixa de apontar para alguma coisa.
+
+## O azul dos azulejos, o anel de frases, e o modo mock que ficou sem porta — 2026-08-15
+
+Terceira ronda na landing, já com o back end novo integrado (posições fechadas,
+comparação por setor). Três mudanças, cada uma com a sua razão.
+
+### A cor da marca deixa de ser o verde e passa a ser o azul de azulejo
+
+O Tiago pediu "aquele azul tradicional dos azulejos do Porto", e tem razão por
+uma razão que vai além do gosto: a decisão anterior tinha promovido o
+`--c-credit` a cor de botão, e **uma cor que ao mesmo tempo diz "carrega aqui"
+e "este número é positivo" acaba por não dizer nenhuma das duas**. Agora:
+
+- `--c-marca` (30 95 168 de noite, 26 82 146 sobre papel) é o azul de FUNDO:
+  botão principal, brilho atrás do telemóvel, halo do fundo da página.
+- `--c-marca-tinta` é o mesmo azul para ESCREVER: claro no tema escuro
+  (122 178 235), escuro no claro. O azulejo é escuro, e escuro sobre o fundo
+  de noite dá 3:1 — um acento que só se lê num dos temas é um erro à espera.
+- O verde e o vermelho **voltam a ser só dados**: quem recebe, quem deve. A
+  ficha "Património líquido" do herói e o traço das respostas às frases
+  passaram de verde a azul; o "fica a dever" do telemóvel continua verde,
+  porque esse é mesmo um saldo.
+
+### As frases que se ouvem passam a rodar num anel 3D
+
+O Tiago achou a lista "cansativa e monótona", e era: seis frases em coluna são
+uma parede — lia-se as duas primeiras e saltava-se o resto. Agora estão num
+anel em perspetiva que o scroll faz girar (`view-timeline` + secção alta com
+palco `sticky`), com uma paragem em cada frase: a rodar de forma contínua não
+havia onde pousar os olhos, que é o defeito de todos os carrosséis.
+
+O que não se negociou: **o HTML continua a ser a lista**. O anel é CSS por
+cima, e só existe com as quatro condições ao mesmo tempo — suporte a
+`animation-timeline`, ecrã largo, ecrã alto, e ninguém a pedir menos
+movimento. Em telemóvel, no Firefox, ou com `prefers-reduced-motion`, lê-se a
+lista de sempre. Uma secção onde cinco de seis frases dependem do browser
+saber girar um anel seria uma secção que esconde conteúdo.
+
+Um custo que ficou pago e documentado no CSS: o `overflow-x: hidden` do
+`html` fazia do documento um contentor de scroll e **matava o `sticky` em
+silêncio** — a secção rolava em branco. Passou a `overflow-x: clip` onde há
+suporte, que corta o mesmo e não cria contentor nenhum.
+
+### O modo mock ficou sem forma de entrar, e a landing pagava-o
+
+O PR #39 fechou (e bem) a porta da primeira entrada: um login já não define a
+palavra-chave de uma conta que não a tem. Só que em modo mock **ninguém** tinha
+palavra-chave, portanto o arranque documentado no README deixou de dar para
+entrar — e o `npm run shots` deixou de conseguir tirar capturas. As contas de
+exemplo passam a trazer a palavra-chave `demo1234` já definida
+(`seedPasswords()` no seed), **só nesse modo**: o caminho de produção não muda
+nada.
