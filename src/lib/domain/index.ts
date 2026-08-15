@@ -48,3 +48,4 @@ export * from "./imovel-liquido";
 export * from "./foco-patrimonio";
 export * from "./setores";
 export * from "./resumo-por-tipo";
+export * from "./bruto-liquido";
