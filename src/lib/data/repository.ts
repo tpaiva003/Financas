@@ -453,6 +453,19 @@ export interface StoredValuation {
   priceAtStudyCents: number | null;
   upsidePct: number | null;
 
+  /**
+   * Os rácios da empresa **no dia do estudo**, quando a busca de dados correu.
+   *
+   * Ficam aqui e não no bem porque um rácio não é uma propriedade que dure: é o
+   * que a empresa mostrava naquele dia, e é assim que tem de ser lido três anos
+   * depois. Tudo nulo num estudo escrito à mão — e isso não o torna pior.
+   */
+  sector: string | null;
+  rocePct: number | null;
+  margemOperacionalPct: number | null;
+  margemFcfPct: number | null;
+  crescimentoFcfPct: number | null;
+
   notes: string | null;
   /** O que a IA leu nos anexos, e quando. */
   aiSummary: string | null;
@@ -474,6 +487,12 @@ export interface ValuationEstudo {
   priceAtStudyCents: number | null;
   upsidePct: number | null;
   valuedAt: string;
+  /** Os rácios que a fonte deu, quando deu. Ver `StoredValuation`. */
+  sector?: string | null;
+  rocePct?: number | null;
+  margemOperacionalPct?: number | null;
+  margemFcfPct?: number | null;
+  crescimentoFcfPct?: number | null;
 }
 
 export interface CreateValuationInput {
@@ -589,6 +608,11 @@ export interface Income {
 }
 
 export type CreateIncomeInput = Omit<Income, "id"> & { createdBy?: string | null };
+
+/** O que se pode corrigir num rendimento. O ambiente nunca muda. */
+export type UpdateIncomeInput = Partial<
+  Pick<Income, "kind" | "description" | "amountCents" | "date" | "recurring" | "notes">
+>;
 
 /** Tecto mensal de despesa. `categoryId` nulo = meta do ambiente inteiro. */
 export interface SpendingGoal {
@@ -1057,6 +1081,13 @@ export interface Repository {
   // Rendimento.
   listIncome(spaceId: string): Promise<Income[]>;
   createIncome(input: CreateIncomeInput): Promise<Income>;
+  /**
+   * Corrigir um rendimento já registado.
+   *
+   * O `spaceId` é obrigatório, como em tudo o que mexe em dados de um ambiente:
+   * é o `space_id` que o código passa que faz a fronteira, e mais nada.
+   */
+  updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void>;
   deleteIncome(id: string, spaceId: string): Promise<void>;
 
   /** Nº de despesas por aprovar no ambiente. */

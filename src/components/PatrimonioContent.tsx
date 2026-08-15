@@ -49,6 +49,7 @@ import {
   type FocoId,
 } from "@/lib/domain";
 import { FocoPatrimonio } from "@/components/FocoPatrimonio";
+import { GraficoContraIndice } from "@/components/GraficoContraIndice";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
@@ -1065,12 +1066,33 @@ async function PortfolioReturnSection({
           imaginária — pior do que não comparar. */}
       <div className={`mt-6 border-t border-hair pt-5 ${contaminado ? "hidden" : ""}`}>
         <p className="label mb-1">E se tivesse ido para o índice?</p>
-        <p className="mb-4 text-xs text-fg-faint">
+        <p className="mb-2 text-xs text-fg-faint">
           Os mesmos reforços, nas mesmas datas, aplicados a um ETF em euros. É a
           única comparação justa: um índice não recebe reforços, e comparar a
           subida dele com a tua trata todo o teu dinheiro como se tivesse
           entrado no primeiro dia.
         </p>
+        {/*
+          Sobre que parte da carteira é que isto fala.
+
+          Um investimento sem preço atual conta pelo que custou. Se o dinheiro
+          dele comprasse unidades do índice na mesma, o índice valorizava-o e a
+          carteira mantinha-o congelado — nascia um desnível que não veio do
+          mercado, veio de faltar uma cotação. Ficam de fora dos dois lados, e
+          isso tem de ser dito: senão a comparação de uma parte lê-se como a
+          comparação de tudo.
+        */}
+        {ret.foraDaComparacaoCents > 0 ? (
+          <p className="mb-4 text-xs leading-snug text-fg-faint">
+            Ficam de fora {formatCents(ret.foraDaComparacaoCents)} de{" "}
+            {ret.missingPrice === 1
+              ? "um investimento sem preço atual"
+              : `${ret.missingPrice} investimentos sem preço atual`}
+            . Sem cotação não dá para os comparar com nada, e contá-los só de um
+            lado inventava um desnível que o mercado não fez. A taxa anual acima
+            segue a mesma regra.
+          </p>
+        ) : null}
 
         <ul className="space-y-4">
           {ret.benchmarks.map((b) => (
@@ -1106,6 +1128,10 @@ async function PortfolioReturnSection({
               ) : (
                 <p className="mt-0.5 text-xs text-fg-faint">{b.problem}</p>
               )}
+              {/* O caminho, por baixo do número. Ver `GraficoContraIndice`. */}
+              {b.comparison && b.serie.length >= 2 ? (
+                <GraficoContraIndice pontos={b.serie} label={b.label} />
+              ) : null}
               <p className="mt-0.5 text-[11px] text-fg-faint">
                 {b.description}
                 {b.symbol && b.lastDate

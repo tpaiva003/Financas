@@ -31,6 +31,7 @@ import { GuardarAvaliacao } from "./GuardarAvaliacao";
 import { BuscarFundamentais } from "./BuscarFundamentais";
 import { HistoricoGrafico } from "./HistoricoGrafico";
 import { SeriesFundamentais } from "./SeriesFundamentais";
+import { CompararComSetor, type EstudoAnterior } from "./CompararComSetor";
 
 /** Em milhares de milhões, que é como estes números vêm num relatório. */
 function bilioesParaCents(v: string): number {
@@ -84,7 +85,14 @@ function txt(v: number | null | undefined): string {
   return v === null || v === undefined ? "" : String(v).replace(".", ",");
 }
 
-export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
+export function DcfCalculadora({
+  doFunil,
+  anteriores = [],
+}: {
+  doFunil?: VindoDoFunil;
+  /** Estudos anteriores com rácios, para a comparação por setor. */
+  anteriores?: readonly EstudoAnterior[];
+}) {
   const e = doFunil?.estudo ?? null;
 
   const [nome, setNome] = useState(doFunil?.nome ?? "");
@@ -346,6 +354,16 @@ export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
         <SeriesFundamentais anual={contas.historico} trimestral={contas.trimestral} />
       ) : null}
 
+      {/* A comparação com o que já se estudou no mesmo setor. Desenha-se
+          sozinha só quando há com quem comparar — ver `CompararComSetor`. */}
+      {contas ? (
+        <CompararComSetor
+          contas={contas}
+          anteriores={anteriores}
+          valuationId={doFunil?.id ?? null}
+        />
+      ) : null}
+
       {avaliacao && "erro" in avaliacao ? (
         <p role="alert" className="rounded-xl border border-debt/30 bg-debt/10 px-4 py-3 text-sm leading-snug text-fg-muted">
           {avaliacao.erro}
@@ -485,6 +503,17 @@ export function DcfCalculadora({ doFunil }: { doFunil?: VindoDoFunil }) {
           <GuardarAvaliacao
             nome={nome}
             simbolo={simbolo}
+            racios={
+              contas
+                ? {
+                    setor: contas.setor,
+                    rocePct: contas.medias.rocePct,
+                    margemOperacionalPct: contas.medias.margemOperacionalPct,
+                    margemFcfPct: contas.medias.margemFcfPct,
+                    crescimentoFcfPct: contas.medias.crescimentoFcfPct,
+                  }
+                : null
+            }
             fcfCents={bilioesParaCents(fcf)}
             acoes={num(acoes) * 1_000_000_000}
             dividaLiquidaCents={dividaLiquidaCents}

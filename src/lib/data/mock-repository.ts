@@ -48,6 +48,7 @@ import type {
   CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
+  UpdateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -1022,6 +1023,19 @@ export class MockRepository implements Repository {
     return entry;
   }
 
+  async updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void> {
+    const i = getStore().income.find((x) => x.id === id && x.spaceId === spaceId);
+    // Sem o ambiente certo não se corrige nada, como na produção. Um mock mais
+    // permissivo esconde exactamente o engano que os testes procuram.
+    if (!i) return;
+    if (patch.kind !== undefined) i.kind = patch.kind;
+    if (patch.description !== undefined) i.description = patch.description;
+    if (patch.amountCents !== undefined) i.amountCents = patch.amountCents;
+    if (patch.date !== undefined) i.date = patch.date;
+    if (patch.recurring !== undefined) i.recurring = patch.recurring;
+    if (patch.notes !== undefined) i.notes = patch.notes;
+  }
+
   async deleteIncome(id: string, spaceId: string): Promise<void> {
     const store = getStore();
     store.income = store.income.filter((i) => !(i.id === id && i.spaceId === spaceId));
@@ -1153,6 +1167,11 @@ export class MockRepository implements Repository {
       weightedPriceCents: e?.weightedPriceCents ?? null,
       priceAtStudyCents: e?.priceAtStudyCents ?? null,
       upsidePct: e?.upsidePct ?? null,
+      sector: e?.sector ?? null,
+      rocePct: e?.rocePct ?? null,
+      margemOperacionalPct: e?.margemOperacionalPct ?? null,
+      margemFcfPct: e?.margemFcfPct ?? null,
+      crescimentoFcfPct: e?.crescimentoFcfPct ?? null,
       notes: input.notes,
       aiSummary: null,
       aiSummaryAt: null,
@@ -1193,6 +1212,15 @@ export class MockRepository implements Repository {
       priceAtStudyCents: e.priceAtStudyCents,
       upsidePct: e.upsidePct,
       valuedAt: e.valuedAt,
+      // Só o que vem: um estudo refeito à mão não apaga os rácios que a fonte
+      // já tinha dado. Mesma regra da produção.
+      ...(e.sector !== undefined ? { sector: e.sector } : {}),
+      ...(e.rocePct !== undefined ? { rocePct: e.rocePct } : {}),
+      ...(e.margemOperacionalPct !== undefined
+        ? { margemOperacionalPct: e.margemOperacionalPct }
+        : {}),
+      ...(e.margemFcfPct !== undefined ? { margemFcfPct: e.margemFcfPct } : {}),
+      ...(e.crescimentoFcfPct !== undefined ? { crescimentoFcfPct: e.crescimentoFcfPct } : {}),
     });
   }
 

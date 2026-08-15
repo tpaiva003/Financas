@@ -63,10 +63,16 @@ export interface SetoresAtualizados {
  * mensagem a dizer quantos faltam — em vez de ser interrompida a meio e não
  * deixar nem escrita nem explicação.
  */
-const ORCAMENTO_MS = 8_000;
+const ORCAMENTO_MS = 25_000;
 
-/** Um tecto na mesma, por cima do relógio: nunca mais do que isto por lote. */
-const MAX_POR_PASSAGEM = 8;
+/**
+ * Um tecto na mesma, por cima do relógio.
+ *
+ * O relógio é o guarda a sério; isto é só a rede de segurança para o caso de as
+ * consultas virem todas instantâneas da cache e o ciclo se tornar um varrimento
+ * de uma carteira enorme.
+ */
+const MAX_POR_PASSAGEM = 30;
 
 export async function atualizarSetores(spaceId: string): Promise<SetoresAtualizados> {
   const repo = getRepository();
@@ -109,8 +115,15 @@ export async function atualizarSetores(spaceId: string): Promise<SetoresAtualiza
   let faltouTempo = false;
 
   for (const a of candidatos.slice(0, MAX_POR_PASSAGEM)) {
-    // O relógio verifica-se ANTES de começar mais um, e não depois: entrar num
-    // pedido de cinco segundos com dois de orçamento é como não ter relógio.
+    /**
+     * O relógio verifica-se ANTES de começar mais um, e não depois: entrar num
+     * pedido de cinco segundos com dois de orçamento é como não ter relógio.
+     *
+     * **A reserva tem de ser pequena face ao orçamento.** Na primeira versão
+     * eram cinco segundos de reserva sobre oito de orçamento — sobravam três
+     * para arrancar consultas, e o lote parava quase sem ter começado. Um
+     * relógio mal dimensionado é indistinguível, de fora, de um que não existe.
+     */
     if (Date.now() + TIMEOUT_EM_LOTE_MS > ate) {
       faltouTempo = true;
       break;

@@ -1,8 +1,9 @@
 "use server";
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
+import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { userByEmail } from "@/lib/users";
 import { hashPassword, passwordIssue } from "@/lib/password";
 import { sendPasswordReset } from "@/lib/email/send";
@@ -13,12 +14,7 @@ export interface ResetState {
   message?: string;
 }
 
-/** O que fica na base de dados é isto, nunca o token. */
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
 
-const TOKEN_VALIDITY_MS = 60 * 60 * 1000; // uma hora
 
 /**
  * Pedir a recuperação.

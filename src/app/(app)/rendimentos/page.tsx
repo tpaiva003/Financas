@@ -154,7 +154,8 @@ export default async function RendimentosPage() {
         ) : (
           <ul className="card divide-y divide-hair2 p-0">
             {income.slice(0, 40).map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+              <li key={i.id} className="px-5 py-3.5">
+                <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 truncate text-sm font-medium text-fg">
                     {i.description}
@@ -177,6 +178,25 @@ export default async function RendimentosPage() {
                       Remover
                     </button>
                   </form>
+                </div>
+                </div>
+
+                {/* A correção por baixo e não ao lado: numa linha só, num
+                    telemóvel, o valor e três botões espremem-se uns aos
+                    outros. Fechada por omissão — quem entra aqui vem quase
+                    sempre registar, não corrigir. */}
+                <div className="mt-1">
+                  <IncomeForm
+                    existente={{
+                      id: i.id,
+                      kind: i.kind,
+                      description: i.description,
+                      amountCents: i.amountCents,
+                      date: i.date,
+                      recurring: i.recurring,
+                      notes: i.notes ?? null,
+                    }}
+                  />
                 </div>
               </li>
             ))}

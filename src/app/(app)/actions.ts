@@ -4,10 +4,11 @@ import { z } from "zod";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { getRepository } from "@/lib/data";
+import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
@@ -1366,9 +1367,29 @@ export async function inviteUserAction(
     // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
   }
 
-  // Sem email, a pessoa não sabe que foi convidada, e o convite não serve de
-  // nada. Por isso o resultado diz sempre se a mensagem chegou a sair.
-  const mail = await sendInvite(email, name);
+  /**
+   * O convite leva a ligação que define a primeira palavra-chave.
+   *
+   * **É a mesma máquina da reposição, e de propósito.** Enquanto a entrada
+   * definia a palavra-chave, a conta ficava ao alcance de quem soubesse o email
+   * antes de a pessoa entrar — e a janela era exactamente a espera dela. Com a
+   * ligação, quem a define é quem recebe o email daquele endereço.
+   *
+   * Sem email, a pessoa não sabe que foi convidada e não tem como entrar. Por
+   * isso o resultado diz sempre se a mensagem saiu, e o que fazer se não saiu.
+   */
+  const token = randomBytes(32).toString("base64url");
+  const convite = await repo
+    .createPasswordResetToken({
+      userId,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + TOKEN_VALIDITY_MS).toISOString(),
+    })
+    .then(() => true)
+    .catch(() => false);
+  const mail = convite
+    ? await sendInvite(email, name, token)
+    : { sent: false as const, reason: "não consegui preparar a ligação de acesso" };
 
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
@@ -1378,7 +1399,7 @@ export async function inviteUserAction(
       ? `${name} recebeu um email com as instruções. Ambiente "${spaceName}" criado, só com ela.`
       : `Conta criada e ambiente "${spaceName}" pronto, mas o email NÃO foi enviado${
           emailConfigured() ? ` (${mail.reason})` : " (envio de email por configurar)"
-        }. Diz-lhe tu para entrar em rachar.pt com ${email}.`,
+        }. Manda-lhe tu o link de "Recuperar palavra-chave" em rachar.pt/recuperar, com ${email}.`,
   };
 }
 
@@ -2267,6 +2288,32 @@ export async function saveIncomeAction(
   const kind = (INCOME_KINDS as readonly string[]).includes(rawKind)
     ? (rawKind as (typeof INCOME_KINDS)[number])
     : "outro";
+
+  /**
+   * Com id, corrige-se o que já lá está; sem id, regista-se de novo.
+   *
+   * O id vem do formulário mas **nunca decide o ambiente**: o `ctx.space.id` é
+   * que manda, e o repositório exige-o. Um id de outro ambiente não encontra
+   * linha nenhuma e não escreve nada.
+   */
+  const id = String(formData.get("id") ?? "").trim();
+  if (id) {
+    try {
+      await getRepository().updateIncome(id, ctx.space.id, {
+        kind,
+        description: description.slice(0, 120),
+        amountCents: cents,
+        date,
+        recurring: String(formData.get("recurring") ?? "") === "on",
+        notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      });
+    } catch {
+      return { error: "Não consegui gravar a correção." };
+    }
+    revalidatePath("/rendimentos");
+    revalidatePath("/relatorios");
+    return { ok: true, message: `${description} corrigido.` };
+  }
 
   try {
     await getRepository().createIncome({
@@ -3387,6 +3434,42 @@ export async function buscarFundamentaisAction(
  * mudasse, um valor que já serviu de base a uma compra mudava de opinião
  * retroactivamente. Ver a migração 0037.
  */
+/**
+ * Os rácios que o formulário traz da busca de dados.
+ *
+ * Devolve **só os campos que vieram mesmo**: um campo vazio fica de fora e não
+ * chega ao `update`, para um estudo refeito à mão não apagar os rácios que a
+ * fonte já tinha dado. Um número que não se lê é ausência, nunca zero — um ROCE
+ * de zero por cento é uma afirmação sobre a empresa e não é esta a fazê-la.
+ */
+function lerRaciosDoFormulario(formData: FormData): {
+  sector?: string | null;
+  rocePct?: number | null;
+  margemOperacionalPct?: number | null;
+  margemFcfPct?: number | null;
+  crescimentoFcfPct?: number | null;
+} {
+  const numero = (campo: string): number | undefined => {
+    const bruto = String(formData.get(campo) ?? "").trim();
+    if (!bruto) return undefined;
+    const n = Number(bruto.replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const setor = String(formData.get("sector") ?? "").trim();
+
+  return {
+    ...(setor ? { sector: setor } : {}),
+    ...(numero("rocePct") !== undefined ? { rocePct: numero("rocePct") } : {}),
+    ...(numero("margemOperacionalPct") !== undefined
+      ? { margemOperacionalPct: numero("margemOperacionalPct") }
+      : {}),
+    ...(numero("margemFcfPct") !== undefined ? { margemFcfPct: numero("margemFcfPct") } : {}),
+    ...(numero("crescimentoFcfPct") !== undefined
+      ? { crescimentoFcfPct: numero("crescimentoFcfPct") }
+      : {}),
+  };
+}
+
 export async function guardarAvaliacaoAction(
   _prev: ActionState,
   formData: FormData,
@@ -3462,6 +3545,18 @@ export async function guardarAvaliacaoAction(
     priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
     upsidePct: avaliacao.ok.upsidePonderadoPct,
     valuedAt: hoje,
+    /**
+     * Os rácios que a busca de dados trouxe, congelados com o estudo.
+     *
+     * Passavam pelo ecrã e eram deitados fora com a página. Guardados, cada
+     * estudo novo passa a poder comparar-se com os anteriores do mesmo setor —
+     * que é a única comparação setorial que esta app pode fazer sem inventar
+     * médias que não existem em fonte gratuita nenhuma.
+     *
+     * `undefined` quando não vieram: um estudo escrito à mão não apaga o que a
+     * fonte já tinha dado numa passagem anterior.
+     */
+    ...lerRaciosDoFormulario(formData),
   };
 
   const repo = getRepository();

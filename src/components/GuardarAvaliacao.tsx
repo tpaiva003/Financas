@@ -53,6 +53,7 @@ export function GuardarAvaliacao({
   notas,
   atrativo,
   valuationId,
+  racios,
 }: {
   nome: string;
   simbolo: string;
@@ -75,6 +76,20 @@ export function GuardarAvaliacao({
    * app a duplicar o que a pessoa acabou de fazer o trabalho de ligar.
    */
   valuationId: string | null;
+  /**
+   * Os rácios que a busca de dados trouxe, para irem com o estudo.
+   *
+   * Congelam com ele: um rácio não é uma propriedade que dure, é o que a
+   * empresa mostrava naquele dia. É o que permite comparar um estudo novo com
+   * os anteriores do mesmo setor.
+   */
+  racios?: {
+    setor: string | null;
+    rocePct: number | null;
+    margemOperacionalPct: number | null;
+    margemFcfPct: number | null;
+    crescimentoFcfPct: number | null;
+  } | null;
 }) {
   const [state, guardar] = useFormState(guardarAvaliacaoAction, vazio);
   // A etapa que o veredicto sugere, e não a que a app impõe: um DCF diz se o
@@ -117,6 +132,22 @@ export function GuardarAvaliacao({
       <input type="hidden" name="notes" value={notas} />
       <input type="hidden" name="stage" value={etapa} />
       {valuationId ? <input type="hidden" name="valuationId" value={valuationId} /> : null}
+      {/* Vazios quando a busca não correu: a ação deixa-os de fora do que grava,
+          para um estudo refeito à mão não apagar os rácios de uma passagem
+          anterior. */}
+      {racios?.setor ? <input type="hidden" name="sector" value={racios.setor} /> : null}
+      {racios?.rocePct !== null && racios?.rocePct !== undefined ? (
+        <input type="hidden" name="rocePct" value={racios.rocePct} />
+      ) : null}
+      {racios?.margemOperacionalPct !== null && racios?.margemOperacionalPct !== undefined ? (
+        <input type="hidden" name="margemOperacionalPct" value={racios.margemOperacionalPct} />
+      ) : null}
+      {racios?.margemFcfPct !== null && racios?.margemFcfPct !== undefined ? (
+        <input type="hidden" name="margemFcfPct" value={racios.margemFcfPct} />
+      ) : null}
+      {racios?.crescimentoFcfPct !== null && racios?.crescimentoFcfPct !== undefined ? (
+        <input type="hidden" name="crescimentoFcfPct" value={racios.crescimentoFcfPct} />
+      ) : null}
 
       <div>
         <p className="eyebrow">{valuationId ? "Guardar no funil" : "Guardar"}</p>
