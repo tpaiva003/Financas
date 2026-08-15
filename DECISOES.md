@@ -92,6 +92,12 @@ regras; anexar recibos; ligar o `SupabaseRepository` a um projeto real
 - Redesenho para tema **escuro editorial premium**: tipografia *Space Grotesk*
   (títulos) + *JetBrains Mono* (números) + *Inter* (corpo); hairlines, muito
   espaço, micro-animações. Tokens em `tailwind.config.ts` + `globals.css`.
+  > **Atualizado em 13/08:** os *hairlines* deixaram de ser o que separa blocos.
+  > O contorno passou para a sombra e as divisórias estáticas foram removidas,
+  > na landing e na app. O que fica desta linha é o resto: as três fontes, o
+  > muito espaço, as micro-animações, e **os tokens viverem no `globals.css`**.
+  > Ver "O ecrã de quem visita não é o ecrã de quem desenha" e as entradas de
+  > 12 e 13/08.
 - **Sem travessões (—)** no texto visível (decisão de estilo do produto).
 
 ### Login por palavra-chave (interim)
@@ -2655,3 +2661,30 @@ números que são verdade.
 **Por decidir, e é do Tiago:** as duas referências de finanças são claras, e a
 landing abre escura. Trocar o tema por omissão é uma decisão de marca, não de
 implementação, e o botão de tema já lá está para experimentar as duas.
+
+## A marca, verificada em vez de assumida — 2026-08-15
+
+O Tiago pediu para garantir que o branding se mantém. Auditado contra o que
+está escrito neste ficheiro (tema escuro editorial premium, as três fontes,
+tokens no `globals.css`, sem travessões, e a landing sem nomes pessoais):
+
+| Regra da marca | Estado |
+|---|---|
+| Tipografia Space Grotesk + JetBrains Mono + Inter | intacta |
+| Tema escuro por omissão | mantido |
+| Sem travessões no texto visível | zero na landing |
+| A landing não refere nomes pessoais | os exemplos são o André e a Maria |
+| O símbolo da marca no cabeçalho e no rodapé | presente |
+| Cores e sombras em tokens no `globals.css` | **estava a falhar, corrigido** |
+
+**O que estava a falhar:** as carcaças dos aparelhos das capturas tinham cores
+escritas à mão dentro do `Frames.tsx` (`#3a3a40`, `#2a2a30` e afins). Passaram a
+tokens `--aparelho-*` no `globals.css`, pela mesma razão que todo o resto da
+marca lá vive: uma cor escrita dentro de um ficheiro de React é uma cor que
+ninguém encontra no dia em que a marca mudar.
+
+**Uma mudança de marca que é decisão, não descuido:** o verde deixou de estar só
+nos números e passa a ser o acento do botão principal da landing. Não é uma cor
+nova, é o `--c-credit` que já era o da app, mas é uma promoção de "cor de dado"
+a "cor de marca" e fica registada como tal. Fica só nesse botão: uma cor que
+aparece em todo o lado deixa de apontar para alguma coisa.

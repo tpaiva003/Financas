@@ -133,6 +133,20 @@
     --shadow-device:
       0 2px 6px rgba(0, 0, 0, 0.5),
       0 40px 80px -40px rgba(0, 0, 0, 1);
+
+    /*
+     * A carcaça dos aparelhos das capturas.
+     *
+     * Escura nos dois temas, porque é o que um telemóvel e a barra de um
+     * browser são. Vive aqui, e não solta no componente, pela mesma razão que
+     * todo o resto da marca vive aqui: uma cor escrita à mão dentro de um
+     * ficheiro de React é uma cor que ninguém encontra quando a marca mudar.
+     */
+    --aparelho-topo: #3a3a40;
+    --aparelho-fundo: #17161a;
+    --aparelho-barra-topo: #2a2a30;
+    --aparelho-barra-fundo: #1d1d22;
+    --aparelho-fio: rgba(255, 255, 255, 0.06);
   }
 
   html[data-theme="light"] {
@@ -261,10 +275,6 @@
   }
   .btn-marca:hover {
     filter: brightness(1.08);
-  }
-  html[data-theme="light"] .btn-marca {
-    /* Sobre o verde escuro do tema de dia, o texto tem de ser claro. */
-    color: rgb(250 248 244);
   }
   .btn-secondary {
     @apply btn border border-hair bg-transparent text-fg hover:border-fg/30 hover:bg-panel2 active:scale-[0.98];

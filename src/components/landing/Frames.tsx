@@ -26,8 +26,8 @@ export function PhoneFrame({
       // não como um retângulo branco colado à página.
       className={`relative aspect-[390/844] rounded-[2.25rem] p-[6px] ${className}`}
       style={{
-        background: "linear-gradient(160deg, #3a3a40, #17161a 45%)",
-        boxShadow: "var(--shadow-device), 0 0 0 1px rgba(255,255,255,0.06)",
+        background: "linear-gradient(160deg, var(--aparelho-topo), var(--aparelho-fundo) 45%)",
+        boxShadow: "var(--shadow-device), 0 0 0 1px var(--aparelho-fio)",
       }}
     >
       <div className="screen relative h-full w-full overflow-hidden rounded-[1.9rem]">
@@ -56,8 +56,8 @@ export function BrowserFrame({
       // ecrã claro desaparecia, e ficava um retângulo branco a flutuar.
       className={`overflow-hidden rounded-2xl ${className}`}
       style={{
-        background: "linear-gradient(180deg, #2a2a30, #1d1d22)",
-        boxShadow: "var(--shadow-device), 0 0 0 1px rgba(255,255,255,0.06)",
+        background: "linear-gradient(180deg, var(--aparelho-barra-topo), var(--aparelho-barra-fundo))",
+        boxShadow: "var(--shadow-device), 0 0 0 1px var(--aparelho-fio)",
       }}
     >
       <div className="flex items-center gap-3 px-4 py-2.5">
