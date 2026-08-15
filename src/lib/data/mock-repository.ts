@@ -1157,6 +1157,11 @@ export class MockRepository implements Repository {
       weightedPriceCents: e?.weightedPriceCents ?? null,
       priceAtStudyCents: e?.priceAtStudyCents ?? null,
       upsidePct: e?.upsidePct ?? null,
+      sector: e?.sector ?? null,
+      rocePct: e?.rocePct ?? null,
+      margemOperacionalPct: e?.margemOperacionalPct ?? null,
+      margemFcfPct: e?.margemFcfPct ?? null,
+      crescimentoFcfPct: e?.crescimentoFcfPct ?? null,
       notes: input.notes,
       aiSummary: null,
       aiSummaryAt: null,
@@ -1197,6 +1202,15 @@ export class MockRepository implements Repository {
       priceAtStudyCents: e.priceAtStudyCents,
       upsidePct: e.upsidePct,
       valuedAt: e.valuedAt,
+      // Só o que vem: um estudo refeito à mão não apaga os rácios que a fonte
+      // já tinha dado. Mesma regra da produção.
+      ...(e.sector !== undefined ? { sector: e.sector } : {}),
+      ...(e.rocePct !== undefined ? { rocePct: e.rocePct } : {}),
+      ...(e.margemOperacionalPct !== undefined
+        ? { margemOperacionalPct: e.margemOperacionalPct }
+        : {}),
+      ...(e.margemFcfPct !== undefined ? { margemFcfPct: e.margemFcfPct } : {}),
+      ...(e.crescimentoFcfPct !== undefined ? { crescimentoFcfPct: e.crescimentoFcfPct } : {}),
     });
   }
 

@@ -126,14 +126,21 @@ describe("atualizarSetores", () => {
    * que só tem de carregar outra vez.
    */
   it("diz quantos ficaram por fazer", async () => {
-    const espaco = await carteiraCom(20);
+    // Acima do tecto de propósito, seja ele qual for: o que se mede é a
+    // contabilidade, e não o número escolhido para o tecto — esse muda quando o
+    // tempo disponível muda, e um teste preso a ele quebra a cada afinação sem
+    // nada estar errado.
+    const QUANTOS = 40;
+    const espaco = await carteiraCom(QUANTOS);
     const { atualizarSetores } = await import("./setores-service");
 
     const r = await atualizarSetores(espaco);
 
-    expect(r.consultados).toBeLessThanOrEqual(8);
-    expect(r.porFazer).toBe(20 - r.consultados);
+    expect(r.consultados).toBeLessThan(QUANTOS);
+    expect(r.porFazer).toBe(QUANTOS - r.consultados);
     expect(r.porFazer).toBeGreaterThan(0);
+    // E o que foi consultado bate certo com o que aconteceu a cada um.
+    expect(r.gravados + r.semSetorNaFonte + r.falhados).toBe(r.consultados);
   });
 
   /** Quem já tem setor não se pergunta outra vez: é o invariante do manual. */

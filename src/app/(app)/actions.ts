@@ -3413,6 +3413,42 @@ export async function buscarFundamentaisAction(
  * mudasse, um valor que já serviu de base a uma compra mudava de opinião
  * retroactivamente. Ver a migração 0037.
  */
+/**
+ * Os rácios que o formulário traz da busca de dados.
+ *
+ * Devolve **só os campos que vieram mesmo**: um campo vazio fica de fora e não
+ * chega ao `update`, para um estudo refeito à mão não apagar os rácios que a
+ * fonte já tinha dado. Um número que não se lê é ausência, nunca zero — um ROCE
+ * de zero por cento é uma afirmação sobre a empresa e não é esta a fazê-la.
+ */
+function lerRaciosDoFormulario(formData: FormData): {
+  sector?: string | null;
+  rocePct?: number | null;
+  margemOperacionalPct?: number | null;
+  margemFcfPct?: number | null;
+  crescimentoFcfPct?: number | null;
+} {
+  const numero = (campo: string): number | undefined => {
+    const bruto = String(formData.get(campo) ?? "").trim();
+    if (!bruto) return undefined;
+    const n = Number(bruto.replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const setor = String(formData.get("sector") ?? "").trim();
+
+  return {
+    ...(setor ? { sector: setor } : {}),
+    ...(numero("rocePct") !== undefined ? { rocePct: numero("rocePct") } : {}),
+    ...(numero("margemOperacionalPct") !== undefined
+      ? { margemOperacionalPct: numero("margemOperacionalPct") }
+      : {}),
+    ...(numero("margemFcfPct") !== undefined ? { margemFcfPct: numero("margemFcfPct") } : {}),
+    ...(numero("crescimentoFcfPct") !== undefined
+      ? { crescimentoFcfPct: numero("crescimentoFcfPct") }
+      : {}),
+  };
+}
+
 export async function guardarAvaliacaoAction(
   _prev: ActionState,
   formData: FormData,
@@ -3488,6 +3524,18 @@ export async function guardarAvaliacaoAction(
     priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
     upsidePct: avaliacao.ok.upsidePonderadoPct,
     valuedAt: hoje,
+    /**
+     * Os rácios que a busca de dados trouxe, congelados com o estudo.
+     *
+     * Passavam pelo ecrã e eram deitados fora com a página. Guardados, cada
+     * estudo novo passa a poder comparar-se com os anteriores do mesmo setor —
+     * que é a única comparação setorial que esta app pode fazer sem inventar
+     * médias que não existem em fonte gratuita nenhuma.
+     *
+     * `undefined` quando não vieram: um estudo escrito à mão não apaga o que a
+     * fonte já tinha dado numa passagem anterior.
+     */
+    ...lerRaciosDoFormulario(formData),
   };
 
   const repo = getRepository();

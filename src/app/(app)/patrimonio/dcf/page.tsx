@@ -36,9 +36,15 @@ export default async function Page({
    * de se ler seja o que for, e a ação de gravar volta a confrontá-lo.
    */
   const id = searchParams?.id?.trim() || null;
-  const guardada = id
-    ? (await getRepository().listValuations(ctx.space.id).catch(() => [])).find((v) => v.id === id)
-    : undefined;
+  /**
+   * Os estudos deste ambiente, numa leitura só.
+   *
+   * Servem para duas coisas: encontrar o que veio do funil, e comparar a
+   * empresa em estudo com as que já foram estudadas no mesmo setor. Lê-los duas
+   * vezes para as duas coisas era ir buscar a mesma lista a seguir a si própria.
+   */
+  const estudos = await getRepository().listValuations(ctx.space.id).catch(() => []);
+  const guardada = id ? estudos.find((v) => v.id === id) : undefined;
 
   const doFunil: VindoDoFunil = {
     id: guardada?.id ?? null,
@@ -109,7 +115,21 @@ export default async function Page({
         </p>
       ) : null}
 
-      <DcfCalculadora doFunil={doFunil} />
+      <DcfCalculadora
+        doFunil={doFunil}
+        anteriores={estudos
+          // Só os que passaram pela busca de dados têm rácios para comparar.
+          .filter((v) => v.sector)
+          .map((v) => ({
+            id: v.id,
+            nome: v.name,
+            setor: v.sector,
+            rocePct: v.rocePct,
+            margemOperacionalPct: v.margemOperacionalPct,
+            margemFcfPct: v.margemFcfPct,
+            crescimentoFcfPct: v.crescimentoFcfPct,
+          }))}
+      />
     </div>
   );
 }

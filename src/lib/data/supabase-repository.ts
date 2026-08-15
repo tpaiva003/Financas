@@ -2076,6 +2076,16 @@ export class SupabaseRepository implements Repository {
         price_at_study_cents: e.priceAtStudyCents,
         upside_pct: e.upsidePct,
         valued_at: e.valuedAt,
+        // Os rácios do dia, quando a busca de dados correu. Só se escrevem
+        // quando vêm: um estudo refeito à mão não apaga o que a fonte já tinha
+        // dado, porque `undefined` não chega ao update.
+        ...(e.sector !== undefined ? { sector: e.sector } : {}),
+        ...(e.rocePct !== undefined ? { roce_pct: e.rocePct } : {}),
+        ...(e.margemOperacionalPct !== undefined
+          ? { operating_margin_pct: e.margemOperacionalPct }
+          : {}),
+        ...(e.margemFcfPct !== undefined ? { fcf_margin_pct: e.margemFcfPct } : {}),
+        ...(e.crescimentoFcfPct !== undefined ? { fcf_growth_pct: e.crescimentoFcfPct } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -2436,6 +2446,18 @@ function rowToValuation(r: any): StoredValuation {
     valuedAt: r.valued_at ? String(r.valued_at).slice(0, 10) : null,
     logoDomain: r.logo_domain ?? null,
     notes: r.notes ?? null,
+    sector: r.sector ?? null,
+    // `numeric` do Postgres chega como texto: sem o `Number` isto comparava-se
+    // como cadeia e "9" ficava maior do que "14".
+    rocePct: r.roce_pct === null || r.roce_pct === undefined ? null : Number(r.roce_pct),
+    margemOperacionalPct:
+      r.operating_margin_pct === null || r.operating_margin_pct === undefined
+        ? null
+        : Number(r.operating_margin_pct),
+    margemFcfPct:
+      r.fcf_margin_pct === null || r.fcf_margin_pct === undefined ? null : Number(r.fcf_margin_pct),
+    crescimentoFcfPct:
+      r.fcf_growth_pct === null || r.fcf_growth_pct === undefined ? null : Number(r.fcf_growth_pct),
     aiSummary: r.ai_summary ?? null,
     aiSummaryAt: r.ai_summary_at ?? null,
     createdAt: r.created_at ?? null,
