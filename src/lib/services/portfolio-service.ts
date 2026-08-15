@@ -17,11 +17,15 @@ import { getRepository } from "@/lib/data";
 import {
   BENCHMARKS,
   buildPosition,
+  normalizeSymbol,
   quotesToPrices,
+  precoNoDia,
+  serieDaComparacao,
   simulateBenchmark,
   xirr,
   type BenchmarkComparison,
   type CashFlow,
+  type PontoDaComparacao,
   type Trade,
 } from "@/lib/domain";
 import { getQuoteSeries } from "./quotes-service";
@@ -31,6 +35,14 @@ export interface BenchmarkResult {
   label: string;
   description: string;
   comparison: BenchmarkComparison | null;
+  /**
+   * A mesma comparação mês a mês, para se ver o caminho e não só o fim.
+   *
+   * "Estás atrás 8 832 €" não diz se o desnível está a abrir ou a fechar, e são
+   * conclusões opostas: de −20 mil para −8 mil é recuperar; de zero para −8 mil
+   * é perder terreno. O mesmo número.
+   */
+  serie: PontoDaComparacao[];
   /** Porque é que não deu, quando não dá. */
   problem: string | null;
   /** Data da cotação mais recente usada. */
@@ -53,7 +65,13 @@ export interface PortfolioReturn {
   /** O que a carteira vale hoje. */
   currentValueCents: number;
   gainCents: number;
-  /** TIR anualizada da carteira toda. */
+  /**
+   * TIR anualizada **do que está valorizado**, não da carteira toda.
+   *
+   * As posições sem preço atual ficam de fora dela e da comparação com o
+   * índice, pela mesma razão: contá-las de um lado e não do outro fabrica um
+   * resultado. Ver `foraDaComparacaoCents`.
+   */
   annualPct: number | null;
   /** Data do primeiro movimento. */
   firstDate: string | null;
@@ -67,6 +85,14 @@ export interface PortfolioReturn {
    * resolvê-lo, e para isso precisa de lá chegar.
    */
   semPreco: { id: string; name: string }[];
+  /**
+   * Dinheiro que ficou de fora da comparação e da taxa, por falta de cotação.
+   *
+   * Existe para o ecrã poder dizer sobre que parte da carteira é que o "estás
+   * atrás" fala. Sem isto, uma comparação de metade do dinheiro lia-se como uma
+   * comparação de tudo.
+   */
+  foraDaComparacaoCents: number;
   benchmarks: BenchmarkResult[];
 }
 
@@ -87,17 +113,58 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   const investments = assets.filter((a) => a.kind === "investimento");
   if (investments.length === 0 || trades.length === 0) return null;
 
+  /**
+   * As cotações de todos os investimentos, numa consulta só.
+   *
+   * Servem para saber o que a carteira valia em cada mês do passado — sem elas
+   * só se sabe o valor de hoje, e um número sozinho não diz se o desnível
+   * contra o índice está a abrir ou a fechar.
+   */
+  const cotacoesPorSimbolo = await repo
+    .listQuotesFor(
+      investments
+        .filter((a) => a.symbol)
+        .map((a) => normalizeSymbol(String(a.symbol)))
+        .filter((x): x is string => Boolean(x)),
+    )
+    .catch(() => new Map<string, { date: string; closeCents: number }[]>());
+
   const byAsset = new Map<string, Trade[]>();
   for (const t of trades) {
     byAsset.set(t.assetId, [...(byAsset.get(t.assetId) ?? []), t as Trade]);
   }
 
+  /**
+   * Os fluxos da comparação e os da carteira **não são os mesmos**, e essa é a
+   * correção que este bloco existe para fazer.
+   *
+   * O `investedCents` e o `currentValueCents` descrevem a carteira toda, que é
+   * o que a pessoa quer ver em cima. Os `flows` alimentam o índice — e para
+   * isso só podem levar o dinheiro que também está valorizado do lado de cá.
+   *
+   * **Um investimento sem preço atual conta pelo que custou.** Se o dinheiro
+   * dele comprasse unidades do índice na mesma, o índice valorizava-o e a
+   * carteira mantinha-o congelado ao custo: nasce um desnível que não veio do
+   * mercado nenhum, veio de faltar uma cotação. Com oito posições assim numa
+   * carteira, esse desnível fabricado pode ser o desnível todo — e o ecrã
+   * mostrava-o com um sinal vermelho e uma frase categórica.
+   *
+   * Então entram nas duas contas ou em nenhuma. O que fica de fora é contado e
+   * dito, para o "estás atrás" não passar por uma leitura da carteira inteira
+   * quando é de uma parte dela.
+   */
   const flows: CashFlow[] = [];
   let investedCents = 0;
   let currentValueCents = 0;
   let missingPrice = 0;
   const semPreco: { id: string; name: string }[] = [];
   let firstDate: string | null = null;
+  /** O valor de hoje só do que é comparável. É este que vai ao índice. */
+  let valorComparavelCents = 0;
+  /** E o dinheiro que ficou de fora da comparação, para o ecrã o dizer. */
+  let foraDaComparacaoCents = 0;
+  /** Os bens que entram na comparação, para reconstruir a carteira no tempo. */
+  const comparaveis: { bem: (typeof investments)[number]; movimentos: Trade[] }[] = [];
 
   for (const a of investments) {
     const own = byAsset.get(a.id) ?? [];
@@ -108,15 +175,22 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
       continue;
     }
     const position = buildPosition(own);
-    flows.push(...position.flows);
     investedCents += position.investedCents;
+
     if (a.unitPriceCents === null || a.unitPriceCents === undefined) {
       missingPrice++;
       semPreco.push({ id: a.id, name: a.name });
       currentValueCents += position.costCents;
-    } else {
-      currentValueCents += Math.round(position.quantity * a.unitPriceCents);
+      // Nem os fluxos nem o valor: nada desta posição entra na comparação.
+      foraDaComparacaoCents += position.investedCents;
+      continue;
     }
+
+    const valor = Math.round(position.quantity * a.unitPriceCents);
+    currentValueCents += valor;
+    valorComparavelCents += valor;
+    flows.push(...position.flows);
+    comparaveis.push({ bem: a, movimentos: own });
     if (position.firstDate && (!firstDate || position.firstDate < firstDate)) {
       firstDate = position.firstDate;
     }
@@ -149,6 +223,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
           label: b.label,
           description: b.description,
           comparison: null,
+          serie: [],
           problem: series?.problem ?? "Sem cotações para comparar.",
           lastDate: null,
           symbol: null,
@@ -158,7 +233,47 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
       const prices = quotesToPrices(
         series.quotes.map((q) => ({ date: q.date, closeCents: q.closeCents })),
       );
-      const comparison = simulateBenchmark(flows, prices, currentValueCents, today);
+      // `valorComparavelCents` e não `currentValueCents`: ver o bloco lá em
+      // cima. É o que impede um desnível fabricado por cotações em falta.
+      const comparison = simulateBenchmark(flows, prices, valorComparavelCents, today);
+
+      /**
+       * A mesma comparação, mês a mês.
+       *
+       * **A carteira reconstrói-se pelas cotações guardadas de cada bem**, com
+       * a razão contra o último fecho aplicada ao preço em euros de hoje — a
+       * mesma conversão que a reconstrução do património já usa, e pela mesma
+       * razão: é o que faz a moeda desaparecer sem precisar do câmbio de cada
+       * dia. Um bem sem cotações nesse mês tira o mês inteiro da série, porque
+       * uma carteira meia contada contra um índice inteiro não é comparação.
+       */
+      const serie = serieDaComparacao({
+        fluxos: flows.filter((f) => f.amountCents > 0),
+        precosDoIndice: prices,
+        de: firstDate!,
+        ate: today,
+        carteiraEm: (dia) => {
+          let total = 0;
+          for (const { bem, movimentos } of comparaveis) {
+            const simbolo = normalizeSymbol(String(bem.symbol ?? ""));
+            const guardadas = simbolo ? (cotacoesPorSimbolo.get(simbolo) ?? []) : [];
+            const ultima = guardadas.at(-1);
+            if (!ultima || ultima.closeCents <= 0 || !bem.unitPriceCents) return null;
+
+            const emEurosPorFecho = bem.unitPriceCents / ultima.closeCents;
+            const precos: Record<string, number> = {};
+            for (const q of guardadas) precos[q.date] = q.closeCents * emEurosPorFecho;
+            const preco = precoNoDia(precos, dia);
+            if (preco === null) return null;
+
+            // As unidades que havia naquele dia, dos movimentos até lá.
+            const ate = movimentos.filter((m) => m.date <= dia);
+            if (ate.length === 0) continue;
+            total += buildPosition(ate).quantity * preco;
+          }
+          return Math.round(total);
+        },
+      });
 
       /**
        * Porque é que não há comparação, dito com precisão.
@@ -186,6 +301,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
         label: b.label,
         description: b.description,
         comparison,
+        serie,
         problem,
         lastDate: series.lastDate,
         symbol: series.symbol,
@@ -198,10 +314,20 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     investedCents,
     currentValueCents,
     gainCents: currentValueCents - investedCents,
-    annualPct: xirr(flows, currentValueCents, today),
+    /**
+     * A taxa mede o que **está valorizado**, e não a carteira inteira.
+     *
+     * Os fluxos deixaram de levar as posições sem preço atual — ver o bloco lá
+     * em cima — por isso o valor final tem de as deixar de fora também. Somar
+     * um valor que inclui posições cujos reforços não estão nos fluxos dava uma
+     * taxa inflacionada: dinheiro que aparece no fim sem ter entrado.
+     */
+    annualPct: xirr(flows, valorComparavelCents, today),
     firstDate,
     missingPrice,
     semPreco,
+    /** Quanto dinheiro ficou de fora da comparação e da taxa. */
+    foraDaComparacaoCents,
     benchmarks,
   };
 }
