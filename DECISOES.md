@@ -2726,6 +2726,17 @@ movimento. Em telemóvel, no Firefox, ou com `prefers-reduced-motion`, lê-se a
 lista de sempre. Uma secção onde cinco de seis frases dependem do browser
 saber girar um anel seria uma secção que esconde conteúdo.
 
+O Tiago viu a lista no telemóvel e perguntou pelo efeito; a resposta passou a
+ser dar-lhe um. Em ecrã estreito o efeito existe **sem anel**: as frases ficam
+empilhadas no mesmo sítio e o scroll troca-as com um fundido curto — a mesma
+`view-timeline`, a mesma cadência de paragens, e cada frase com a sua janela
+(`animation-range` com `calc(var(--i))`). Duas escolhas com razão: a janela da
+última estica até 120% para o fim do curso a apanhar a meio do patamar — senão
+o cartão desvanecia e saía-se de um palco vazio (visto em screenshot antes de
+corrigido); e o palco mede `100svh`, porque `100vh` escondia o fundo do cartão
+atrás da barra do browser. O Firefox e o `prefers-reduced-motion` continuam a
+ler a lista, como no anel.
+
 Um custo que ficou pago e documentado no CSS: o `overflow-x: hidden` do
 `html` fazia do documento um contentor de scroll e **matava o `sticky` em
 silêncio** — a secção rolava em branco. Passou a `overflow-x: clip` onde há
