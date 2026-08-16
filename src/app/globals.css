@@ -600,12 +600,14 @@
    * primeiras e saltava-se o resto. Passam a estar dispostas em círculo, e é o
    * scroll que traz cada uma à frente.
    *
-   * **A lista continua a ser o que está escrito no HTML.** O anel é uma camada
-   * por cima, e só existe quando há três coisas ao mesmo tempo: suporte a
-   * linhas de tempo de scroll, ecrã largo, e ninguém a pedir menos movimento.
-   * Fora disso lê-se a lista de sempre, que é legível e não depende de nada.
-   * Uma secção onde cinco de seis frases só aparecem se o browser souber girar
-   * um anel seria uma secção que esconde conteúdo.
+   * **A lista continua a ser o que está escrito no HTML.** O efeito é uma
+   * camada por cima e tem duas formas: o anel em ecrã largo, e um baralho de
+   * cartas em ecrã estreito — no telemóvel não há espaço para um círculo com
+   * perspetiva sem o texto encolher até deixar de se ler. Ambas exigem suporte
+   * a linhas de tempo de scroll e ninguém a pedir menos movimento. Fora disso
+   * lê-se a lista de sempre, que é legível e não depende de nada. Uma secção
+   * onde cinco de seis frases só aparecem se o browser souber animar com o
+   * scroll seria uma secção que esconde conteúdo.
    *
    * O espaçamento da lista vive aqui e não em classes do Tailwind de propósito:
    * as utilidades saem depois na folha e ganhavam a `.anel`, e uma margem numa
@@ -737,6 +739,94 @@
       .anel-frase-texto {
         font-size: 1.6rem;
         line-height: 1.15;
+      }
+    }
+
+    /*
+     * A versão do telemóvel: as mesmas paragens, sem anel.
+     *
+     * As frases ficam empilhadas no mesmo sítio e é o scroll que troca uma
+     * pela seguinte, com um fundido curto na passagem. A altura mínima é a
+     * rede de segurança dos telemóveis em paisagem, onde o cartão não cabia
+     * inteiro com o título por cima.
+     */
+    @media (prefers-reduced-motion: no-preference) and (max-width: 1023px) and (min-height: 560px) {
+      .anel-cena {
+        /* O mesmo curso do anel: meio ecrã de rolo por frase. */
+        height: 320vh;
+        view-timeline-name: --anel;
+        view-timeline-axis: block;
+      }
+
+      .anel-palco {
+        position: sticky;
+        top: 0;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        /* O svh desconta a barra do browser que aparece e desaparece; com vh
+           o fundo do cartão ficava escondido atrás dela. */
+        height: 100svh;
+      }
+
+      .anel {
+        position: relative;
+        margin-top: 2.5rem;
+        /* A altura do baralho é a do cartão mais alto: a frase mais comprida
+           com a resposta mais comprida, verificada a 360px de largura. */
+        height: min(24rem, 58svh);
+      }
+
+      .anel > li + li {
+        margin-top: 0;
+      }
+
+      .anel-frase {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        align-content: center;
+        padding: 1.75rem 1.5rem;
+        border-radius: 1.25rem;
+        background: var(--card-fill);
+        box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+        opacity: 0;
+        transform: translateY(1.25rem);
+        animation: trocar-frase linear both;
+        animation-timeline: --anel;
+        /*
+         * A janela de cada frase: seis janelas de 20% com arranque a cada
+         * 16%, o que deixa 4% de sobreposição — o tempo do fundido entre a
+         * que sai e a que entra. Mexer num número sem mexer no outro ou abre
+         * buracos sem frase nenhuma ou empilha duas por cima uma da outra.
+         */
+        animation-range: contain calc(var(--i) * 16%) contain
+          calc(var(--i) * 16% + 20%);
+      }
+
+      /* A última frase fica, como no anel: com a janela esticada para lá do
+         fim, os 100% do curso apanham-na a meio do patamar, e ela sai do ecrã
+         agarrada à secção em vez de desaparecer antes dela. */
+      .anel-frase:last-child {
+        animation-range: contain 80% contain 120%;
+      }
+
+      /* O mesmo patamar do anel: cada frase passa quieta a maior parte da
+         sua janela, e a troca acontece nas pontas. */
+      @keyframes trocar-frase {
+        0% {
+          opacity: 0;
+          transform: translateY(1.25rem);
+        }
+        20%,
+        80% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-1.25rem);
+        }
       }
     }
   }

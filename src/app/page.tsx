@@ -341,11 +341,13 @@ const OUVE_SE = [
  * frente, com uma paragem em cada — a rodar sem parar não havia onde pousar os
  * olhos.
  *
- * **O que está escrito no HTML continua a ser a lista.** O anel é uma camada de
- * CSS por cima, e só existe onde há suporte a linhas de tempo de scroll, ecrã
- * largo e ninguém a pedir menos movimento. Nos outros casos lê-se a lista de
- * sempre. Uma secção onde cinco de seis frases só aparecem se o browser souber
- * girar um anel seria uma secção que esconde conteúdo.
+ * **O que está escrito no HTML continua a ser a lista.** O efeito é uma camada
+ * de CSS por cima com duas formas: o anel em ecrã largo, e no telemóvel um
+ * baralho de cartas em que o scroll troca as frases no mesmo sítio, com a
+ * mesma cadência de paragens. Ambas exigem suporte a linhas de tempo de scroll
+ * e ninguém a pedir menos movimento; fora disso lê-se a lista de sempre. Uma
+ * secção onde cinco de seis frases só aparecem se o browser souber animar com
+ * o scroll seria uma secção que esconde conteúdo.
  *
  * Por isso a lista **não** leva `Reveal group`: a revelação em cascata mexe no
  * `transform` de cada filho, que é precisamente onde o anel escreve a posição

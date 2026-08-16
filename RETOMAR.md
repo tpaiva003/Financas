@@ -28,8 +28,11 @@ O que importa reter para a próxima sessão:
   verde e vermelho voltaram a ser só semântica de dados. Se aparecer verde
   num botão, é regressão.
 - **O anel é CSS puro por cima da lista**: o HTML continua a ser a lista, e em
-  telemóvel/Firefox/reduced-motion é a lista que se lê. Não acrescentar
-  JavaScript para "consertar" o anel onde ele não existe — é de propósito.
+  Firefox/reduced-motion é a lista que se lê. Não acrescentar JavaScript para
+  "consertar" o anel onde ele não existe — é de propósito. Em **telemóvel**
+  (a pedido do Tiago, 2026-08-16) o efeito passou a existir sem anel: um
+  baralho de cartas em que o scroll troca as frases no mesmo sítio, com as
+  mesmas condições de suporte e o mesmo fallback (ver `DECISOES.md`).
 - **`overflow-x: clip` no `html`** é o que mantém o `sticky` vivo; voltar a
   `hidden` parte a secção do anel em silêncio.
 - **Modo mock**: o PR #39 fechou a definição de palavra-chave à primeira
