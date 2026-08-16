@@ -17,7 +17,7 @@ export default function PrivacidadePage() {
   return (
     <LegalLayout
       title="Privacidade"
-      updated="5 de agosto de 2026"
+      updated="16 de agosto de 2026"
       intro="Isto descreve o que a Rachar guarda, porquê, onde fica e o que podes fazer para o tirar de lá. Está escrito em português corrente e de propósito: uma política que ninguém percebe não protege ninguém."
     >
       <LegalSection title="Quem é responsável">
@@ -112,6 +112,30 @@ export default function PrivacidadePage() {
           despesas que criaste podem ter de continuar visíveis para as contas das
           outras pessoas fecharem, e nesse caso deixam de estar ligadas ao teu
           nome.
+        </p>
+        <p>
+          Nos <strong>ambientes gratuitos</strong> há mais uma regra: ao fim de{" "}
+          <strong>90 dias sem ninguém entrar</strong>, o ambiente congela — passa
+          a só de leitura. Avisamos por email duas semanas antes, e{" "}
+          <strong>não se apaga nada</strong>: fica tudo onde está, e basta
+          entrares (ou carregares em «Reativar») para voltar ao normal, sem
+          pedir nada a ninguém. Fazemos isto para não guardar indefinidamente
+          dados financeiros de contas que ninguém usa — guardar para sempre
+          também é um risco para ti. Os ambientes do plano completo não são
+          abrangidos.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Lista de espera">
+        <p>
+          Se deixares o teu email na lista de espera, guardamos esse email, o
+          nome se o deres, a data e o teu consentimento — e usamo-lo para uma
+          coisa só: avisar-te quando houver vaga. Sem novidades, sem
+          publicidade. Se quiseres sair da lista antes disso, escreve para{" "}
+          <a href="mailto:ola@rachar.pt" className="underline underline-offset-2">
+            ola@rachar.pt
+          </a>
+          .
         </p>
       </LegalSection>
 

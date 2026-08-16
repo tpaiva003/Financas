@@ -561,68 +561,70 @@ que recebeu e aponta para a variável de ambiente; o preço pode sempre ser escr
 
 ---
 
-## 3. Modo demo self-serve — canalização em falta
+## 3. Modo demo self-serve — LIGADO de ponta a ponta (2026-08-16)
 
-A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
-9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
+O que durante várias sessões esteve "feito e testado mas sem uma única linha a
+usá-lo" está agora ligado. Verificado contra o código nesta data:
 
-- [x] **Migrações `0021` a `0027` aplicadas** (o Tiago correu-as no Supabase a
-      2026-08-09). Já valem as correções do saldo e do dedup, os períodos de
-      taxa, a quota nos bens, o preço da zona nos imóveis e o histórico do
-      património.
-- [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
-      gratuitos com a última atividade; marcar aviso; congelar/descongelar;
-      gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
-      `MockRepository`. Existe já um `lastActivity` no `getPlatformStats`, mas o
-      `SpaceSummary` não traz o `plan` (não dá para escolher os gratuitos) e o
-      `lastActivity` sai só das datas das despesas — **não conta os logins**, que
-      é o que a própria regra 3 do `retencao.ts` exige.
-- [ ] **Rota de cron da retenção** + entrada no `vercel.json`.
-- [ ] **Fazer o congelamento significar alguma coisa** — bloquear escritas nos
-      ambientes congelados e explicar na app porque está bloqueado. **Sem isto o
-      resto é decorativo.** Hoje são **zero linhas**: não há uma única ocorrência
-      de `frozen`/`congelado` em `.ts`/`.tsx`. Toca em ~40 caminhos de escrita.
-- [ ] **Ligar o `decideSignup` ao registo.**
-- [ ] **Formulário da lista de espera.** Hoje a landing escreve em
-      `contact_messages`, não em `waitlist`.
-- [ ] **Texto de RGPD na `/privacidade`.** ⚠️ **A nota anterior estava errada:** a
-      página **não** fala "do mundo antigo, de dois utilizadores convidados". Já
-      está datada de 5/8/2026 e já descreve ambientes isolados, subcontratantes e
-      apagamento de conta. O que falta mesmo é só o texto dos 90 dias e do
-      congelamento — e a secção de retenção atual ("enquanto tiveres conta")
-      passa a contradizê-lo.
-- [ ] **Emails** — aviso de congelamento e convite de saída da fila. O Resend
-      está mesmo configurado; só existem `sendInvite` e `sendPasswordReset`.
+- [x] **Migrações `0021` a `0027`** aplicadas (2026-08-09) e **`0043`** criada
+      (o Tiago tem o link; acrescenta `spaces.last_activity_at`, preenche o
+      passado e cria o índice parcial da retenção). **O cron da retenção
+      devolve erro até a `0043` correr** — a app em si não é afetada.
+- [x] **Domínio** — `retentionVerdict` ganhou `frozenAt` e os estados
+      `congelado` (não se recongela: um cron diário reescrevia a data) e
+      `descongelar` (voltou a haver vida, ou passou a `full`).
+- [x] **Métodos de repositório** — `touchSpaceActivity`,
+      `listSpacesForRetention` (só gratuitos, filtrado no repositório como
+      última linha de defesa; `plan is null` conta como gratuito),
+      `markRetentionWarned`, `setSpaceFrozen`, `countAppUsersCreatedOn`,
+      `addToWaitlist` (repetir não reescreve), `listWaitlist`,
+      `markWaitlistInvited`. Nos três: interface, Supabase, mock.
+- [x] **Entrar conta como atividade** — o `getSpaceContext` marca
+      `last_activity_at` ao abrir o ambiente, no máximo uma vez por dia
+      (`precisaDeMarcarAtividade`). Erro engolido: falhar a marca não pode
+      deitar abaixo a página.
+- [x] **Congelamento com dentes** — guarda única em `lib/congelamento.ts`
+      (`congelado()` ignora `frozen_at` velho em ambientes `full`), e um teste
+      (`congelamento-actions.test.ts`) que **lê o código-fonte das 87 server
+      actions** e obriga cada uma a passar pela guarda ou a estar na lista de
+      excepções com motivo. Uma action nova sem guarda parte o `npm run test`
+      no dia em que nasce. Excepções: leituras, cookies, fora-de-ambiente, e
+      direitos que nunca se bloqueiam (apagar os próprios dados, pedir ajuda,
+      reativar).
+- [x] **Aviso no layout + «Reativar»** (`AvisoCongelado.tsx`,
+      `reativarAmbienteAction`) — um clique, sem aprovação de ninguém; marca
+      atividade para o cron da noite não recongelar.
+- [x] **Cron** — `/api/cron/retencao` às 06:15 UTC (`vercel.json`), mesmo
+      padrão de segredo do de cotações (falha fechada sem `CRON_SECRET`).
+      Serviço em `retencao-service.ts`: a marca do aviso fica **antes** do
+      envio (um Resend instável não pode virar um aviso por dia à mesma
+      pessoa), e a passagem devolve relatório do que fez.
+- [x] **Email de aviso** (`sendRetentionWarning`) — sem um único número de
+      dentro do ambiente; diz duas vezes que nada se apaga.
+- [x] **`decideSignup` ligado** — no `signInCallback`, no único ramo por onde
+      uma conta nasce sozinha (SSO + registo aberto). Convites do admin não
+      passam por lá. Quem não cabe vai para `/login?cheio=1`.
+- [x] **Fila de espera** — `waitlistAction` em `landing-actions.ts` (honeypot,
+      consentimento obrigatório, resposta igual para email novo e repetido — o
+      formulário não é oráculo de quem está na fila), componente
+      `FilaDeEspera` na porta fechada do `/login`, fila visível na
+      `/plataforma` com «convidada/à espera», e o `inviteUserAction` marca
+      `invited_at` sozinho quando o convite sai para um email da fila.
+- [x] **RGPD na `/privacidade`** — os 90 dias, o congelamento (com o "não se
+      apaga nada" e o «Reativar") e a secção da lista de espera. Data
+      atualizada para 16/8/2026.
+- [ ] **A landing ainda escreve em `contact_messages`.** A `waitlistAction`
+      está pronta e é pública — falta o agente da landing apontar o formulário
+      dele para ela (ou usar o componente `FilaDeEspera` com
+      `source="landing"`). Deixado de fora de propósito para não pisar o
+      `page.tsx` que ele tem em curso.
+- [ ] **Convite de saída da fila em lote** — hoje convida-se um a um pela
+      `/plataforma` («Dar acesso a alguém» com o email da fila). Chega para
+      1 conta/dia.
 - [ ] **`AUTH_OPEN_REGISTRATION=true`** — só no fim, e é decisão do Tiago.
-      **Agora também depende das correções de segurança da secção 2.3.**
-
-### A migração `0021` tem o bug que ela própria diz ter evitado
-
-O cabeçalho da `0021` explica, com razão, que um `create table if not exists`
-sobre uma tabela existente passa em silêncio sem criar nada. E depois, duas
-instruções abaixo, faz exatamente o mesmo com um índice:
-
-```sql
-create unique index if not exists waitlist_email_key on waitlist (lower(email));
-```
-
-A `0001_init.sql` já declara `email text not null unique` na `waitlist`, e o
-Postgres chama ao índice dessa restrição **`waitlist_email_key`** — o mesmo nome.
-O `if not exists` encontra-o, emite um `NOTICE` e **nunca cria o índice sobre
-`lower(email)`**. O comentário promete que "se já houver duplicados, isto falha —
-e é bom que falhe agora": não falha, passa calado, e `A@x.pt` e `a@x.pt` ficam
-como duas pessoas diferentes. Dar-lhe outro nome resolve.
-
-Na mesma migração, o comentário *"Sem políticas: só o service role lhe toca"* é
-falso: a `0001_init.sql` já criou duas políticas na `waitlist` que a `0021` não
-remove, uma delas a permitir `insert` a qualquer cliente que ponha
-`consent = true`.
-
-E o domínio ainda não está pronto para ser ligado: o `RetentionInput` não tem
-`frozenAt`, por isso o `retentionVerdict` não distingue "deve congelar" de "já
-está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
-
----
+      Continua a depender de fechar a "primeira entrada define a palavra-chave"
+      (fechada a 2026-08-14 com o convite por ligação) — **essa parte está
+      resolvida**; a decisão de ligar continua por tomar.
 
 ## 4. Higiene de código, por fazer
 

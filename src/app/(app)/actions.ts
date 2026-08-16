@@ -1436,6 +1436,13 @@ export async function inviteUserAction(
     ? await sendInvite(email, name, token)
     : { sent: false as const, reason: "não consegui preparar a ligação de acesso" };
 
+  // Se esta pessoa estava na fila de espera, fica registado que o convite saiu
+  // — é o que faz a fila mostrar quem ainda espera em vez de quem já entrou.
+  // Melhor esforço: quem não estava na fila não é afetado.
+  if (mail.sent) {
+    await repo.markWaitlistInvited(email, new Date().toISOString()).catch(() => {});
+  }
+
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
   return {

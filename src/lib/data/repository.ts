@@ -1030,6 +1030,8 @@ export interface Repository {
   }): Promise<void>;
   /** A fila, para a consola do dono. */
   listWaitlist(): Promise<WaitlistEntry[]>;
+  /** Regista que o convite saiu, para a fila mostrar quem ainda espera. */
+  markWaitlistInvited(email: string, atISO: string): Promise<void>;
   deleteAppUser(id: string): Promise<void>;
   /** Desliga a conta dos participantes, sem apagar o histórico. */
   unlinkUserFromMembers(userId: string): Promise<void>;

@@ -58,6 +58,7 @@ const SEM_GUARDA: Record<string, string> = {
   reportMissingBankAction: "é dar notícia de um banco em falta, não um dado do ambiente",
   inviteUserAction: "cria uma conta, não escreve no ambiente",
   submitContactAction: "landing pública",
+  waitlistAction: "porta fechada do registo, ainda não há ambiente nenhum",
   requestPasswordResetAction: "recuperação de palavra-chave, sem ambiente",
   completePasswordResetAction: "recuperação de palavra-chave, sem ambiente",
   createSpaceAction: "cria um ambiente novo, que nunca nasce congelado",

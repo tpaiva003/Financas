@@ -985,6 +985,15 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
+  async markWaitlistInvited(email: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("waitlist")
+      .update({ invited_at: atISO })
+      .eq("email", email.trim().toLowerCase());
+    if (error) throw new Error(error.message);
+  }
+
   async listAppUsers(): Promise<AppUser[]> {
     const db = getSupabaseAdmin();
     const { data, error } = await db.from("app_users").select("id, email, name").order("name");

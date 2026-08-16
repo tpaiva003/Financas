@@ -666,6 +666,12 @@ export class MockRepository implements Repository {
     return [...getStore().waitlist];
   }
 
+  async markWaitlistInvited(email: string, atISO: string): Promise<void> {
+    const e = email.trim().toLowerCase();
+    const w = getStore().waitlist.find((x) => x.email === e);
+    if (w) w.invitedAt = atISO;
+  }
+
   async listAppUsers(): Promise<AppUser[]> {
     return [...getStore().appUsers];
   }

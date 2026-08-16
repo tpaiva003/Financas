@@ -50,3 +50,64 @@ export async function submitContactAction(
 
   return { ok: true };
 }
+
+const waitlistSchema = z.object({
+  name: z.string().trim().max(100).optional(),
+  email: z.string().trim().email("Indica um email válido.").max(200),
+  consent: z.boolean(),
+});
+
+export interface WaitlistState {
+  ok?: boolean;
+  error?: string;
+}
+
+/**
+ * Entrar na fila de espera do registo.
+ *
+ * É diferente da caixa de contacto de propósito: a fila é uma lista de emails
+ * com consentimento e ordem de chegada, para se convidar quando abrir vaga; a
+ * caixa é conversa. Misturá-las (a landing escrevia tudo em `contact_messages`)
+ * fazia da fila uma coisa que não se podia percorrer nem convidar por ordem.
+ *
+ * Insistir não faz subir: o mesmo email fica onde estava, com a data original —
+ * a garantia é do repositório, e a resposta aqui é a mesma nos dois casos, para
+ * o formulário não servir de oráculo de quem já está na fila.
+ */
+export async function waitlistAction(
+  _prev: WaitlistState,
+  formData: FormData,
+): Promise<WaitlistState> {
+  // O mesmo honeypot do contacto: um campo escondido que só os bots preenchem.
+  if ((formData.get("company") as string)?.length) {
+    return { ok: true };
+  }
+
+  const parsed = waitlistSchema.safeParse({
+    name: (formData.get("name") as string) || undefined,
+    email: formData.get("email"),
+    consent: formData.get("consent") === "on",
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  // Sem consentimento não há fila: o único fim desta lista é enviar um convite,
+  // e sem base legal para o enviar a entrada não serve para nada.
+  if (!parsed.data.consent) {
+    return { error: "Aceita ser contactado para te podermos avisar quando abrir vaga." };
+  }
+
+  try {
+    await getRepository().addToWaitlist({
+      email: parsed.data.email,
+      name: parsed.data.name ?? null,
+      consent: true,
+      source: String(formData.get("source") ?? "").trim() || "landing",
+    });
+  } catch {
+    return { error: "Não foi possível guardar agora. Tenta novamente daqui a pouco." };
+  }
+
+  return { ok: true };
+}

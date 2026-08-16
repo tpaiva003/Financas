@@ -2,10 +2,12 @@
  * Autenticação completa (runtime Node), usada pelo route handler e pelo servidor.
  *
  * Como se entra HOJE:
- *  - **Palavra-chave.** É o único caminho que a interface oferece. Na 1.ª
- *    entrada de cada conta, a palavra-chave que for escrita fica definida; nas
- *    seguintes é validada. Isto é uma dívida conhecida — quem chegar primeiro a
- *    um email conhecido fica com a conta — e está registada no `RETOMAR.md`.
+ *  - **Palavra-chave.** É o único caminho que a interface oferece. Uma conta
+ *    sem palavra-chave definida não entra por aqui: a primeira palavra-chave
+ *    escolhe-se pela ligação do convite (mesmo caminho da reposição), que é o
+ *    que prova que quem a define é quem recebe o email. A "primeira entrada
+ *    define a palavra-chave" foi removida — deixava a conta ao alcance de quem
+ *    soubesse o email primeiro.
  *  - **Google e Microsoft** estão configurados no `auth.config.ts` mas **não têm
  *    botão em lado nenhum**. Não é só falta de credenciais: falta a UI.
  *  - O "Modo de desenvolvimento" já não existe. A `AUTH_DEV_LOGIN` foi removida
@@ -20,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import { authConfig } from "./auth.config";
 import { userByEmail } from "./users";
 import { isEmailAllowed, isOpenRegistrationEnabled } from "./env";
-import { canSignIn } from "./domain";
+import { canSignIn, decideSignup } from "./domain";
 import { hashPassword, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
 
@@ -100,6 +102,17 @@ const signInCallback: NonNullable<NextAuthConfig["callbacks"]>["signIn"] = async
   // ambiente próprio nasce no primeiro acesso (ver `getSpaceContext`), com a
   // pessoa sozinha lá dentro.
   if (provider !== "password" && !existing) {
+    // O tecto de contas novas por dia (`decideSignup`) aplica-se AQUI, no único
+    // sítio por onde uma conta nasce sozinha. Convites do admin não passam por
+    // este ramo (criam a conta antes de a pessoa entrar), e é assim que o tecto
+    // trava robôs sem travar convidados. Quem não cabe não leva um erro: vai
+    // para a porta fechada do /login, que convida a deixar o email na fila.
+    const hoje = new Date().toISOString().slice(0, 10);
+    const criadasHoje = await repo.countAppUsersCreatedOn(hoje).catch(() => 0);
+    if (!decideSignup(criadasHoje).allowed) {
+      return "/login?cheio=1";
+    }
+
     await repo
       .createAppUser({
         id: `usr_${randomUUID()}`,
