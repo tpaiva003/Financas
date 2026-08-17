@@ -98,6 +98,22 @@ describe("as peças da landing têm o mesmo feitio em todos os ecrãs", () => {
     }
   });
 
+  it("nenhuma animação presa ao scroll corre num ecrã de toque", () => {
+    // Uma animação ligada ao scroll luta com o scroll do próprio browser num
+    // ecrã de toque. A largura não chega como guarda: um tablet deitado tem
+    // 1024px e continua a ser um dedo. A regra vale para o bloco que ainda não
+    // existe, não só para os dois que existiam no dia em que se corrigiu.
+    const blocos = CSS.split("@supports (animation-timeline: view())").slice(1);
+    expect(blocos.length).toBeGreaterThan(0);
+    for (const bloco of blocos) {
+      const media = bloco.match(/@media[^{]+/)?.[0] ?? "";
+      expect(
+        media,
+        `um bloco de animation-timeline tem um @media sem "pointer: fine"`,
+      ).toMatch(/pointer:\s*fine/);
+    }
+  });
+
   it("o anel em 3D só corre onde há ponteiro fino, e o baralho apanha o resto", () => {
     // O anel vive de `preserve-3d` com `backface-visibility`, que alguns
     // browsers de Android achatam — as frases de trás apareciam ao contrário.

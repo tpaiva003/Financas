@@ -576,7 +576,10 @@
    * vale a pena, porque não obriga a manter um segundo caminho em JavaScript.
    */
   @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+    /* `pointer: fine` além da largura: um tablet deitado tem 1024px e continua
+       a ser um dedo, e animação presa ao scroll num ecrã de toque luta com o
+       scroll do próprio browser. */
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (pointer: fine) {
       @keyframes flutuar {
         from {
           transform: translateY(2.2rem);
