@@ -576,7 +576,10 @@
    * vale a pena, porque não obriga a manter um segundo caminho em JavaScript.
    */
   @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+    /* `pointer: fine` além da largura: um tablet deitado tem 1024px e continua
+       a ser um dedo, e animação presa ao scroll num ecrã de toque luta com o
+       scroll do próprio browser. */
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (pointer: fine) {
       @keyframes flutuar {
         from {
           transform: translateY(2.2rem);
@@ -625,7 +628,10 @@
      * frente ia bater no parágrafo de cima. Verificado a 640 de altura com
      * folga; o limite é a rede de segurança para baixo disso.
      */
-    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (min-height: 600px) {
+    /* `pointer: fine` também aqui: além do conflito com o scroll por toque,
+       há Androids que achatam o `preserve-3d` e o cartão da frente sumia-se
+       a meio da volta. Num tablet lê-se a lista, que mostra tudo. */
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (min-height: 600px) and (pointer: fine) {
       .anel-cena {
         /* Alto de propósito: é este comprimento que dá o curso ao scroll.
            Seis paragens em 300vh dá meio ecrã de rolo por frase, que é o que

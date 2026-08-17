@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pendingApprovals = isSubmitter ? 0 : await repo.countPendingApprovals(ctx.space.id);
 
   return (
-    <div data-app className="min-h-[100dvh]">
+    <div data-app className="min-h-[100svh]">
       <ScrollState />
       {/*
         Sem borda: o cabeçalho ganha fundo e sombra quando a página sai do

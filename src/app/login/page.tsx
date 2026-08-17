@@ -14,7 +14,7 @@ export default function LoginPage({
   // "tenta amanhã", é guardar o email e avisar quando for a vez.
   if (searchParams.cheio === "1") {
     return (
-      <main className="relative flex min-h-[100dvh] flex-col">
+      <main className="relative flex min-h-[100svh] flex-col">
         <header className="flex items-center justify-between px-6 py-6 sm:px-10">
           <Link href="/" className="flex items-baseline gap-2">
             <span className="font-display text-sm font-semibold tracking-tight">Rachar</span>
@@ -48,7 +48,7 @@ export default function LoginPage({
     );
   }
   return (
-    <main className="relative flex min-h-[100dvh] flex-col">
+    <main className="relative flex min-h-[100svh] flex-col">
       {/* topo */}
       <header className="flex items-center justify-between px-6 py-6 sm:px-10">
         <Link href="/" className="flex items-baseline gap-2">
