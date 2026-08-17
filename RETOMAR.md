@@ -3,14 +3,50 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-15. Duas frentes em paralelo: o **back end**
+> Última atualização: 2026-08-17. Duas frentes em paralelo: o **back end**
 > (posições fechadas e separador decimal já em main) e a **landing pública**
 > (branch `claude/rachar-landing-page-zdliyf`). O outro agente está a arrancar
-> o **modo demo** (contas com ações limitadas) — ver nota na secção 0.
+> o **modo demo** (contas com ações limitadas) — ver nota na secção 1.
 
 ---
 
-## 0. Sessão de 2026-08-15 — azul de azulejo, anel 3D, e o mock sem porta
+## 0. Sessão de 2026-08-17 — o mesmo feitio em todos os ecrãs, medido
+
+Branch `claude/rachar-landing-page-zdliyf`, recomeçada de `origin/main`
+(`8f828d4`, já com o baralho do telemóvel integrado). Revisão da landing contra
+a regra "uma peça com forma própria tem de ter a mesma forma no ecrã de toda a
+gente" — e desta vez **medida**, não vista.
+
+| | |
+|---|---|
+| Cartão das frases cortado 27px fora do ecrã a 360x560 | ✅ corrigido |
+| Cartão a mudar de feitio com a altura da janela (`58svh`) | ✅ corrigido |
+| Anel a mudar de feitio entre 1024 e 1080 de largura (`40vw`) | ✅ corrigido |
+| Anel 3D em tablets de Android, onde o `preserve-3d` falha | ✅ passa ao baralho |
+| `npm run medir` + teste da regra no `npm run test` | ✅ novo |
+
+O detalhe está em `DECISOES.md` ("O mesmo feitio em todos os ecrãs, desta vez
+medido"). O que importa reter:
+
+- **A altura de um cartão vem do cartão mais alto, não da janela.** As frases
+  empilham-se com `grid-area: 1 / 1` numa grelha, e não com `inset: 0`. Se
+  alguém voltar a escrever uma altura em `svh`/`vh` na caixa, o teste
+  `src/app/landing-proporcoes.test.ts` chumba e diz qual é a linha.
+- **O anel exige `pointer: fine`** — é o guarda do 3D, não do tamanho. O
+  baralho apanha `(max-width: 1023px) or (pointer: coarse)`. As duas condições
+  são exclusivas: nenhum viewport fica sem efeito nem com os dois.
+- **`npm run medir`** repete as 16 medições contra a app a servir e sai com
+  código 1 se alguma peça mudar de forma. Precisa de um Chromium, tal como o
+  `npm run shots`; por isso a rede que corre sempre é o teste da folha de
+  estilos.
+- A moldura do telemóvel do herói **já estava certa** (rácio 0,4621 nos 16
+  viewports) e não se mexeu nela.
+
+Verificação desta sessão: `test`, `typecheck`, `lint` e `build` verdes;
+`npm run medir` verde em 16 viewports; ponteiro emulado a confirmar o anel a
+1024 com rato e o baralho em iPad, Chromebook de toque e telemóvel.
+
+## 1. Sessão de 2026-08-15 — azul de azulejo, anel 3D, e o mock sem porta
 
 Branch `claude/rachar-landing-page-zdliyf`, recomeçada de `origin/main`
 (`42f1226`, já com o back end novo). Três pedidos do Tiago, todos feitos:
@@ -49,7 +85,7 @@ reduced-motion e telemóvel (lista); sem scroll lateral em seis larguras.
 
 ---
 
-## 1. Sessão de 2026-08-13 — a landing pública (PR #32, integrado)
+## 2. Sessão de 2026-08-13 — a landing pública (PR #32, integrado)
 
 Branch `claude/rachar-landing-page-zdliyf`. Deploy verde, ainda em rascunho.
 
@@ -84,7 +120,7 @@ antes de ele existir, que foi exatamente o que o Tiago viu.
 
 ---
 
-## 2. Sessão de 2026-08-12 (noite) — foco do património, séries no DCF, setores
+## 3. Sessão de 2026-08-12 (noite) — foco do património, séries no DCF, setores
 
 **As contas do Yahoo funcionam em produção.** O Tiago confirmou-o com a
 Alphabet preenchida de ponta a ponta (fluxo livre, ações, preço, dívida, caixa
@@ -172,7 +208,7 @@ dar-lhe, e é assim que uma concentração aparece sem ninguém a ter escolhido.
 
 ---
 
-## 2.1. Sessão de 2026-08-11 (tarde) — avaliar empresas
+## 3.1. Sessão de 2026-08-11 (tarde) — avaliar empresas
 
 **Migrações todas corridas até à 0039**, confirmado pelo Tiago a 2026-08-12.
 
@@ -284,7 +320,7 @@ contrário do que significa. Onde está "—" não há dado — não é zero.
 
 ---
 
-## 2.2. O que foi feito na sessão de 2026-08-10/11
+## 3.2. O que foi feito na sessão de 2026-08-10/11
 
 **Migrações 0032 e 0033 já corridas** (e as 0034–0036 também). O que está
 escrito abaixo como "por correr" ficou resolvido; fica o relato do que era.
@@ -346,7 +382,7 @@ investimento — vivia só no formulário completo noutra página.
 
 ---
 
-## 2.3. O que foi feito na sessão de 2026-08-07
+## 3.3. O que foi feito na sessão de 2026-08-07
 
 Uma sessão de revisão, seguida de correções. **Todas as fases abaixo estão
 aplicadas, com testes, e a app compila e passa em tudo** (`test`, `typecheck`,
@@ -455,7 +491,7 @@ cliente inserir. Agora são removidas.
 
 ---
 
-## 2.4. Sessão de 2026-08-08 — investimentos e crédito à habitação
+## 3.4. Sessão de 2026-08-08 — investimentos e crédito à habitação
 
 Pedidos do Tiago, pela ordem que ele escolheu. Tudo com testes; o portão
 completo (`test`, `typecheck`, `lint`, `build`) passa. Os testes passaram de 496
@@ -564,7 +600,7 @@ que recebeu e aponta para a variável de ambiente; o preço pode sempre ser escr
 
 ---
 
-## 3. Modo demo self-serve — canalização em falta
+## 4. Modo demo self-serve — canalização em falta
 
 A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
 9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
@@ -597,7 +633,7 @@ A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 d
 - [ ] **Emails** — aviso de congelamento e convite de saída da fila. O Resend
       está mesmo configurado; só existem `sendInvite` e `sendPasswordReset`.
 - [ ] **`AUTH_OPEN_REGISTRATION=true`** — só no fim, e é decisão do Tiago.
-      **Agora também depende das correções de segurança da secção 2.3.**
+      **Agora também depende das correções de segurança da secção 3.3.**
 
 ### A migração `0021` tem o bug que ela própria diz ter evitado
 
@@ -627,7 +663,7 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ---
 
-## 4. Higiene de código, por fazer
+## 5. Higiene de código, por fazer
 
 - **`actions.ts` passou das 2400 linhas** (eram ~1900 há duas sessões, e cresce a cada funcionalidade nova). É o ficheiro onde estão quase todas as
   escritas da app e é onde as verificações de permissão têm de ser consistentes.
@@ -640,7 +676,7 @@ está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
 
 ---
 
-## 5. Dívidas conhecidas
+## 6. Dívidas conhecidas
 
 - [ ] **Primeira entrada define a palavra-chave.** Se um email conhecido ainda
       não tem palavra-chave, quem lá chegar primeiro escolhe-a e fica com a
@@ -710,7 +746,7 @@ A revisão acrescenta dois, aprendidos ao ver as mesmas falhas repetirem-se:
 Os ficheiros de teste — `Transactions_1.xlsx` e `Account_2.csv` da Degiro —
 **não estão no repositório e não devem estar**: contêm movimentos financeiros
 reais e este repositório é **público**. Pedir ao Tiago que os volte a anexar
-para **confirmar** a correção da leitura do Excel (secção 2.3). Desta vez pedir
+para **confirmar** a correção da leitura do Excel (secção 3.3). Desta vez pedir
 também **qual é o formato de número da coluna Quantidade**: é o que diz se o
 caso real era o formato a esconder o sinal ou um template antigo gravado.
 
