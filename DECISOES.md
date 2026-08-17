@@ -2726,6 +2726,17 @@ movimento. Em telemóvel, no Firefox, ou com `prefers-reduced-motion`, lê-se a
 lista de sempre. Uma secção onde cinco de seis frases dependem do browser
 saber girar um anel seria uma secção que esconde conteúdo.
 
+O Tiago viu a lista no telemóvel e perguntou pelo efeito; a resposta passou a
+ser dar-lhe um. Em ecrã estreito o efeito existe **sem anel**: as frases ficam
+empilhadas no mesmo sítio e o scroll troca-as com um fundido curto — a mesma
+`view-timeline`, a mesma cadência de paragens, e cada frase com a sua janela
+(`animation-range` com `calc(var(--i))`). Duas escolhas com razão: a janela da
+última estica até 120% para o fim do curso a apanhar a meio do patamar — senão
+o cartão desvanecia e saía-se de um palco vazio (visto em screenshot antes de
+corrigido); e o palco mede `100svh`, porque `100vh` escondia o fundo do cartão
+atrás da barra do browser. O Firefox e o `prefers-reduced-motion` continuam a
+ler a lista, como no anel.
+
 Um custo que ficou pago e documentado no CSS: o `overflow-x: hidden` do
 `html` fazia do documento um contentor de scroll e **matava o `sticky` em
 silêncio** — a secção rolava em branco. Passou a `overflow-x: clip` onde há
@@ -2740,3 +2751,70 @@ entrar — e o `npm run shots` deixou de conseguir tirar capturas. As contas de
 exemplo passam a trazer a palavra-chave `demo1234` já definida
 (`seedPasswords()` no seed), **só nesse modo**: o caminho de produção não muda
 nada.
+
+## O mesmo feitio em todos os ecrãs, desta vez medido — 2026-08-17
+
+Uma revisão da landing contra a regra "uma peça com forma própria tem de ter a
+mesma forma no ecrã de toda a gente". A sessão de 2026-08-15 já tinha aprendido
+metade disto (as molduras passaram a escalar com a altura); faltava a outra
+metade, e estava escondida nos cartões das frases.
+
+**Não se discutiu com capturas de ecrã: mediu-se.** Dezasseis viewports, com
+rácios de aspeto diferentes e não só áreas diferentes, e em cada um o
+`getBoundingClientRect()` de cada peça. O rácio largura/altura é o defeito num
+número só: se ele se mexe entre viewports, há dois eixos a decidir cada um o
+seu.
+
+O que a medição disse, antes de mexer:
+
+| Peça | Rácio | Veredicto |
+|---|---|---|
+| Moldura do telemóvel | 0,4621 em **todos** os 16 | já estava certa |
+| Cartão do anel (1024→1080 de largura) | 1,7232 → 1,8214 | muda de feitio |
+| Cartão do baralho (360 de largura, 560→740 de altura) | 0,9606 → 0,8125 | muda de feitio |
+
+E o estrago que isso dava: **num telemóvel de 360x560 o cartão acabava 27px por
+baixo da borda do ecrã**, cortado — precisamente no tamanho onde a condição
+`min-height: 560px` julgava estar a proteger.
+
+A causa é a mesma nas duas linhas: **a altura vinha de um sítio e a largura de
+outro.** No baralho, `height: min(24rem, 58svh)` lia a altura da janela
+enquanto a largura vinha do texto. No anel, `--anel-raio: min(27rem, 40vw)`
+punha a largura a seguir a janela com a altura presa em `14rem`. Ninguém
+escreveu "estica isto"; a esticadela nasce da soma dos dois, que é porque
+sobrevive a uma revisão.
+
+A correção é estrutural e não um número afinado:
+
+- As frases deixam de ser `position: absolute; inset: 0` e passam a empilhar-se
+  na **mesma célula de uma grelha** (`grid-area: 1 / 1`). Continuam no mesmo
+  sítio, mas agora a altura da caixa é a **do cartão mais alto** — uma
+  propriedade do texto, não da janela. De caminho, isto arrumou um segundo
+  problema que a medição apanhou: a 1024 de largura o texto do anel já só tinha
+  4px até à borda do cartão, por a caixa ter 14rem escritos à mão.
+- O raio do anel passa a ser fixo (`27rem`). Verificado a 1024 de largura: os
+  cartões ocupam de 38 a 986, com folga dos dois lados e sem scroll lateral.
+- O cartão do baralho ganha `max-width: 34rem`. Num tablet chegava aos 672px e
+  ficava uma tarjeta baixa e comprida.
+
+**O anel em 3D passa a exigir `pointer: fine`.** Não é sobre o tamanho: é que o
+anel vive de `preserve-3d` com `backface-visibility`, e há browsers de Android
+que achatam o primeiro e enganam-se no segundo — as frases de trás apareceriam
+escritas ao contrário. Um tablet grande passava o teste da largura e chumbava o
+do 3D. O baralho passa a apanhá-los (`(max-width: 1023px) or (pointer: coarse)`)
+e faz o mesmo sem depender do GPU. As duas condições são exclusivas uma da
+outra, o que se verificou com o ponteiro emulado: iPad, Chromebook de toque e
+telemóvel vão todos ao baralho; 1024 com rato vai ao anel.
+
+Depois da correção, os mesmos 16 viewports: rácio constante dentro de cada
+largura, nada de texto fora do cartão, nada de cartão fora do ecrã. O pior caso
+(360x560) passou de **27px cortados** a **13,8px de folga**.
+
+Fica **`npm run medir`** (`scripts/medir-landing.mjs`), que repete a medição
+toda contra a app a servir e sai com código 1 se alguma peça mudar de forma. A
+verificação que vale é a das alturas: o mesmo viewport de largura com alturas
+diferentes: uma peça honesta não muda de forma quando só a altura da janela
+muda, e foi por aí que o baralho foi apanhado. Como precisa de um Chromium, há
+também `src/app/landing-proporcoes.test.ts` no `npm run test`, que garante que a
+regra continua escrita na folha de estilos — falha com as duas linhas antigas
+citadas pelo nome.
