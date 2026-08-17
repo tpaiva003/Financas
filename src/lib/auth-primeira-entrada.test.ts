@@ -32,7 +32,11 @@ describe("entrada com credenciais", () => {
   });
 
   it("recusa a conta sem palavra-chave em vez de a adotar", () => {
-    expect(auth).toContain("if (!existing) return null;");
+    // O `return null` vem depois de queimar o mesmo PBKDF2 de uma conta real
+    // (hash fantasma), senão o tempo de resposta era um oráculo de emails.
+    expect(auth).toMatch(
+      /if \(!existing\) \{\s*\n(?:.*\n)*?\s*await verifyPassword\(password, HASH_FANTASMA\);\s*\n\s*return null;/,
+    );
   });
 });
 

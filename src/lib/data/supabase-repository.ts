@@ -202,29 +202,23 @@ function rowToSettlement(r: any): Settlement {
 export class SupabaseRepository implements Repository {
   async listSpacesForUser(userId: string): Promise<Space[]> {
     const db = getSupabaseAdmin();
-    const { data: mem, error: e1 } = await db
-      .from("members")
-      .select("space_id")
-      .eq("linked_user_id", userId);
-    if (e1) throw new Error(e1.message);
-    const ids = [...new Set((mem ?? []).map((m: any) => m.space_id))];
+    const mem = await todasAsLinhas<any>((de, ate) =>
+      db.from("members").select("space_id").eq("linked_user_id", userId).order("space_id").range(de, ate),
+    );
+    const ids = [...new Set(mem.map((m: any) => m.space_id))];
     if (ids.length === 0) return [];
     // A coluna `position` pode não existir se a migração 0010 ainda não correu.
-    let rows: any[] | null = null;
-    const ordered = await db
-      .from("spaces")
-      .select("*")
-      .in("id", ids)
-      .order("position")
-      .order("created_at");
-    if (ordered.error) {
-      const fallback = await db.from("spaces").select("*").in("id", ids).order("created_at");
-      if (fallback.error) throw new Error(fallback.error.message);
-      rows = fallback.data;
-    } else {
-      rows = ordered.data;
+    let rows: any[];
+    try {
+      rows = await todasAsLinhas<any>((de, ate) =>
+        db.from("spaces").select("*").in("id", ids).order("position").order("created_at").range(de, ate),
+      );
+    } catch {
+      rows = await todasAsLinhas<any>((de, ate) =>
+        db.from("spaces").select("*").in("id", ids).order("created_at").range(de, ate),
+      );
     }
-    return (rows ?? []).map((r: any) => ({
+    return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       position: r.position ?? 0,
@@ -299,13 +293,10 @@ export class SupabaseRepository implements Repository {
 
   async listMembers(spaceId: string): Promise<Member[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("members")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("members").select("*").eq("space_id", spaceId).order("created_at").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       spaceId: r.space_id,
       name: r.name,
@@ -364,17 +355,21 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async countMemberActivity(memberId: string): Promise<number> {
+  async countMemberActivity(memberId: string, spaceId: string): Promise<number> {
     const db = getSupabaseAdmin();
+    // O filtro pelo ambiente vive AQUI, não no chamador: a regra da casa não
+    // admite métodos que procurem por id e confiem que quem chama validou.
     const exp = await db
       .from("expenses")
       .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId)
       .is("deleted_at", null)
       .or(`payer_id.eq.${memberId},owner_id.eq.${memberId}`);
     if (exp.error) throw new Error(exp.error.message);
     const set = await db
       .from("settlements")
       .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId)
       .or(`from_user_id.eq.${memberId},to_user_id.eq.${memberId}`);
     if (set.error) throw new Error(set.error.message);
     return (exp.count ?? 0) + (set.count ?? 0);
@@ -553,13 +548,10 @@ export class SupabaseRepository implements Repository {
 
   async listRecurring(spaceId: string): Promise<RecurringTemplate[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("recurring_templates")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("next_date");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToRecurring);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("recurring_templates").select("*").eq("space_id", spaceId).order("next_date").range(de, ate),
+    );
+    return data.map(rowToRecurring);
   }
 
   async getRecurring(id: string, spaceId: string): Promise<RecurringTemplate | null> {
@@ -632,12 +624,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+  async recurringExpenseExists(
+    recurringId: string,
+    spaceId: string,
+    transactionDate: string,
+  ): Promise<boolean> {
     const db = getSupabaseAdmin();
     const { count, error } = await db
       .from("expenses")
       .select("id", { count: "exact", head: true })
       .eq("recurring_id", recurringId)
+      .eq("space_id", spaceId)
       .eq("transaction_date", transactionDate)
       .is("deleted_at", null);
     if (error) throw new Error(error.message);
@@ -683,13 +680,19 @@ export class SupabaseRepository implements Repository {
 
   async listSettlements(spaceId: string): Promise<Settlement[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("settlements")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("date", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToSettlement);
+    // Paginado porque o saldo se calcula sobre isto, em par com listExpenses:
+    // ao milésimo primeiro acerto, os mais antigos desapareciam do saldo em
+    // silêncio — e o saldo tem de ser sempre explicável.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("settlements")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("date", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    );
+    return data.map(rowToSettlement);
   }
 
   async createSettlement(input: CreateSettlementInput): Promise<Settlement> {
@@ -714,13 +717,14 @@ export class SupabaseRepository implements Repository {
 
   async listCategories(spaceId?: string): Promise<Category[]> {
     const db = getSupabaseAdmin();
-    let query = db.from("categories").select("*").order("name");
-    query = spaceId
-      ? query.or(`space_id.is.null,space_id.eq.${spaceId}`)
-      : query.is("space_id", null);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let query = db.from("categories").select("*").order("name").order("id");
+      query = spaceId
+        ? query.or(`space_id.is.null,space_id.eq.${spaceId}`)
+        : query.is("space_id", null);
+      return query.range(de, ate);
+    });
+    return data.map((r: any) => ({
       id: r.id,
       name: r.name,
       color: r.color,
@@ -772,12 +776,10 @@ export class SupabaseRepository implements Repository {
 
   async listClassificationRules(): Promise<ClassificationRule[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("classification_rules")
-      .select("*")
-      .order("priority");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("classification_rules").select("*").order("priority").order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       keyword: r.keyword,
       categoryId: r.category_id,
@@ -996,9 +998,12 @@ export class SupabaseRepository implements Repository {
 
   async listAppUsers(): Promise<AppUser[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("app_users").select("id, email, name").order("name");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
+    // Paginado: com o registo aberto isto cresce com a plataforma, e cortado
+    // escondia contas — "Conta desconhecida" ao associar um participante.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("app_users").select("id, email, name").order("name").order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
   }
 
   async findImportTemplate(fingerprint: string): Promise<ImportTemplate | null> {
@@ -1039,23 +1044,18 @@ export class SupabaseRepository implements Repository {
 
   async listImportTemplates(): Promise<ImportTemplate[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_templates")
-      .select("*")
-      .order("uses", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToTemplate);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("import_templates").select("*").order("uses", { ascending: false }).order("id").range(de, ate),
+    );
+    return data.map(rowToTemplate);
   }
 
   async listImportReminders(spaceId: string): Promise<ImportReminder[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_reminders")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("source");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("import_reminders").select("*").eq("space_id", spaceId).order("source").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       spaceId: r.space_id,
       source: r.source,
@@ -1103,12 +1103,10 @@ export class SupabaseRepository implements Repository {
   async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
     if (spaceIds.length === 0) return [];
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("members")
-      .select("space_id, linked_user_id")
-      .in("space_id", spaceIds);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("members").select("space_id, linked_user_id").in("space_id", spaceIds).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       spaceId: r.space_id as string,
       linkedUserId: (r.linked_user_id as string | null) ?? null,
     }));
@@ -1318,12 +1316,10 @@ export class SupabaseRepository implements Repository {
 
   async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("spending_goals")
-      .select("*")
-      .eq("space_id", spaceId);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("spending_goals").select("*").eq("space_id", spaceId).order("id").range(de, ate),
+    );
+    return data.map((r) => ({
       id: r.id as string,
       spaceId: r.space_id as string,
       categoryId: (r.category_id as string | null) ?? null,
@@ -1377,12 +1373,9 @@ export class SupabaseRepository implements Repository {
 
   async listAssets(spaceId: string): Promise<Asset[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("assets")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at");
-    if (error) throw new Error(error.message);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("assets").select("*").eq("space_id", spaceId).order("created_at").order("id").range(de, ate),
+    );
 
     /**
      * A ordem escolhida à mão aplica-se **aqui**, e não no SQL.
@@ -1451,11 +1444,12 @@ export class SupabaseRepository implements Repository {
 
   async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
     const db = getSupabaseAdmin();
-    let q = db.from("asset_attachments").select("*").eq("space_id", spaceId);
-    if (assetId) q = q.eq("asset_id", assetId);
-    const { data, error } = await q.order("created_at");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToAttachment);
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("asset_attachments").select("*").eq("space_id", spaceId);
+      if (assetId) q = q.eq("asset_id", assetId);
+      return q.order("created_at").order("id").range(de, ate);
+    });
+    return data.map(rowToAttachment);
   }
 
   async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
@@ -1850,9 +1844,13 @@ export class SupabaseRepository implements Repository {
 
   async listAllAssetSymbols(): Promise<string[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("assets").select("symbol").not("symbol", "is", null);
-    if (error) throw new Error(error.message);
-    return [...new Set((data ?? []).map((r: any) => r.symbol).filter(Boolean))];
+    // Paginado: cresce com a plataforma inteira, não com um ambiente. Cortado,
+    // os símbolos além do milésimo deixavam de ser atualizados pelo cron — o
+    // caso MSFT outra vez, um preço velho com ar de atual.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("assets").select("symbol").not("symbol", "is", null).order("id").range(de, ate),
+    );
+    return [...new Set(data.map((r: any) => r.symbol).filter(Boolean))];
   }
 
   async latestQuoteDate(symbol: string): Promise<string | null> {
@@ -1931,13 +1929,18 @@ export class SupabaseRepository implements Repository {
     if (!data || data.used_at || new Date(data.expires_at as string) < new Date()) return null;
 
     // Marca-se como usado ANTES de devolver: um token só serve uma vez, mesmo
-    // que dois pedidos cheguem ao mesmo tempo.
-    const { error: e2 } = await db
+    // que dois pedidos cheguem ao mesmo tempo. O `select` no update é o que
+    // fecha a corrida: dois pedidos podem passar o `select` de cima ao mesmo
+    // tempo, mas só um encontra `used_at` ainda nulo — o outro atualiza zero
+    // linhas sem erro nenhum, e sem isto levava o token na mesma.
+    const { data: marcado, error: e2 } = await db
       .from("password_reset_tokens")
       .update({ used_at: new Date().toISOString() })
       .eq("id", data.id as string)
-      .is("used_at", null);
+      .is("used_at", null)
+      .select("id");
     if (e2) throw new Error(e2.message);
+    if (!marcado || marcado.length === 0) return null;
 
     return { userId: data.user_id as string };
   }
@@ -2005,13 +2008,14 @@ export class SupabaseRepository implements Repository {
 
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("expenses")
-      .select("id, uid")
-      .eq("space_id", spaceId)
-      .is("deleted_at", null);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({ id: r.id, uid: r.uid }));
+    // Paginado porque o dedup da importação se decide sobre isto: cortado, o
+    // preview jurava "0 repetidos" num ambiente com mais de mil despesas e a
+    // importação rebentava a meio contra o índice único, com o lote meio
+    // escrito. O índice segura o invariante; o preview tem de dizer a verdade.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("expenses").select("id, uid").eq("space_id", spaceId).is("deleted_at", null).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({ id: r.id, uid: r.uid }));
   }
 
   async createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch> {
@@ -2039,13 +2043,16 @@ export class SupabaseRepository implements Repository {
 
   async listImportBatches(spaceId: string): Promise<ImportBatch[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_batches")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToImportBatch);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("import_batches")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    );
+    return data.map(rowToImportBatch);
   }
 
   async undoImportBatch(batchId: string, spaceId: string, _userId: string): Promise<number> {
@@ -2464,12 +2471,10 @@ export class SupabaseRepository implements Repository {
 
   async listContactMessages(): Promise<ContactMessage[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("contact_messages")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("contact_messages").select("*").order("created_at", { ascending: false }).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       name: r.name,
       email: r.email,

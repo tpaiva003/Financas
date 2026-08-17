@@ -26,6 +26,15 @@ import { canSignIn, decideSignup } from "./domain";
 import { hashPassword, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
 
+/**
+ * Um hash a sério de uma palavra-chave que nunca existiu: gerada e deitada
+ * fora no momento em que este valor foi criado. Não abre nada — serve para os
+ * ramos "conta não existe" e "conta sem palavra-chave" pagarem o mesmo PBKDF2
+ * que uma conta real, senão o tempo de resposta era um oráculo de emails.
+ */
+const HASH_FANTASMA =
+  "pbkdf2$100000$LvDokizPn9AOYYnYSka3gA==$oZCHYCubR3Xo/grmDTHJ+Fa0XmPPOq3hbVCxCUS8hE8=";
+
 const providers: NextAuthConfig["providers"] = [...authConfig.providers];
 
 providers.push(
@@ -45,7 +54,15 @@ providers.push(
       // Allow-list: utilizadores base (env) OU utilizadores adicionais da BD
       // (submitters a quem o admin deu acesso). Mais ninguém entra.
       const u = userByEmail(email) ?? (await repo.getAppUserByEmail(email));
-      if (!u) return null;
+      if (!u) {
+        // A mensagem já era igual; o TEMPO ainda não. Recusar sem correr o
+        // PBKDF2 respondia dezenas de milissegundos mais depressa do que uma
+        // palavra-chave errada numa conta real — um cronómetro chegava para
+        // saber que emails existem. O hash é de uma palavra-chave deitada
+        // fora ao ser gerado; o resultado ignora-se, só o tempo conta.
+        await verifyPassword(password, HASH_FANTASMA);
+        return null;
+      }
 
       const existing = await repo.getUserPasswordHash(u.id);
       /**
@@ -64,7 +81,11 @@ providers.push(
        * errada, para o ecrã de entrada não dizer a estranhos quais são os
        * emails que existem.
        */
-      if (!existing) return null;
+      if (!existing) {
+        // O mesmo cuidado com o tempo do ramo "conta não existe", acima.
+        await verifyPassword(password, HASH_FANTASMA);
+        return null;
+      }
       const ok = await verifyPassword(password, existing);
       return ok ? { id: u.id, email: u.email, name: u.name } : null;
     },

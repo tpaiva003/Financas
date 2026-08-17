@@ -103,7 +103,8 @@ export async function waitlistAction(
       email: parsed.data.email,
       name: parsed.data.name ?? null,
       consent: true,
-      source: String(formData.get("source") ?? "").trim() || "landing",
+      // Com tecto: é um campo de telemetria nosso, não uma caixa de texto.
+      source: String(formData.get("source") ?? "").trim().slice(0, 60) || "landing",
     });
   } catch {
     return { error: "Não foi possível guardar agora. Tenta novamente daqui a pouco." };

@@ -292,6 +292,13 @@ export async function createSettlementAction(
   if (data.fromUserId === data.toUserId) {
     return { error: "O pagador e o recetor têm de ser diferentes." };
   }
+  // Como no pagador de uma despesa: um id vindo do formulário não é prova de
+  // nada. Um acerto entre ids que não são participantes deste ambiente
+  // distorcia o saldo — e o saldo tem de ser sempre explicável.
+  const idsDeMembros = ctx.members.map((m) => m.id);
+  if (!idsDeMembros.includes(data.fromUserId) || !idsDeMembros.includes(data.toUserId)) {
+    return { error: "Participante inválido." };
+  }
 
   await getRepository().createSettlement({
     spaceId: ctx.space.id,
@@ -460,7 +467,19 @@ export async function transferBalanceToSpaceAction(
   if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const targetId = String(formData.get("targetSpaceId") ?? "");
   if (!targetId || targetId === ctx.space.id) return { error: "Escolhe o ambiente destino." };
-  if (!ctx.spaces.some((s) => s.id === targetId)) return { error: "Ambiente destino inválido." };
+  // O destino tem regras próprias, e escrever lá é escrever LÁ: o estado do
+  // ambiente aberto no ecrã não prova nada sobre o outro. Como na importação
+  // para outro ambiente, é o `getTargetSpace` que responde por ele.
+  const target = await getTargetSpace(ctx, targetId);
+  if (!target) return { error: "Ambiente destino inválido." };
+  if (target.congelado) {
+    return { error: `O ambiente "${target.space.name}" está congelado: entra lá e reativa-o primeiro.` };
+  }
+  if (target.viewerRole === "submitter") {
+    return { error: `No ambiente "${target.space.name}" só podes submeter despesas para aprovação.` };
+  }
+  const cheioNoDestino = await semEspaco(targetId, target.space.plan, "expenses");
+  if (cheioNoDestino) return { error: cheioNoDestino };
   if (ctx.fullMembers.length !== 2) {
     return { error: "A transferência entre ambientes só está disponível para ambientes de 2 pessoas." };
   }
@@ -476,8 +495,8 @@ export async function transferBalanceToSpaceAction(
     return { error: "Os participantes têm de ter conta associada para transferir entre ambientes." };
   }
 
-  const targetSpace = ctx.spaces.find((s) => s.id === targetId)!;
-  const targetMembers = await repo.listMembers(targetId);
+  const targetSpace = target.space;
+  const targetMembers = target.members;
   const debtorY = targetMembers.find((m) => m.linkedUserId === debtorX.linkedUserId);
   const creditorY = targetMembers.find((m) => m.linkedUserId === creditorX.linkedUserId);
   if (!debtorY || !creditorY) {
@@ -869,10 +888,10 @@ export async function reportMissingBankAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
-  const bank = String(formData.get("bank") ?? "").trim();
+  const bank = String(formData.get("bank") ?? "").trim().slice(0, 100);
   if (!bank) return { error: "Diz-nos qual é o banco." };
 
-  const note = String(formData.get("note") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim().slice(0, 1000);
   // Só as colunas, e só as que o utilizador viu no ecrã antes de enviar.
   const structure = String(formData.get("structure") ?? "").trim().slice(0, 2000);
   const fileType = String(formData.get("fileType") ?? "").trim().slice(0, 40);
@@ -1594,7 +1613,7 @@ export async function deleteMemberAction(
     return { error: "Este participante tem acesso à app e não pode ser eliminado." };
   }
 
-  const activity = await getRepository().countMemberActivity(id);
+  const activity = await getRepository().countMemberActivity(id, ctx.space.id);
   if (activity > 0) {
     return {
       error: "Tem despesas ou acertos associados. Reatribui-os antes de eliminar.",
@@ -2194,6 +2213,11 @@ export async function addAssetTradeAction(
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   if (!assetId) return { error: "Falta o investimento." };
+  // Um id vindo do formulário não é prova de nada: sem isto, um movimento
+  // podia ficar pendurado num ativo de outro ambiente — linha fantasma que
+  // nenhuma UI mostra mas que fica na base de dados.
+  const ativos = await getRepository().listAssets(ctx.space.id);
+  if (!ativos.some((a) => a.id === assetId)) return { error: "Investimento inválido." };
 
   /**
    * A corrigir um movimento já registado, em vez de acrescentar um.
