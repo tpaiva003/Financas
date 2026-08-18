@@ -23,7 +23,7 @@ import { authConfig } from "./auth.config";
 import { userByEmail } from "./users";
 import { isEmailAllowed, isOpenRegistrationEnabled } from "./env";
 import { canSignIn, decideSignup } from "./domain";
-import { hashPassword, verifyPassword, passwordIssue } from "./password";
+import { hashPassword, needsRehash, verifyPassword, passwordIssue } from "./password";
 import { getRepository } from "./data";
 
 /**
@@ -32,8 +32,14 @@ import { getRepository } from "./data";
  * ramos "conta não existe" e "conta sem palavra-chave" pagarem o mesmo PBKDF2
  * que uma conta real, senão o tempo de resposta era um oráculo de emails.
  */
+/**
+ * **Tem de acompanhar as iterações reais.** Quando as contas subiram para 600
+ * mil, um fantasma deixado a 100 mil respondia seis vezes mais depressa nos
+ * ramos negativos — e o oráculo de tempo que ele existe para fechar voltava a
+ * abrir por esta porta.
+ */
 const HASH_FANTASMA =
-  "pbkdf2$100000$LvDokizPn9AOYYnYSka3gA==$oZCHYCubR3Xo/grmDTHJ+Fa0XmPPOq3hbVCxCUS8hE8=";
+  "pbkdf2$600000$3wO3dD0KT0Ow9AF/EyRFOA==$RjCqv7VDftmT2jMhz08CTf5178KVo2AlHh4GN9OJIhk=";
 
 const providers: NextAuthConfig["providers"] = [...authConfig.providers];
 
@@ -87,7 +93,17 @@ providers.push(
         return null;
       }
       const ok = await verifyPassword(password, existing);
-      return ok ? { id: u.id, email: u.email, name: u.name } : null;
+      if (!ok) return null;
+      /**
+       * Promoção do hash no login: é o único momento em que a palavra-chave
+       * existe em claro para ser re-hasheada às iterações atuais. Falhar a
+       * promoção não falha a entrada — o hash antigo continua válido, e a
+       * próxima entrada volta a tentar.
+       */
+      if (needsRehash(existing)) {
+        await repo.setUserPasswordHash(u.id, await hashPassword(password)).catch(() => {});
+      }
+      return { id: u.id, email: u.email, name: u.name };
     },
   }),
 );
@@ -129,7 +145,16 @@ const signInCallback: NonNullable<NextAuthConfig["callbacks"]>["signIn"] = async
     // trava robôs sem travar convidados. Quem não cabe não leva um erro: vai
     // para a porta fechada do /login, que convida a deixar o email na fila.
     const hoje = new Date().toISOString().slice(0, 10);
-    const criadasHoje = await repo.countAppUsersCreatedOn(hoje).catch(() => 0);
+    /**
+     * **Um erro na contagem fecha a porta, não a escancara.** O `catch(() =>
+     * 0)` fazia o contrário: um soluço da base de dados lia-se como "zero
+     * contas criadas hoje" e o tecto anti-robôs desligava-se precisamente no
+     * pedido em que menos se sabia o que se passava. Quem cair aqui por um
+     * soluço vai para a fila de espera — recuperável; um dia sem tecto não é.
+     */
+    const criadasHoje = await repo
+      .countAppUsersCreatedOn(hoje)
+      .catch(() => Number.POSITIVE_INFINITY);
     if (!decideSignup(criadasHoje).allowed) {
       return "/login?cheio=1";
     }

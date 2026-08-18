@@ -49,7 +49,6 @@ export default async function NovaDespesaPage() {
         today={today}
         descriptions={descriptions}
         isSubmitter={isSubmitter}
-        approvers={fullMembers}
       />
     </div>
   );

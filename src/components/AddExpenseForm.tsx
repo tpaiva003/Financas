@@ -22,7 +22,6 @@ export function AddExpenseForm({
   today,
   descriptions = [],
   isSubmitter = false,
-  approvers = [],
 }: {
   categories: Category[];
   members: MemberOpt[];
@@ -32,7 +31,6 @@ export function AddExpenseForm({
   /** O autor é um "submitter": despesa fica pendente de aprovação. */
   isSubmitter?: boolean;
   /** Membros plenos que podem aprovar (quando submitter). */
-  approvers?: MemberOpt[];
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
@@ -210,18 +208,15 @@ export function AddExpenseForm({
           </label>
         )}
 
+        {/* O seletor "quem aprova" saiu: prometia um controlo que nunca
+            existiu (qualquer membro pleno pode aprovar, e ainda bem — senão
+            umas férias encravavam as pendentes). A frase diz o que acontece
+            de facto. */}
         {isSubmitter ? (
           <div className="border-t border-hair pt-4">
-            <label className="label" htmlFor="approverId">Quem aprova</label>
-            <p className="mb-2 text-xs text-fg-muted">
-              A despesa fica pendente até este participante a aprovar.
+            <p className="text-xs text-fg-muted">
+              A despesa fica pendente até um membro pleno a aprovar.
             </p>
-            <select id="approverId" name="approverId" required defaultValue="" className="select">
-              <option value="" disabled>Escolhe o aprovador…</option>
-              {approvers.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
           </div>
         ) : null}
       </div>

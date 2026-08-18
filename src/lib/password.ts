@@ -6,7 +6,16 @@
  * Formato guardado: pbkdf2$<iterações>$<saltB64>$<hashB64>.
  */
 
-const ITERATIONS = 100_000;
+/**
+ * 600 mil, a recomendação da OWASP para PBKDF2-HMAC-SHA256 (2023+).
+ *
+ * Era 100 mil. Subir não parte nada: o formato guarda as iterações de cada
+ * hash, o `verifyPassword` respeita as guardadas, e quem entra com um hash
+ * antigo é promovido nesse momento (ver o `authorize` em `auth.ts`) — porque é
+ * o único momento em que a palavra-chave existe em claro para se re-hashear.
+ * Um derive a 600 mil custa ~100ms neste hardware; num login não se sente.
+ */
+const ITERATIONS = 600_000;
 const KEY_LEN = 32;
 
 function toB64(bytes: Uint8Array): string {
@@ -56,6 +65,20 @@ export async function verifyPassword(password: string, stored: string): Promise<
   let diff = 0;
   for (let i = 0; i < actual.length; i++) diff |= actual[i]! ^ expected[i]!;
   return diff === 0;
+}
+
+/**
+ * Este hash ficou para trás das iterações atuais?
+ *
+ * Só se pode responder no login: é o único sítio onde a palavra-chave em claro
+ * existe para gerar o hash novo. Um formato irreconhecível também conta como
+ * "sim" — se um dia o formato mudar, os antigos vão sendo promovidos à medida
+ * que as pessoas entram.
+ */
+export function needsRehash(stored: string): boolean {
+  const parts = stored.split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return true;
+  return Number(parts[1]) < ITERATIONS;
 }
 
 /** Regras mínimas para a palavra-chave. */

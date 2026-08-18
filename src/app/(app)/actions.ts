@@ -188,9 +188,19 @@ async function semEspaco(
   kind: "expenses" | "assets" | "members",
 ): Promise<string | null> {
   if ((plan ?? "free") === "full") return null;
-  const atuais = await getRepository()
-    .countInSpace(spaceId, kind)
-    .catch(() => 0);
+  /**
+   * **Um erro na contagem fecha, não abre.** O `catch(() => 0)` transformava
+   * um soluço da base de dados em "este ambiente está vazio" e desligava o
+   * tecto do plano free exatamente no pedido em que menos se sabia o estado.
+   * A mensagem é de tentativa falhada e não a do limite: dizer "atingiste o
+   * tecto" a quem não atingiu era mentir com ar de regra.
+   */
+  let atuais: number;
+  try {
+    atuais = await getRepository().countInSpace(spaceId, kind);
+  } catch {
+    return "Não deu para confirmar o espaço disponível. Tenta outra vez.";
+  }
   const check = checkLimit(kind, atuais, "free");
   return check.allowed ? null : check.message;
 }
@@ -225,12 +235,16 @@ export async function createExpenseAction(
   const data = parsed.data;
   if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
 
-  // Submitter: precisa de um aprovador (membro pleno) e a despesa fica pendente.
-  let approverId: string | null = null;
-  if (isSubmitter) {
-    approverId = String(formData.get("approverId") ?? "");
-    if (!memberIds.includes(approverId)) return { error: "Escolhe quem aprova a despesa." };
-  }
+  /**
+   * O `approverId` deixou de se pedir: era um campo que prometia um controlo
+   * que nunca existiu. O submitter escolhia "quem aprova", mas qualquer membro
+   * pleno podia aprovar — e ainda bem, senão umas férias do escolhido
+   * encravavam as despesas pendentes. Exigir a escolha era pedir uma decisão
+   * que não decidia nada. A despesa de um submitter continua pendente até um
+   * membro pleno a aprovar; o campo continua no modelo (despesas antigas
+   * têm-no e mostra-se), só não se pede mais.
+   */
+  const approverId: string | null = null;
 
   const amountCents = toCents(data.amount);
 
