@@ -144,7 +144,7 @@ describe("desempenhoNaJanela", () => {
 
     expect(r.carteiraPct).toBeNull();
     expect(r.indicePct).toBeNull();
-    expect(r.motivo).toBe("A carteira só existe desde 2026-05-01.");
+    expect(r.motivo).toBe("a carteira só existe desde 2026-05-01.");
   });
 
   it("um dia de movimento sem cotação recusa a janela inteira", () => {
@@ -251,7 +251,7 @@ describe("desempenhoNaJanela", () => {
     });
 
     expect(r.indicePct).toBeNull();
-    expect(r.motivo).toBe("O índice não tem cotações para todo o período.");
+    expect(r.motivo).toBe("o índice não tem cotações para todo o período.");
   });
 
   it("os movimentos fora da janela não entram na conta", () => {

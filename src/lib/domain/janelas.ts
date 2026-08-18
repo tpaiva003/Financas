@@ -116,7 +116,13 @@ export interface DesempenhoDaJanela {
   carteiraFimCents: number | null;
   /** Dinheiro que entrou durante o período. Não é lucro, e o TWR não o conta. */
   fluxoNoPeriodoCents: number;
-  /** Porque é que não há números, quando não há. */
+  /**
+   * Porque é que não há números, quando não há.
+   *
+   * É um **fragmento em minúscula**, não uma frase solta: mostra-se sempre
+   * depois dos períodos a que se aplica ("1 dia e 7 dias: o fecho de..."), e
+   * uma maiúscula a meio da linha lia-se como se fosse outra frase.
+   */
   motivo: string | null;
 }
 
@@ -155,7 +161,7 @@ export function desempenhoNaJanela(input: {
     motivo,
   });
 
-  if (de >= ate) return vazio("A janela não tem tempo nenhum lá dentro.");
+  if (de >= ate) return vazio("a janela não tem tempo nenhum lá dentro.");
 
   /**
    * Uma janela mais velha do que a carteira mede menos tempo do que o rótulo
@@ -163,22 +169,22 @@ export function desempenhoNaJanela(input: {
    * de três meses é uma frase que se acredita.
    */
   if (de < primeiroDia) {
-    return vazio(`A carteira só existe desde ${primeiroDia}.`);
+    return vazio(`a carteira só existe desde ${primeiroDia}.`);
   }
 
   const carteiraInicioCents = carteiraEm(de);
   if (carteiraInicioCents === null) {
-    return vazio(`Sem cotações para saber o que a carteira valia em ${de}.`);
+    return vazio(`sem cotações para saber o que a carteira valia em ${de}.`);
   }
   const carteiraFimCents = carteiraEm(ate);
   if (carteiraFimCents === null) {
-    return vazio(`Sem cotações para saber o que a carteira vale em ${ate}.`);
+    return vazio(`sem cotações para saber o que a carteira vale em ${ate}.`);
   }
 
   const diaInicio = diaDoPreco(precosDoIndice, de);
   const diaFim = diaDoPreco(precosDoIndice, ate);
   if (diaInicio === null || diaFim === null) {
-    return vazio("O índice não tem cotações para todo o período.");
+    return vazio("o índice não tem cotações para todo o período.");
   }
   /**
    * **As duas pontas no mesmo fecho não medem nada.**
@@ -190,7 +196,9 @@ export function desempenhoNaJanela(input: {
    * cotações estão uns dias atrasadas.
    */
   if (diaInicio === diaFim) {
-    return vazio(`O fecho de ${diaFim} serve as duas pontas: ainda não há período para medir.`);
+    return vazio(
+      `o fecho de ${diaFim} serve as duas pontas, e ainda não há período nenhum para medir.`,
+    );
   }
   const precoInicio = precosDoIndice[diaInicio]!;
   const precoFim = precosDoIndice[diaFim]!;
@@ -214,7 +222,7 @@ export function desempenhoNaJanela(input: {
     const fluxoDoDia = porDia.get(dia)!;
     const valor = dia === ate ? carteiraFimCents : carteiraEm(dia);
     if (valor === null) {
-      return vazio(`Sem cotações para avaliar a carteira em ${dia}, dia de movimento.`);
+      return vazio(`sem cotações para avaliar a carteira em ${dia}, dia de movimento.`);
     }
     /**
      * **Dois pontos no dia do movimento, e a ordem importa.**

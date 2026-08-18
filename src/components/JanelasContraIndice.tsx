@@ -24,6 +24,12 @@ function pct(valor: number): string {
   return `${valor >= 0 ? "+" : "−"}${Math.abs(valor).toFixed(1).replace(".", ",")}%`;
 }
 
+/** "1 dia", "1 dia e 7 dias", "1 dia, 7 dias e 15 dias" — sem vírgula antes do "e". */
+function listaLegivel(itens: readonly string[]): string {
+  if (itens.length <= 1) return itens[0] ?? "";
+  return `${itens.slice(0, -1).join(", ")} e ${itens.at(-1)}`;
+}
+
 /** A diferença é em pontos percentuais, e chamar-lhe "%" seria outra coisa. */
 function pontos(valor: number): string {
   return `${valor >= 0 ? "+" : "−"}${Math.abs(valor).toFixed(1).replace(".", ",")} pp`;
@@ -42,14 +48,19 @@ export function JanelasContraIndice({
   if (comNumeros.length === 0) return null;
 
   /**
-   * O primeiro motivo em falta, dito uma vez.
+   * Os períodos que faltam, **com o nome**, agrupados pelo motivo.
    *
    * Sete linhas de traços eram ruído, e não dizer nada deixava a pessoa sem
-   * perceber porque é que o "1 ano" desapareceu. Os motivos que faltam são
-   * quase sempre o mesmo — a carteira ainda não tem essa idade — por isso
-   * chega o primeiro.
+   * perceber porque é que o "1 ano" desapareceu. Mas dizer só o motivo era
+   * quase tão mau: lia-se um aviso sobre um fecho ao lado de cinco linhas
+   * intactas, e não havia como saber que os que faltavam eram o de 1 dia e o
+   * de 7. O nome do período é o que liga o aviso à ausência.
    */
-  const emFalta = janelas.find((j) => j.motivo !== null)?.motivo ?? null;
+  const porMotivo = new Map<string, string[]>();
+  for (const j of janelas) {
+    if (j.motivo === null) continue;
+    porMotivo.set(j.motivo, [...(porMotivo.get(j.motivo) ?? []), j.label]);
+  }
 
   return (
     <div className="mt-2">
@@ -94,7 +105,11 @@ export function JanelasContraIndice({
           ))}
         </tbody>
       </table>
-      {emFalta ? <p className="mt-1 text-[11px] text-fg-faint">{emFalta}</p> : null}
+      {[...porMotivo.entries()].map(([motivo, labels]) => (
+        <p key={motivo} className="mt-1 text-[11px] text-fg-faint">
+          <span className="text-fg-muted">{listaLegivel(labels)}:</span> {motivo}
+        </p>
+      ))}
     </div>
   );
 }
