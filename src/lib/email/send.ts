@@ -94,6 +94,34 @@ export async function sendInvite(
 }
 
 /**
+ * O convite para submeter despesas num ambiente de outra pessoa.
+ *
+ * **A conta ainda não existe quando este email sai** — e é essa a razão de ele
+ * existir. Antes, escrever o email de alguém no ecrã de participantes criava
+ * logo a conta, pela mão de quem convidava. Agora quem decide é quem recebe:
+ * a conta só nasce se abrir a ligação e escolher a palavra-chave. Ignorar o
+ * email é recusar, e não fica nada criado em nome de ninguém.
+ */
+export async function sendMemberInvite(
+  to: string,
+  memberName: string,
+  spaceName: string,
+  token: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/convite/${token}`;
+  return sendEmail(to, "Foste convidado para a Rachar", {
+    heading: `Olá ${memberName}, convidaram-te.`,
+    paragraphs: [
+      `Convidaram-te para <strong style="color:#f3f2ee">submeter despesas</strong> no ambiente <strong style="color:#f3f2ee">${spaceName}</strong> da <strong style="color:#f3f2ee">Rachar</strong>, uma app para registar despesas partilhadas e saber num instante quem deve a quem.`,
+      `Vais entrar com este email: <strong style="color:#f3f2ee">${to}</strong>. As despesas que submeteres ficam pendentes até um membro pleno as aprovar.`,
+      "Carrega no botão para escolheres a tua palavra-chave. A ligação é válida durante sete dias e só pode ser usada uma vez.",
+    ],
+    action: { label: "Aceitar o convite", url },
+    footnote: `Se não estavas à espera deste convite, ignora este email: não foi criada conta nenhuma em teu nome, e nada acontece. Se o botão não funcionar, copia esta ligação: ${url}`,
+  });
+}
+
+/**
  * O aviso de que um ambiente está prestes a congelar.
  *
  * **O que este email tem de fazer, e é fácil falhar.** Quem o recebe esteve

@@ -15,6 +15,14 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/recuperar/abc123")).toBe(true);
   });
 
+  // Quem aceita um convite ainda nem conta tem: mandá-lo para o /login é
+  // mandá-lo para uma porta que não abre.
+  it("a página de aceitar um convite é pública", () => {
+    expect(isPublicPath("/convite/abc123")).toBe(true);
+    // Sem token não há nada para mostrar: só o [token] é público.
+    expect(isPublicPath("/convite")).toBe(false);
+  });
+
   it("as páginas legais são públicas", () => {
     expect(isPublicPath("/privacidade")).toBe(true);
     expect(isPublicPath("/termos")).toBe(true);

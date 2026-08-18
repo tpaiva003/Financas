@@ -10,7 +10,7 @@ import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { normalizeAmount, parseAmountCents, porqueNaoGravou } from "@/lib/form-helpers";
 import { ESCRITA_CONGELADA } from "@/lib/congelamento";
 import { getRepository } from "@/lib/data";
-import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
+import { INVITE_VALIDITY_MS, TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
@@ -56,7 +56,7 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { sendInvite, emailConfigured } from "@/lib/email/send";
+import { sendInvite, sendMemberInvite, emailConfigured, siteUrl } from "@/lib/email/send";
 import {
   toCents,
   validateSplit,
@@ -415,6 +415,53 @@ export async function rejectExpenseAction(formData: FormData): Promise<void> {
 
 // ---- Acesso de submissão (role submitter) ---------------------------------
 
+/**
+ * O acesso passou a ser um CONVITE, não uma conta feita por outra pessoa.
+ *
+ * Escrever aqui um email criava logo a conta — em nome de alguém que não pediu
+ * nada, não consentiu nada e nem sabia. A conta só nasce quando quem recebe o
+ * email abre a ligação e escolhe a palavra-chave; ignorar o email é recusar, e
+ * não fica nada criado. Até lá o participante fica «convite enviado».
+ */
+async function criarConviteDeSubmissao(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+  memberId: string,
+  email: string,
+): Promise<ActionState> {
+  const repo = getRepository();
+  const token = randomBytes(32).toString("base64url");
+  try {
+    await repo.createMemberInvite({
+      spaceId: ctx.space.id,
+      memberId,
+      email,
+      tokenHash: hashToken(token),
+      invitedBy: ctx.user.id,
+      expiresAt: new Date(Date.now() + INVITE_VALIDITY_MS).toISOString(),
+    });
+  } catch {
+    return { error: "Não deu para preparar o convite. Tenta outra vez." };
+  }
+
+  const memberName = ctx.members.find((m) => m.id === memberId)?.name ?? "";
+  const mail = await sendMemberInvite(email, memberName, ctx.space.name, token);
+  if (mail.sent) {
+    return { ok: true, message: `Convite enviado para ${email}. Vale sete dias.` };
+  }
+  // Sem envio de email (p.ex. em desenvolvimento), a ligação é a única forma de
+  // o convite chegar: mostra-se a quem convidou, para a passar em mão. Quem a
+  // abre e escolhe a palavra-chave continua a ser quem aceita.
+  if (!emailConfigured()) {
+    return {
+      ok: true,
+      message: `O envio de email não está configurado. Passa esta ligação a ${memberName}: ${siteUrl()}/convite/${token}`,
+    };
+  }
+  return {
+    error: `O convite ficou registado mas o email não saiu (${mail.reason ?? "falha no envio"}). Tenta "Dar acesso" outra vez para reenviar.`,
+  };
+}
+
 export async function grantSubmitterAction(
   _prev: ActionState,
   formData: FormData,
@@ -432,20 +479,26 @@ export async function grantSubmitterAction(
   if (isEmailAllowed(email) || userByEmail(email)) {
     return { error: "Esse email já pertence a um utilizador base." };
   }
+  if (await getRepository().getAppUserByEmail(email)) {
+    return { error: "Esse email já tem acesso." };
+  }
 
-  const repo = getRepository();
-  if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
-
-  const userId = `usr_${randomUUID()}`;
-  await repo.createAppUser({ id: userId, email, name: member.name });
-  await repo.updateMember(memberId, ctx.space.id, {
-    role: "submitter",
-    linkedUserId: userId,
-    email,
-  });
+  const resultado = await criarConviteDeSubmissao(ctx, memberId, email);
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
-  return { ok: true };
+  return resultado;
+}
+
+/** Cancela um convite pendente: a ligação enviada deixa de servir. */
+export async function cancelMemberInviteAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const memberId = String(formData.get("memberId") ?? "");
+  const member = ctx.members.find((m) => m.id === memberId);
+  if (!member) return;
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id);
+  revalidatePath("/ambiente");
 }
 
 export async function revokeSubmitterAction(formData: FormData): Promise<void> {
@@ -462,6 +515,9 @@ export async function revokeSubmitterAction(formData: FormData): Promise<void> {
     role: "full",
     linkedUserId: null,
   });
+  // Um convite pendente que sobrasse era uma ligação viva para um acesso que
+  // se acabou de tirar.
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
 }
@@ -1341,15 +1397,20 @@ export async function addMemberAction(
     participatesFrom,
   });
 
-  // Dá logo acesso de submissão (role submitter + utilizador com login).
+  // O acesso segue por convite: a conta só nasce quando a pessoa aceitar. O
+  // participante fica criado na mesma — dividir despesas não depende do aceite.
   if (grantSubmit) {
-    const userId = `usr_${randomUUID()}`;
-    await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
-    await repo.updateMember(member.id, ctx.space.id, {
-      role: "submitter",
-      linkedUserId: userId,
-      email: accessEmail,
-    });
+    const convite = await criarConviteDeSubmissao(
+      { ...ctx, members: [...ctx.members, member] },
+      member.id,
+      accessEmail,
+    );
+    revalidatePath("/ambiente");
+    revalidatePath("/", "layout");
+    if (convite.error) {
+      return { error: `${parsed.data.name} ficou como participante, mas o convite falhou: ${convite.error}` };
+    }
+    return convite;
   }
 
   revalidatePath("/ambiente");
@@ -1635,6 +1696,8 @@ export async function deleteMemberAction(
   }
 
   await getRepository().deleteMember(id, ctx.space.id);
+  // Sem o participante, um convite pendente dele apontava para o vazio.
+  await getRepository().deleteMemberInvites(id, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return { ok: true };

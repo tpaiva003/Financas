@@ -106,6 +106,15 @@ interface Store {
   quoteCurrencies: Record<string, string>;
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
+  memberInvites: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+    acceptedAt?: string;
+  }[];
   waitlist: WaitlistEntry[];
 }
 
@@ -148,6 +157,7 @@ function getStore(): Store {
       quoteCurrencies: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.currency])),
       income: seedIncomes(),
       resetTokens: [],
+      memberInvites: [],
       waitlist: [],
     };
   }
@@ -1114,6 +1124,57 @@ export class MockRepository implements Repository {
     if (!t) return null;
     t.usedAt = new Date().toISOString();
     return { userId: t.userId };
+  }
+
+  async createMemberInvite(input: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const store = getStore();
+    // Convidar outra vez substitui: dois convites vivos para o mesmo
+    // participante seriam duas ligações válidas a apontar para o mesmo sítio.
+    store.memberInvites = store.memberInvites.filter(
+      (i) => !(i.memberId === input.memberId && i.spaceId === input.spaceId && !i.acceptedAt),
+    );
+    store.memberInvites.push({ ...input });
+  }
+
+  async peekMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const i = getStore().memberInvites.find(
+      (x) => x.tokenHash === tokenHash && !x.acceptedAt && x.expiresAt > new Date().toISOString(),
+    );
+    return i ? { spaceId: i.spaceId, memberId: i.memberId, email: i.email } : null;
+  }
+
+  async acceptMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const i = getStore().memberInvites.find(
+      (x) => x.tokenHash === tokenHash && !x.acceptedAt && x.expiresAt > new Date().toISOString(),
+    );
+    if (!i) return null;
+    i.acceptedAt = new Date().toISOString();
+    return { spaceId: i.spaceId, memberId: i.memberId, email: i.email };
+  }
+
+  async deleteMemberInvites(memberId: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.memberInvites = store.memberInvites.filter(
+      (i) => !(i.memberId === memberId && i.spaceId === spaceId),
+    );
+  }
+
+  async listMemberInvites(spaceId: string): Promise<{ memberId: string; email: string }[]> {
+    const agora = new Date().toISOString();
+    return getStore()
+      .memberInvites.filter((i) => i.spaceId === spaceId && !i.acceptedAt && i.expiresAt > agora)
+      .map((i) => ({ memberId: i.memberId, email: i.email }));
   }
 
   async listIncome(spaceId: string): Promise<Income[]> {

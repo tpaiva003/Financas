@@ -24,9 +24,10 @@ export const PUBLIC_EXACT = [
  * Prefixos públicos.
  *
  * O `/recuperar/` apanha o `/recuperar/[token]`, que é para onde o link do
- * email aponta — é precisamente quem não tem sessão que lá vai parar.
+ * email aponta — é precisamente quem não tem sessão que lá vai parar. O
+ * `/convite/` é o mesmo caso: quem aceita um convite ainda nem conta tem.
  */
-export const PUBLIC_PREFIX = ["/login/", "/recuperar/"] as const;
+export const PUBLIC_PREFIX = ["/login/", "/recuperar/", "/convite/"] as const;
 
 export function isPublicPath(pathname: string): boolean {
   if ((PUBLIC_EXACT as readonly string[]).includes(pathname)) return true;

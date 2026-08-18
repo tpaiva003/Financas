@@ -34,6 +34,11 @@ export function AddMemberForm() {
           {state.error}
         </p>
       ) : null}
+      {state.ok && state.message ? (
+        <p className="break-all rounded-xl border border-credit/30 bg-credit/10 px-4 py-3 text-sm text-credit">
+          {state.message}
+        </p>
+      ) : null}
       <div>
         <label className="label" htmlFor="m-name">Nome</label>
         <input id="m-name" name="name" type="text" required placeholder="Ex.: Mãe" className="input" />
@@ -124,7 +129,8 @@ export function AddMemberForm() {
             className="input"
           />
           <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-faint">
-            Entra com este email · só submete despesas (pagador e divisão entre os membros plenos)
+            Recebe um convite por email e escolhe a palavra-chave ao aceitar ·
+            só submete despesas (pagador e divisão entre os membros plenos)
           </p>
         </div>
       ) : null}

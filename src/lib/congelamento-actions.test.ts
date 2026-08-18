@@ -61,6 +61,8 @@ const SEM_GUARDA: Record<string, string> = {
   waitlistAction: "porta fechada do registo, ainda não há ambiente nenhum",
   requestPasswordResetAction: "recuperação de palavra-chave, sem ambiente",
   completePasswordResetAction: "recuperação de palavra-chave, sem ambiente",
+  acceptMemberInviteAction:
+    "aceitar um convite é criar a própria conta, sem sessão; o congelamento guarda-se em quem CONVIDA (grantSubmitterAction)",
   createSpaceAction: "cria um ambiente novo, que nunca nasce congelado",
 
   // Direitos que um congelamento não pode prender. Ficar sem forma de apagar os
