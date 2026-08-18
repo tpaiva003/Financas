@@ -39,22 +39,42 @@ export function PhoneFrame({
   );
 }
 
+/**
+ * Uma moldura de browser à volta de uma captura da app.
+ *
+ * **Com `href`, a moldura inteira passa a ser um link.** Uma captura grande no
+ * meio da página lê-se como se fosse a app: as pessoas carregam-lhe em cima e
+ * não acontece nada, o que é um beco no sítio onde estavam mais interessadas.
+ * O alvo é o mesmo do botão principal, e não a imagem em tamanho grande — quem
+ * carrega aqui quer entrar, não quer ver o PNG.
+ *
+ * A pista de que é clicável não pode ser um `transform` no hover: estas
+ * molduras levam a classe `flutua`, que anima precisamente o `transform` com o
+ * scroll, e as duas coisas atropelavam-se. Fica no contorno e numa etiqueta,
+ * que não disputam propriedade nenhuma com a animação.
+ */
 export function BrowserFrame({
   children,
   url = "rachar.pt",
   className = "",
+  href,
+  accao = "Ver isto na app",
 }: {
   children: React.ReactNode;
   url?: string;
   className?: string;
+  /** Para onde vai quem carregar na moldura. Sem isto não é clicável. */
+  href?: string;
+  /** O que a etiqueta diz, e o nome acessível do link. */
+  accao?: string;
 }) {
-  return (
+  const moldura = (
     <div
       // A barra do browser é escura nos dois temas, como a carcaça do
       // telemóvel. Com o ecrã claro lá dentro, é ela que segura o aparelho na
       // página: sobre o papel do tema de dia, uma moldura clara à volta de um
       // ecrã claro desaparecia, e ficava um retângulo branco a flutuar.
-      className={`overflow-hidden rounded-2xl ${className}`}
+      className={`relative overflow-hidden rounded-2xl ${href ? "" : className}`}
       style={{
         background: "linear-gradient(180deg, var(--aparelho-barra-topo), var(--aparelho-barra-fundo))",
         boxShadow: "var(--shadow-device), 0 0 0 1px var(--aparelho-fio)",
@@ -69,7 +89,27 @@ export function BrowserFrame({
         <span className="truncate font-mono text-[10px] tracking-tight text-white/40">{url}</span>
       </div>
       <div className="screen">{children}</div>
+      {href ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-marca px-3 py-1.5 text-[11px] font-medium text-marca-fg opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+        >
+          {accao} →
+        </span>
+      ) : null}
     </div>
+  );
+
+  if (!href) return moldura;
+
+  return (
+    <a
+      href={href}
+      aria-label={accao}
+      className={`group block rounded-2xl outline-none ring-marca-tinta/60 transition-[box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-offset-4 focus-visible:ring-offset-bg ${className}`}
+    >
+      {moldura}
+    </a>
   );
 }
 

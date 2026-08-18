@@ -2818,3 +2818,49 @@ muda, e foi por aí que o baralho foi apanhado. Como precisa de um Chromium, há
 também `src/app/landing-proporcoes.test.ts` no `npm run test`, que garante que a
 regra continua escrita na folha de estilos — falha com as duas linhas antigas
 citadas pelo nome.
+
+## A carteira contra o índice também **num período**, e não só desde o início
+
+A comparação que existia responde a "valeu a pena?": aplica ao índice os mesmos
+reforços nas mesmas datas desde o primeiro movimento, e mostra a série mês a
+mês. Não responde a "como é que isto está a correr agora" — e as duas coisas
+podem ser verdade em sentidos opostos ao mesmo tempo: uma carteira que bateu o
+índice desde 2021 pode estar a perder para ele há três meses.
+
+Ficam sete janelas (1 dia, 7, 15, 1 mês, 3, 6, 1 ano), cada uma com a
+rentabilidade da carteira, a do índice e a diferença em pontos percentuais.
+
+**A rentabilidade da carteira é ponderada no tempo, e isso não é um detalhe de
+implementação.** A conta óbvia — `valor_hoje / valor_no_início` — trata um
+reforço como se fosse lucro. Quem meteu 10 000 € a meio do mês vê a carteira
+subir 10 000 € e a conta anuncia-lhe uma subida que ninguém ganhou. E o erro é
+**maior** nas janelas curtas, não menor: quanto mais curto o período, mais um
+reforço pesa contra o que o mercado teve tempo de fazer. No caso do teste — 10%
+de subida, reforço a dobrar a carteira, mais 10% — a resposta certa é 21%, a
+conta ingénua dá 131% e pôr o reforço na base do troço anterior dá 15,5%.
+
+Daí os **dois pontos no dia do movimento**: o primeiro tira o dinheiro que
+entrou e fecha com ele o troço que vinha de trás, o segundo serve de base ao
+troço seguinte já com o dinheiro novo lá dentro. É o mesmo padrão que o
+`positionValuePoints` já usava, e o `timeWeightedReturn` ignora pares na mesma
+data precisamente para isto funcionar.
+
+**Duas recusas, ambas com teste que chumba contra a versão sem elas:**
+
+- **Uma janela mais velha do que a carteira não se desenha.** "1 ano: +4%" numa
+  carteira de três meses mede um trimestre e diz um ano, e não há como quem lê
+  desconfiar da frase.
+- **As duas pontas no mesmo fecho não dão 0,0% — dão nada.** Numa
+  segunda-feira, com o último fecho na sexta, tanto o início como o fim de uma
+  janela de um dia recuam para sexta. A conta dava +0,0% dos dois lados, que se
+  lê como "esteve parado" quando o que se passa é que ainda não há dia nenhum
+  para comparar. Acontece **todas as segundas**, e em qualquer feriado. Para o
+  detetar foi preciso o `diaDoPreco`, que devolve *qual* é o fecho que o
+  `precoNoDia` usaria; o `precoNoDia` passa a assentar nele, sem mudar de
+  comportamento.
+
+Também se tirou do `carteiraEm` a reconstrução dos preços de todos os bens, que
+corria a cada chamada. Com a série mensal era uma vez por mês; com as janelas
+passou a ser em cada ponta de cada período e em cada dia de movimento lá dentro,
+vezes dois índices. Agora calcula-se uma vez e o valor de cada dia fica em
+cache — os dois índices e as sete janelas perguntam pelos mesmos dias.

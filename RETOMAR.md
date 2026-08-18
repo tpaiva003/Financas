@@ -3,82 +3,53 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-17, com duas frentes fundidas neste branch: o
-> **modo demo self-serve** ligado de ponta a ponta + a **revisão do backend com
-> a base de dados ao lado** (secção 0bis), e a **landing medida** contra a
-> regra do mesmo feitio em todos os ecrãs (secção 0, vinda do branch
-> `claude/rachar-landing-page-zdliyf`).
+> Última atualização: 2026-08-18. O **PR #45 foi integrado e está em produção**
+> (www.rachar.pt, merge `5a8a93e`): as janelas da carteira contra os índices,
+> dois erros de cálculo com vendas corrigidos, o corte do mês parcial nos
+> relatórios e a revisão da landing (secções 0 e 0.1). Este branch
+> (`claude/repository-review-uttqoc`, PR #43) traz o **modo demo self-serve** e
+> a **revisão do backend** (secção 0bis), e já tem esse main fundido cá dentro.
 
 ---
 
-## 0bis. Sessão de 2026-08-17 — revisão do backend, e a mesma forma em todos os ecrãs
+## 0. Sessão de 2026-08-17/18 — a carteira contra o índice, por período
 
-Duas auditorias em paralelo (repositório + actions/auth/cron), verificadas
-contra o código e contra o Supabase. **Não se encontrou nenhuma fuga entre
-ambientes explorável** — a lição dos seis métodos de despesas foi mesmo
-aplicada. O que se encontrou e corrigiu nesta sessão:
+**Integrado no main pelo PR #45 (2026-08-18) e em produção.** Ao trabalho das
+janelas juntaram-se, no mesmo PR: **dois erros de cálculo em carteiras com
+vendas** (o "no índice terias" saía negativo em quem realiza ganhos, e a série
+mensal punha a carteira a desabar a cada venda contra um índice que nunca
+vendia — a *diferença* mostrada estava certa, errados eram os valores de que
+saía), o **corte do mês parcial** no "este mês vs o anterior" dos relatórios
+(a referência passa a contar até ao mesmo dia, com rótulo), e os seis pontos
+do documento de revisão da landing de 17/08. Ficaram por fazer os itens 8 e 9
+desse documento — recibo→despesa e streak — à espera de decisão do Tiago
+(secção "Decisões").
 
-- **`listSettlements` sem paginação** entrava no saldo: ao 1001.º acerto, os
-  mais antigos desapareciam do saldo em silêncio. Era o modo de falha nº 1 do
-  CLAUDE.md, na metade dos acertos. **Todos os dezassete `list*` sem
-  `todasAsLinhas` foram embrulhados** (incluindo `listExpenseUids`, que fazia o
-  preview do dedup mentir em ambientes com >1000 despesas, e
-  `listAllAssetSymbols`, que deixava o cron de cotações a ignorar símbolos além
-  do milésimo — o caso MSFT outra vez). Um teste novo
-  (`leituras-sem-corte.test.ts`) lê o código-fonte e obriga qualquer `list*`
-  futuro a paginar ou a cortar com `.limit()` explícito.
-- **`countMemberActivity` e `recurringExpenseExists`** eram os dois últimos
-  métodos a procurar sem filtrar pelo ambiente (protegidos só pelos
-  chamadores). Ganharam `spaceId` na assinatura e testes em
-  `isolation.test.ts`.
-- **`createSettlementAction` aceitava qualquer string como pagador/recetor** —
-  ids que não eram participantes entravam no saldo. Validação como a do
-  pagador das despesas, com teste (`acertos-validacao.test.ts`).
-- **`addAssetTradeAction`** não confrontava o `assetId` do formulário com o
-  ambiente na criação (só na correção) — dava movimentos pendurados em ativos
-  de outro ambiente, linhas fantasma que nenhuma UI mostra.
-- **`transferBalanceToSpaceAction`** escrevia no destino sem verificar o estado
-  DELE: destino congelado, papel de submitter no destino e tecto do plano free
-  eram todos ignorados. Passou a usar o `getTargetSpace`, como a importação.
-- **Tempo de resposta do login como oráculo de emails**: os ramos "conta não
-  existe" e "conta sem palavra-chave" respondiam sem correr o PBKDF2, dezenas
-  de ms mais depressa do que uma palavra-chave errada numa conta real. Agora
-  pagam um hash fantasma.
-- **O token de recuperação tinha uma corrida teórica** (dois pedidos simultâneos
-  podiam ambos consumi-lo): o update passou a exigir a linha de volta.
-- **Tectos de tamanho** no `source` da waitlist e nos campos do
-  `reportMissingBankAction`.
-- **Frontend (skill "a mesma forma em todos os ecrãs")**: páginas percorríveis
-  passaram de `100dvh` para `100svh` (o `dvh` redimensionava debaixo do dedo no
-  telemóvel), e as animações presas ao scroll (parallax e anel 3D da landing)
-  exigem `pointer: fine` — um tablet deitado tem 1024px e continua a ser um
-  dedo. Teste-guarda em `mesma-forma.test.ts`.
+- **`src/lib/domain/janelas.ts`** — `desempenhoNaJanela`, sete períodos
+  (1d, 7d, 15d, 1m, 3m, 6m, 1a) com a rentabilidade **ponderada no tempo** da
+  carteira contra a subida do índice no mesmo período.
+- **`src/components/JanelasContraIndice.tsx`** — a tabela por índice no
+  `/patrimonio`, com a diferença em pontos percentuais.
+- **`diaDoPreco`** em `serie-comparacao.ts` — devolve *qual* é o fecho que o
+  `precoNoDia` usaria. O `precoNoDia` passa a assentar nele, sem mudar de
+  comportamento.
+- O `carteiraEm` do `portfolio-service.ts` deixou de reconstruir os preços de
+  todos os bens a cada chamada, e guarda o valor de cada dia em cache.
 
-**Anotado, por fazer (decisões ou trabalho maior):**
+As duas recusas deliberadas (janela mais velha do que a carteira; as duas
+pontas no mesmo fecho) estão explicadas no `DECISOES.md`. **Com o seed**, a
+janela de 1 ano aparece recusada de propósito: o primeiro movimento é de
+2025-09-24 e a janela começaria em 2025-08-17. É o comportamento certo, não uma
+falha do exemplo.
 
-- **Pré-registo de emails alheios**: `grantSubmitterAction`/`addMemberAction`
-  criam conta para qualquer email não registado sem opt-in do dono — quem
-  entrar mais tarde aterra no ambiente do inscritor em vez de ganhar o seu.
-  A correção natural é só vincular depois de um token aceite por email (a
-  máquina do convite já existe). Pede desenho; é a mais séria das pendentes.
-- **Sem rate limiting** no login, `/recuperar` e formulários públicos.
-- **PBKDF2 a 100k iterações** (OWASP recomenda 600k para SHA-256). Subir é
-  fácil (o formato guarda as iterações) mas encarece cada login — decisão de
-  UX para o Tiago.
-- **`approverId` decorativo**: o submitter escolhe quem aprova, mas qualquer
-  membro pleno pode aprovar. Se for essa a intenção, tirar o campo; senão,
-  validar.
-- **Tectos que falham abertos**: `semEspaco` e o limite diário de contas fazem
-  `.catch(() => 0)` — um soluço da BD desliga o anti-abuso nesse pedido.
-- **`/api/export` não bloqueia o submitter** (hoje dá-lhe o mesmo que ele já vê
-  em `/despesas`; fica para trás se essa página apertar).
-- **O `label` dos templates de importação atravessa inquilinos** por desenho
-  (só nomes de colunas, nunca valores — mas um label com dados pessoais de um
-  lado aparece do outro).
+Visto a servir, com o seed: a tabela desenha-se nos dois índices, a 1280 e a
+390 de largura, sem scroll lateral. Com as cotações do seed a acabarem na
+véspera, a janela de 1 dia aparece recusada ("o fecho de X serve as duas
+pontas") — é o comportamento certo a uma segunda-feira, não uma falha.
 
 ---
 
-## 0. Sessão de 2026-08-17 — o mesmo feitio em todos os ecrãs, medido
+## 0.1. Sessão de 2026-08-17 — o mesmo feitio em todos os ecrãs, medido
 
 Branch `claude/rachar-landing-page-zdliyf`, recomeçada de `origin/main`
 (`8f828d4`, já com o baralho do telemóvel integrado). Revisão da landing contra

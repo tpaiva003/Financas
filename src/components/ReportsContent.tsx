@@ -285,6 +285,18 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
         {c.currentLabel} vs {c.baselineLabel}
       </h2>
 
+      {/*
+        Dito uma vez, em vez de repetido em cada número. Sem isto, um total de
+        meio mês ao lado de um mês inteiro lê-se como uma poupança — e a
+        referência já vem cortada, mas quem lê não tem como saber disso.
+      */}
+      {c.partial ? (
+        <p className="mb-3 text-xs text-fg-muted">
+          {c.currentLabel} vai em curso: os dois lados contam só até ao dia{" "}
+          {c.throughDay}, senão a diferença era só calendário.
+        </p>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-5">
           <p className="eyebrow">Este mês ({c.currentLabel})</p>
