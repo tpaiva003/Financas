@@ -4,6 +4,7 @@ import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 export const metadata = {
   title: "Privacidade · Rachar",
   description: "Que dados a Rachar guarda, onde ficam e o que podes fazer com eles.",
+  alternates: { canonical: "/privacidade" },
 };
 
 /**

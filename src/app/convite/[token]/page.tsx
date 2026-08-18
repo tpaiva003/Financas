@@ -4,7 +4,11 @@ import { AcceptInviteForm } from "@/components/AcceptInviteForm";
 import { getRepository } from "@/lib/data";
 import { hashToken } from "@/lib/tokens";
 
-export const metadata = { title: "Convite · Rachar" };
+// `noindex`: cada URL destas carrega um token de uso único.
+export const metadata = {
+  title: "Convite · Rachar",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 /**

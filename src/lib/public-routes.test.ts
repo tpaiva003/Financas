@@ -28,6 +28,14 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/termos")).toBe(true);
   });
 
+  // Um robots.txt atrás de login lê-se como "site sem robots.txt" — e foi
+  // assim que ele nasceu: o middleware respondia ao Google com o /login.
+  it("os metadados dos motores de busca são públicos", () => {
+    expect(isPublicPath("/robots.txt")).toBe(true);
+    expect(isPublicPath("/sitemap.xml")).toBe(true);
+    expect(isPublicPath("/opengraph-image")).toBe(true);
+  });
+
   it("a app continua privada", () => {
     for (const p of [
       "/dashboard",

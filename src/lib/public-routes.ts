@@ -18,6 +18,12 @@ export const PUBLIC_EXACT = [
   "/recuperar", // pedir nova palavra-chave
   "/privacidade", // exigida por lei, e a landing aponta-lhe
   "/termos",
+  // O que os motores de busca pedem sem sessão nenhuma. Sem isto o middleware
+  // respondia ao Google com um redirecionamento para o login — e um robots.txt
+  // que manda para o login lê-se como "site sem robots.txt".
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image",
 ] as const;
 
 /**

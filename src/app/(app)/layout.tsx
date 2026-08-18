@@ -15,6 +15,16 @@ import { ChatDock } from "@/components/ChatDock";
 import { AvisoCongelado } from "@/components/AvisoCongelado";
 import { conversaAvailable } from "@/lib/services/conversa-service";
 
+/**
+ * Nada daqui para dentro entra num motor de busca. O middleware já manda um
+ * anónimo (crawler incluído) para o /login, mas o `noindex` é a instrução
+ * explícita — e é AQUI que ele vive desde que saiu do layout de raiz, onde
+ * escondia também a landing.
+ */
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
   const user = ctx.user;
