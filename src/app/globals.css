@@ -684,6 +684,19 @@
          * feitios, que é o defeito que esta secção existe para não ter.
          */
         --anel-raio: 27rem;
+        /*
+         * Quanto se apagam as frases que não estão de frente. Vive no anel e
+         * não em cada frase de propósito: herda-se para as seis, e uma
+         * declaração na própria frase ganhava sempre à do tema por ser mais
+         * específica — o claro nunca chegava a aplicar-se.
+         *
+         * Sobre papel apaga-se mais. O mesmo valor dá resultados opostos nos
+         * dois temas: texto claro sobre fundo escuro desaparece, texto quase
+         * preto sobre papel continua a ler-se — e volta o defeito que isto veio
+         * corrigir, com as frases de lado a parecerem mal formatadas em vez de
+         * estarem ao longe.
+         */
+        --anel-apagado: 0.14;
         width: calc(var(--anel-raio) - 1.5rem);
         transform-style: preserve-3d;
         animation: girar-anel linear both;
@@ -783,7 +796,6 @@
          * a meio de cada passagem o palco ficava um instante às escuras — um
          * pisca-pisca a cada frase. Agora cruzam-se a meio caminho.
          */
-        --anel-apagado: 0.14;
         animation: anel-destaque-0 linear both;
         animation-timeline: --anel;
         animation-range: contain 0% contain 100%;
@@ -879,7 +891,7 @@
        * ler-se — e volta o defeito que isto veio corrigir, com as frases de
        * lado a parecerem mal formatadas em vez de estarem ao longe.
        */
-      html[data-theme="light"] .anel-frase {
+      html[data-theme="light"] .anel {
         --anel-apagado: 0.06;
       }
 
