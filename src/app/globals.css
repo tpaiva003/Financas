@@ -756,6 +756,150 @@
         transform: rotateY(calc(var(--i) * 60deg)) translateZ(var(--anel-raio));
         /* Sem isto viam-se as costas das três de trás, escritas ao contrário. */
         backface-visibility: hidden;
+
+        /*
+         * **Só a frase da frente é que se lê.**
+         *
+         * As duas vizinhas estão a 60 graus e a perspetiva encolhe-lhes o
+         * texto na horizontal. À distância a que ficavam — legíveis, mas
+         * espremidas — não se liam como estando de lado: liam-se como texto
+         * mal formatado, e o defeito aparente era da tipografia e não do
+         * ângulo. Uma peça que parece partida chama mais atenção do que a
+         * frase que está mesmo a ser mostrada.
+         *
+         * Apagá-las resolve as duas coisas: deixam de competir com a da
+         * frente e passam a ler-se como o que são, profundidade. Não se
+         * escondem de todo (`visibility` ou `opacity: 0`) porque o anel
+         * perdia o volume e ficava um cartão a aparecer e a desaparecer no
+         * escuro.
+         *
+         * Cada uma tem a sua série de fotogramas porque o destaque de cada
+         * frase acontece num troço diferente do mesmo rolo — a de índice `i`
+         * está de frente entre os 18i% e os 18i+8%, que são as mesmas paragens
+         * do `girar-anel` aqui em cima. Mexer numa obriga a mexer na outra.
+         *
+         * Os desvanecimentos **sobrepõem-se de propósito**. Com fades curtos,
+         * a que saía já estava apagada quando a seguinte começava a acender, e
+         * a meio de cada passagem o palco ficava um instante às escuras — um
+         * pisca-pisca a cada frase. Agora cruzam-se a meio caminho.
+         */
+        --anel-apagado: 0.14;
+        animation: anel-destaque-0 linear both;
+        animation-timeline: --anel;
+        animation-range: contain 0% contain 100%;
+      }
+
+      @keyframes anel-destaque-0 {
+        0%,
+        8% {
+          opacity: 1;
+        }
+        17%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-1 {
+        0%,
+        9% {
+          opacity: var(--anel-apagado);
+        }
+        18%,
+        26% {
+          opacity: 1;
+        }
+        35%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-2 {
+        0%,
+        27% {
+          opacity: var(--anel-apagado);
+        }
+        36%,
+        44% {
+          opacity: 1;
+        }
+        53%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-3 {
+        0%,
+        45% {
+          opacity: var(--anel-apagado);
+        }
+        54%,
+        62% {
+          opacity: 1;
+        }
+        71%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-4 {
+        0%,
+        63% {
+          opacity: var(--anel-apagado);
+        }
+        72%,
+        80% {
+          opacity: 1;
+        }
+        89%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-5 {
+        0%,
+        81% {
+          opacity: var(--anel-apagado);
+        }
+        90%,
+        98% {
+          opacity: 1;
+        }
+      }
+
+      /*
+       * Sobre papel apaga-se mais.
+       *
+       * O mesmo 0,14 dá resultados opostos nos dois temas: texto claro sobre
+       * fundo escuro desaparece, texto quase preto sobre papel continua a
+       * ler-se — e volta o defeito que isto veio corrigir, com as frases de
+       * lado a parecerem mal formatadas em vez de estarem ao longe.
+       */
+      html[data-theme="light"] .anel-frase {
+        --anel-apagado: 0.06;
+      }
+
+      .anel-frase:nth-child(1) {
+        animation-name: anel-destaque-0;
+      }
+      .anel-frase:nth-child(2) {
+        animation-name: anel-destaque-1;
+      }
+      .anel-frase:nth-child(3) {
+        animation-name: anel-destaque-2;
+      }
+      .anel-frase:nth-child(4) {
+        animation-name: anel-destaque-3;
+      }
+      .anel-frase:nth-child(5) {
+        animation-name: anel-destaque-4;
+      }
+      .anel-frase:nth-child(6) {
+        animation-name: anel-destaque-5;
       }
 
       .anel-frase-texto {
