@@ -932,6 +932,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.rpc("registar_tentativa", {
+      p_chave: chave,
+      p_janela_ms: janelaMs,
+      p_tecto: tecto,
+    });
+    if (error) throw new Error(error.message);
+    return Boolean(data);
+  }
+
   async countAppUsersCreatedOn(day: string): Promise<number> {
     const db = getSupabaseAdmin();
     const { count, error } = await db

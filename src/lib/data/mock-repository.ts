@@ -650,6 +650,20 @@ export class MockRepository implements Repository {
     if (s) s.frozenAt = atISO;
   }
 
+  private tentativas = new Map<string, { inicio: number; contagem: number }>();
+
+  // A mesma semântica da função SQL: janela fixa, incremento e decisão juntos.
+  async registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean> {
+    const agora = Date.now();
+    const atual = this.tentativas.get(chave);
+    if (!atual || atual.inicio < agora - janelaMs) {
+      this.tentativas.set(chave, { inicio: agora, contagem: 1 });
+      return 1 <= tecto;
+    }
+    atual.contagem += 1;
+    return atual.contagem <= tecto;
+  }
+
   async countAppUsersCreatedOn(day: string): Promise<number> {
     return getStore().appUsers.filter((u) => (u.createdAt ?? "").slice(0, 10) === day).length;
   }

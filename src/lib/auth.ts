@@ -24,6 +24,7 @@ import { userByEmail } from "./users";
 import { isEmailAllowed, isOpenRegistrationEnabled } from "./env";
 import { canSignIn, decideSignup } from "./domain";
 import { hashPassword, needsRehash, verifyPassword, passwordIssue } from "./password";
+import { tentativaCabe } from "./rate-limit";
 import { getRepository } from "./data";
 
 /**
@@ -55,6 +56,11 @@ providers.push(
       const email = typeof raw?.email === "string" ? raw.email.toLowerCase() : "";
       const password = typeof raw?.password === "string" ? raw.password : "";
       if (passwordIssue(password)) return null;
+
+      // O tecto vem antes de tudo o que custa: com ele batido não se corre
+      // PBKDF2 nenhum. 10 falhas num quarto de hora por email visado — pessoa
+      // nenhuma esbarra nisto sem estar mesmo a adivinhar.
+      if (!(await tentativaCabe("login", email))) return null;
 
       const repo = getRepository();
       // Allow-list: utilizadores base (env) OU utilizadores adicionais da BD

@@ -1018,6 +1018,20 @@ export interface Repository {
    * para o registo aberto não virar alojamento gratuito de dados por engano.
    */
   countAppUsersCreatedOn(day: string): Promise<number>;
+
+  /**
+   * Regista uma tentativa num formulário público e diz se ainda cabe.
+   *
+   * Janela fixa por chave ("escopo:identificador"): a primeira tentativa abre
+   * a janela, as seguintes incrementam, e quando a janela expira recomeça-se.
+   * A conta e a decisão são UMA operação do lado dos dados — dois pedidos
+   * simultâneos não podem ler ambos "ainda cabe".
+   *
+   * **Quem chama decide o que fazer a um erro, e a resposta certa é recusar**:
+   * um limitador que falha aberto não limita nada exatamente quando a base de
+   * dados está em pior estado para aguentar abuso.
+   */
+  registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean>;
   /**
    * Põe alguém na fila. Repetir não faz subir: o mesmo email fica onde estava,
    * com a data de entrada original.

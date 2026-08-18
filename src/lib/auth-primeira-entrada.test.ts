@@ -52,6 +52,17 @@ describe("entrada com credenciais", () => {
     expect(auth).toContain("needsRehash(existing)");
   });
 
+  it("o tecto de tentativas vem antes de qualquer PBKDF2", () => {
+    // Com o tecto batido não se queima CPU nenhuma: o `tentativaCabe` tem de
+    // aparecer antes do primeiro uso da palavra-chave. Sem isto, o limitador
+    // limitava o sucesso mas não o custo.
+    const authorize = auth.slice(auth.indexOf("authorize:"));
+    const tecto = authorize.indexOf("tentativaCabe(");
+    expect(tecto).toBeGreaterThan(-1);
+    expect(tecto).toBeLessThan(authorize.indexOf("verifyPassword("));
+    expect(tecto).toBeLessThan(authorize.indexOf("getUserPasswordHash("));
+  });
+
   it("recusa a conta sem palavra-chave em vez de a adotar", () => {
     // O `return null` vem depois de queimar o mesmo PBKDF2 de uma conta real
     // (hash fantasma), senão o tempo de resposta era um oráculo de emails.
