@@ -29,13 +29,16 @@ export interface FluxoDatado {
 export interface PontoDaComparacao {
   /** "AAAA-MM". */
   mes: string;
-  /** O que a carteira valia no fim desse mês. */
+  /**
+   * O que a carteira valia no fim desse mês: as posições abertas **mais o
+   * dinheiro que já tinha voltado** de vendas e dividendos.
+   */
   carteiraCents: number;
-  /** O que o mesmo dinheiro valeria no índice. */
+  /** O que o mesmo dinheiro valeria no índice, com as mesmas saídas. */
   indiceCents: number;
   /** Carteira menos índice. Positivo é estar à frente. */
   diferencaCents: number;
-  /** Dinheiro que já tinha entrado até esse mês. */
+  /** Dinheiro que já tinha **entrado** até esse mês. Saídas não descontam. */
   investidoCents: number;
 }
 
@@ -134,6 +137,7 @@ export function serieDaComparacao(input: {
      */
     let unidades = 0;
     let investidoCents = 0;
+    let retiradoCents = 0;
     let algumFluxoSemPreco = false;
     for (const f of ordenados) {
       if (f.date > dia) break;
@@ -143,19 +147,37 @@ export function serieDaComparacao(input: {
         break;
       }
       unidades += f.amountCents / p;
-      investidoCents += f.amountCents;
+      // O investido é o que se **pôs**. Um líquido encolhia o denominador de
+      // quem vendeu e chegava a zero em quem vendeu tudo.
+      if (f.amountCents >= 0) investidoCents += f.amountCents;
+      else retiradoCents += -f.amountCents;
     }
     // Um mês em que uma entrada não tem preço no índice não se desenha: o
     // índice ficaria com menos dinheiro do que a carteira e a distância entre
     // as linhas passava a medir isso em vez de mercado.
     if (algumFluxoSemPreco) continue;
 
-    const indiceCents = Math.round(unidades * precoHoje);
+    /**
+     * **O dinheiro que saiu conta nas duas linhas.**
+     *
+     * O `carteiraEm` devolve o valor das posições **abertas**. Numa venda isso
+     * cai, e caía contra um índice que só recebia as entradas e nunca vendia
+     * nada — a linha da carteira desabava para zero enquanto a do índice
+     * continuava a subir. O desnível que aparecia era feito de dinheiro que
+     * está na conta, não de mercado.
+     *
+     * Somar o retirado aos dois lados põe as duas linhas a medir a mesma
+     * coisa: o que este dinheiro vale hoje, esteja onde estiver. A distância
+     * entre elas — que é o que este gráfico existe para mostrar — não muda por
+     * causa disto, porque é a mesma parcela nos dois.
+     */
+    const indiceCents = Math.round(unidades * precoHoje) + retiradoCents;
+    const carteiraTotalCents = carteiraCents + retiradoCents;
     out.push({
       mes: dia.slice(0, 7),
-      carteiraCents,
+      carteiraCents: carteiraTotalCents,
       indiceCents,
-      diferencaCents: carteiraCents - indiceCents,
+      diferencaCents: carteiraTotalCents - indiceCents,
       investidoCents,
     });
   }

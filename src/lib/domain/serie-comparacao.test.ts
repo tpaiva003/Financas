@@ -48,6 +48,48 @@ describe("precoNoDia", () => {
 });
 
 describe("serieDaComparacao", () => {
+  it("uma venda não faz a carteira desabar contra um índice que nunca vendeu", () => {
+    /**
+     * O espelho do problema do `simulateBenchmark`.
+     *
+     * Compra de 10 000 € em janeiro; no fim de março vende-se tudo por
+     * 12 000 €. A
+     * carteira fica sem posições abertas — e o `carteiraEm` devolve zero, que é
+     * verdade sobre as posições e mentira sobre o dinheiro.
+     *
+     * O índice, esse, só recebia as entradas e nunca vendia nada: ficava com os
+     * 10 000 € a render. O gráfico desenhava a linha da carteira a cair a pique
+     * para zero enquanto a do índice subia — um desnível de doze mil euros que
+     * o mercado não fez, feito só de dinheiro que está na conta.
+     */
+    const pontos = serieDaComparacao({
+      fluxos: [
+        { date: "2026-01-10", amountCents: 1_000_000 },
+        { date: "2026-03-31", amountCents: -1_200_000 },
+      ],
+      precosDoIndice: {
+        "2026-01-10": 100,
+        "2026-01-31": 100,
+        "2026-02-28": 105,
+        "2026-03-31": 110,
+      },
+      carteiraEm: (dia) =>
+        ({ "2026-01-31": 1_050_000, "2026-02-28": 1_100_000, "2026-03-31": 0 })[dia] ?? null,
+      de: "2026-01-10",
+      ate: "2026-03-31",
+    });
+
+    const marco = pontos.at(-1)!;
+    // A carteira não tem posições, mas tem os 12 000 € que voltaram.
+    expect(marco.carteiraCents).toBe(1_200_000);
+    // O índice: 10 000 € a 100 valem 11 000 € a 110. Nem mais, nem menos.
+    expect(marco.indiceCents).toBe(1_100_000);
+    expect(marco.diferencaCents).toBe(100_000);
+    // O investido é o que se pôs, não o que se pôs menos o que se tirou.
+    expect(marco.investidoCents).toBe(1_000_000);
+  });
+
+
   /** Preços redondos e inventados: nada de mercado real, nem em teste. */
   const precosDoIndice: PrecosPorDia = {
     "2026-01-30": 100,

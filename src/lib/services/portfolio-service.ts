@@ -371,7 +371,10 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
        * uma carteira meia contada contra um índice inteiro não é comparação.
        */
       const serie = serieDaComparacao({
-        fluxos: flows.filter((f) => f.amountCents > 0),
+        // **Todos** os fluxos, e não só as entradas. As saídas tiram unidades
+        // ao índice e são somadas de volta aos dois lados lá dentro; filtrá-las
+        // aqui deixava a carteira a cair sozinha em cada venda.
+        fluxos: flows,
         precosDoIndice: prices,
         de: firstDate!,
         ate: today,

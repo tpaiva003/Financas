@@ -1145,6 +1145,23 @@ async function PortfolioReturnSection({
                   {b.comparison.differenceCents >= 0
                     ? "Estás à frente."
                     : "Estás atrás."}
+                  {/*
+                    Sem esta frase, os dois valores contradizem o "Vale hoje"
+                    logo acima e não há nada a explicar a diferença. Ambos
+                    contam o dinheiro que já saiu para a conta, porque o índice
+                    levou com as mesmas saídas nas mesmas datas — e sem isso o
+                    valor dele chega a sair negativo em quem vendeu com lucro.
+                  */}
+                  {b.comparison.withdrawnCents > 0 ? (
+                    <>
+                      {" "}
+                      Os dois incluem os{" "}
+                      <span className="tnum">
+                        {formatCents(b.comparison.withdrawnCents)}
+                      </span>{" "}
+                      que já voltaram de vendas e dividendos.
+                    </>
+                  ) : null}
                 </p>
               ) : (
                 <p className="mt-0.5 text-xs text-fg-faint">{b.problem}</p>
