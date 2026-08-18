@@ -50,11 +50,25 @@ export type PrecosPorDia = Readonly<Record<string, number>>;
  * inventar nada — o preço devolvido é sempre um preço que existiu mesmo.
  */
 export function precoNoDia(precos: PrecosPorDia, data: string, maxDias = 10): number | null {
+  const dia = diaDoPreco(precos, data, maxDias);
+  return dia === null ? null : precos[dia]!;
+}
+
+/**
+ * **Qual** é o dia cujo fecho o `precoNoDia` devolveria.
+ *
+ * Serve para se poder perguntar se duas datas caem no mesmo fecho. Quando caem,
+ * não há período nenhum entre elas por muito que o calendário diga o contrário
+ * — e uma variação de 0,0% aí não é "não mexeu", é "não se sabe". Numa
+ * segunda-feira, com o último fecho na sexta, as duas pontas de uma janela de
+ * um dia caem ambas na sexta.
+ */
+export function diaDoPreco(precos: PrecosPorDia, data: string, maxDias = 10): string | null {
   const d = new Date(`${data}T00:00:00Z`);
   for (let i = 0; i <= maxDias; i++) {
     const chave = d.toISOString().slice(0, 10);
     const p = precos[chave];
-    if (typeof p === "number" && p > 0) return p;
+    if (typeof p === "number" && p > 0) return chave;
     d.setUTCDate(d.getUTCDate() - 1);
   }
   return null;

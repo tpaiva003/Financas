@@ -50,6 +50,7 @@ import {
 } from "@/lib/domain";
 import { FocoPatrimonio } from "@/components/FocoPatrimonio";
 import { GraficoContraIndice } from "@/components/GraficoContraIndice";
+import { JanelasContraIndice } from "@/components/JanelasContraIndice";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
@@ -1152,6 +1153,8 @@ async function PortfolioReturnSection({
               {b.comparison && b.serie.length >= 2 ? (
                 <GraficoContraIndice pontos={b.serie} label={b.label} />
               ) : null}
+              {/* "Valeu a pena?" está acima; isto responde a "e agora?". */}
+              <JanelasContraIndice janelas={b.janelas} label={b.label} />
               <p className="mt-0.5 text-[11px] text-fg-faint">
                 {b.description}
                 {b.symbol && b.lastDate

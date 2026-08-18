@@ -3,14 +3,46 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-17. Duas frentes em paralelo: o **back end**
+> Última atualização: 2026-08-18. Duas frentes em paralelo: o **back end**
 > (posições fechadas e separador decimal já em main) e a **landing pública**
 > (branch `claude/rachar-landing-page-zdliyf`). O outro agente está a arrancar
 > o **modo demo** (contas com ações limitadas) — ver nota na secção 1.
 
 ---
 
-## 0. Sessão de 2026-08-17 — o mesmo feitio em todos os ecrãs, medido
+## 0. Sessão de 2026-08-17/18 — a carteira contra o índice, por período
+
+**Feito e verde** (1148 testes, typecheck, lint, build), no ramo
+`claude/rachar-landing-page-zdliyf` — o mesmo do PR #45, **por falta de outro
+ramo autorizado**. Não tem relação nenhuma com as proporções da landing que o
+#45 traz: se o #45 for fechado por redundância contra o #43, **este trabalho
+tem de ser levado para outro lado antes disso** (`git cherry-pick` do commit
+das janelas para um ramo novo a partir do `main`). É a primeira coisa a
+resolver numa sessão nova.
+
+- **`src/lib/domain/janelas.ts`** — `desempenhoNaJanela`, sete períodos
+  (1d, 7d, 15d, 1m, 3m, 6m, 1a) com a rentabilidade **ponderada no tempo** da
+  carteira contra a subida do índice no mesmo período.
+- **`src/components/JanelasContraIndice.tsx`** — a tabela por índice no
+  `/patrimonio`, com a diferença em pontos percentuais.
+- **`diaDoPreco`** em `serie-comparacao.ts` — devolve *qual* é o fecho que o
+  `precoNoDia` usaria. O `precoNoDia` passa a assentar nele, sem mudar de
+  comportamento.
+- O `carteiraEm` do `portfolio-service.ts` deixou de reconstruir os preços de
+  todos os bens a cada chamada, e guarda o valor de cada dia em cache.
+
+As duas recusas deliberadas (janela mais velha do que a carteira; as duas
+pontas no mesmo fecho) estão explicadas no `DECISOES.md`. **Com o seed**, a
+janela de 1 ano aparece recusada de propósito: o primeiro movimento é de
+2025-09-24 e a janela começaria em 2025-08-17. É o comportamento certo, não uma
+falha do exemplo.
+
+**Por fazer:** ninguém viu isto no browser ainda — falta correr a app com o
+seed e confirmar a tabela nos dois índices, em telemóvel e em desktop.
+
+---
+
+## 0.1. Sessão de 2026-08-17 — o mesmo feitio em todos os ecrãs, medido
 
 Branch `claude/rachar-landing-page-zdliyf`, recomeçada de `origin/main`
 (`8f828d4`, já com o baralho do telemóvel integrado). Revisão da landing contra
