@@ -14,7 +14,11 @@
  */
 
 import { useFormState, useFormStatus } from "react-dom";
-import { descobrirMarcasAction, type ActionState } from "@/app/(app)/actions";
+import {
+  descobrirMarcasAction,
+  descobrirMarcasFunilAction,
+  type ActionState,
+} from "@/app/(app)/actions";
 
 const vazio: ActionState = {};
 
@@ -27,8 +31,12 @@ function Botao() {
   );
 }
 
-export function DescobrirMarcas() {
-  const [state, descobrir] = useFormState(descobrirMarcasAction, vazio);
+/** `alvo="funil"` procura marcas para as empresas do funil; por omissão, investimentos. */
+export function DescobrirMarcas({ alvo = "ativos" }: { alvo?: "ativos" | "funil" }) {
+  const [state, descobrir] = useFormState(
+    alvo === "funil" ? descobrirMarcasFunilAction : descobrirMarcasAction,
+    vazio,
+  );
   return (
     <form action={descobrir} className="flex flex-wrap items-center gap-2">
       <Botao />

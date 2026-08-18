@@ -263,31 +263,19 @@ function Notas({ a }: { a: AvaliacaoNoFunil }) {
     <form action={editar} className="space-y-2 border-t border-hair2 pt-3">
       <input type="hidden" name="id" value={a.id} />
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor={`sim-${a.id}`}>
-            Símbolo
-          </label>
-          <input
-            id={`sim-${a.id}`}
-            name="symbol"
-            defaultValue={a.simbolo ?? ""}
-            placeholder="googl.us"
-            className="input h-9 font-mono text-sm"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`marca-${a.id}`}>
-            Domínio da marca
-          </label>
-          <input
-            id={`marca-${a.id}`}
-            name="logoDomain"
-            defaultValue={a.logoDomain ?? ""}
-            placeholder="abc.xyz"
-            className="input h-9 font-mono text-sm"
-          />
-        </div>
+      {/* O campo do domínio da marca saiu: o logo descobre-se sozinho, na
+          criação e no «Pôr logos» lá de cima. */}
+      <div>
+        <label className="label" htmlFor={`sim-${a.id}`}>
+          Símbolo
+        </label>
+        <input
+          id={`sim-${a.id}`}
+          name="symbol"
+          defaultValue={a.simbolo ?? ""}
+          placeholder="googl.us"
+          className="input h-9 font-mono text-sm"
+        />
       </div>
 
       <div>

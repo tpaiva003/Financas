@@ -7,7 +7,7 @@ export const metadata = { title: "Entrar · Rachar" };
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: { callbackUrl?: string; error?: string; cheio?: string };
+  searchParams: { callbackUrl?: string; error?: string; cheio?: string; convite?: string };
 }) {
   // A porta fechada do registo: houve vaga a menos, não erro a mais. Quem cai
   // aqui vinha registar-se e encontrou o tecto do dia — a resposta útil não é
@@ -77,6 +77,12 @@ export default function LoginPage({
           </p>
 
           <div className="mt-10 animate-fade-up" style={{ animationDelay: "120ms" }}>
+            {searchParams.convite === "aceite" ? (
+              <p className="mb-4 rounded-xl border border-credit/30 bg-credit/10 px-4 py-3 text-sm text-credit">
+                Conta criada. Entra com o email do convite e a palavra-chave que
+                escolheste.
+              </p>
+            ) : null}
             {searchParams.error ? (
               <p
                 role="alert"

@@ -10,7 +10,7 @@ import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
 import { normalizeAmount, parseAmountCents, porqueNaoGravou } from "@/lib/form-helpers";
 import { ESCRITA_CONGELADA } from "@/lib/congelamento";
 import { getRepository } from "@/lib/data";
-import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
+import { INVITE_VALIDITY_MS, TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
@@ -25,6 +25,7 @@ import {
   creditContractExtractAvailable,
   extractCreditContract,
 } from "@/lib/services/credit-contract-service";
+import { extractRecibo } from "@/lib/services/recibo-service";
 import { readPdfText } from "@/lib/import/read-file";
 import { getInePriceTable } from "@/lib/services/ine-service";
 import {
@@ -56,10 +57,11 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { sendInvite, emailConfigured } from "@/lib/email/send";
+import { sendInvite, sendMemberInvite, emailConfigured, siteUrl } from "@/lib/email/send";
 import {
   toCents,
   validateSplit,
+  classify,
   nextOccurrence,
   accountsVisibleTo,
   isForeign,
@@ -97,7 +99,6 @@ import {
   etapaSugerida,
   ETAPA_LABEL,
   assinatura,
-  dominioValido,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -115,6 +116,83 @@ async function handleReceipt(expenseId: string, spaceId: string, formData: FormD
   } catch {
     // upload de recibo falhou: não bloqueia a gravação da despesa
   }
+}
+
+/** O que a leitura de um recibo devolve ao formulário. Nada disto está gravado. */
+export interface ReciboPreviewState {
+  error?: string;
+  proposta?: {
+    amountCents: number;
+    description: string;
+    /** `null` = o recibo não deu data fiável; o formulário usa a de hoje. */
+    date: string | null;
+    /** Sugerida pelas MESMAS regras determinísticas do import, não pelo modelo. */
+    categoryId: string | null;
+    avisos: string[];
+    /** O que o modelo percebeu do documento, para confirmar que leu o certo. */
+    notas: string;
+  };
+}
+
+const RECIBO_IMAGENS = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+const RECIBO_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Lê o recibo e PROPÕE a despesa — não grava nada.
+ *
+ * O contrato é o do contrato de crédito: o modelo copia o que está impresso, o
+ * `reviewRecibo` (determinístico, testado) decide o que é utilizável, e a
+ * pessoa confirma no formulário. A categoria nem sequer vem do modelo: sai das
+ * regras de classificação da app, sobre o nome da loja.
+ */
+export async function previewReceiptAction(
+  _prev: ReciboPreviewState,
+  formData: FormData,
+): Promise<ReciboPreviewState> {
+  await getSpaceContext(); // exige sessão; a leitura não toca no ambiente
+  const file = formData.get("receipt");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Escolhe primeiro a fotografia do recibo." };
+  }
+  if (file.size > RECIBO_MAX_BYTES) {
+    return { error: "O ficheiro é grande de mais (máximo 8 MB)." };
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  let entrada: import("@/lib/services/recibo-service").ReciboInput;
+  if ((RECIBO_IMAGENS as readonly string[]).includes(file.type)) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    entrada = {
+      kind: "imagem",
+      mediaType: file.type as (typeof RECIBO_IMAGENS)[number],
+      dataBase64: bytes.toString("base64"),
+    };
+  } else if (file.type === "application/pdf") {
+    const texto = await readPdfText(Buffer.from(await file.arrayBuffer())).catch(() => "");
+    entrada = { kind: "texto", texto };
+  } else {
+    return { error: "Formato não suportado: usa uma fotografia (JPG/PNG) ou um PDF." };
+  }
+
+  const lido = await extractRecibo(entrada, hoje);
+  if (!lido.proposta) {
+    return { error: lido.problem ?? "Não consegui ler este recibo." };
+  }
+
+  // A categoria vem das regras da app (as mesmas do import), nunca do modelo.
+  const rules = await getRepository().listClassificationRules().catch(() => []);
+  const sugestao = classify(lido.proposta.description, rules);
+
+  return {
+    proposta: {
+      amountCents: lido.proposta.amountCents,
+      description: lido.proposta.description,
+      date: lido.proposta.date,
+      categoryId: sugestao.categoryId ?? null,
+      avisos: lido.proposta.avisos,
+      notas: lido.notas,
+    },
+  };
 }
 
 
@@ -188,9 +266,19 @@ async function semEspaco(
   kind: "expenses" | "assets" | "members",
 ): Promise<string | null> {
   if ((plan ?? "free") === "full") return null;
-  const atuais = await getRepository()
-    .countInSpace(spaceId, kind)
-    .catch(() => 0);
+  /**
+   * **Um erro na contagem fecha, não abre.** O `catch(() => 0)` transformava
+   * um soluço da base de dados em "este ambiente está vazio" e desligava o
+   * tecto do plano free exatamente no pedido em que menos se sabia o estado.
+   * A mensagem é de tentativa falhada e não a do limite: dizer "atingiste o
+   * tecto" a quem não atingiu era mentir com ar de regra.
+   */
+  let atuais: number;
+  try {
+    atuais = await getRepository().countInSpace(spaceId, kind);
+  } catch {
+    return "Não deu para confirmar o espaço disponível. Tenta outra vez.";
+  }
   const check = checkLimit(kind, atuais, "free");
   return check.allowed ? null : check.message;
 }
@@ -225,12 +313,16 @@ export async function createExpenseAction(
   const data = parsed.data;
   if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
 
-  // Submitter: precisa de um aprovador (membro pleno) e a despesa fica pendente.
-  let approverId: string | null = null;
-  if (isSubmitter) {
-    approverId = String(formData.get("approverId") ?? "");
-    if (!memberIds.includes(approverId)) return { error: "Escolhe quem aprova a despesa." };
-  }
+  /**
+   * O `approverId` deixou de se pedir: era um campo que prometia um controlo
+   * que nunca existiu. O submitter escolhia "quem aprova", mas qualquer membro
+   * pleno podia aprovar — e ainda bem, senão umas férias do escolhido
+   * encravavam as despesas pendentes. Exigir a escolha era pedir uma decisão
+   * que não decidia nada. A despesa de um submitter continua pendente até um
+   * membro pleno a aprovar; o campo continua no modelo (despesas antigas
+   * têm-no e mostra-se), só não se pede mais.
+   */
+  const approverId: string | null = null;
 
   const amountCents = toCents(data.amount);
 
@@ -401,6 +493,53 @@ export async function rejectExpenseAction(formData: FormData): Promise<void> {
 
 // ---- Acesso de submissão (role submitter) ---------------------------------
 
+/**
+ * O acesso passou a ser um CONVITE, não uma conta feita por outra pessoa.
+ *
+ * Escrever aqui um email criava logo a conta — em nome de alguém que não pediu
+ * nada, não consentiu nada e nem sabia. A conta só nasce quando quem recebe o
+ * email abre a ligação e escolhe a palavra-chave; ignorar o email é recusar, e
+ * não fica nada criado. Até lá o participante fica «convite enviado».
+ */
+async function criarConviteDeSubmissao(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+  memberId: string,
+  email: string,
+): Promise<ActionState> {
+  const repo = getRepository();
+  const token = randomBytes(32).toString("base64url");
+  try {
+    await repo.createMemberInvite({
+      spaceId: ctx.space.id,
+      memberId,
+      email,
+      tokenHash: hashToken(token),
+      invitedBy: ctx.user.id,
+      expiresAt: new Date(Date.now() + INVITE_VALIDITY_MS).toISOString(),
+    });
+  } catch {
+    return { error: "Não deu para preparar o convite. Tenta outra vez." };
+  }
+
+  const memberName = ctx.members.find((m) => m.id === memberId)?.name ?? "";
+  const mail = await sendMemberInvite(email, memberName, ctx.space.name, token);
+  if (mail.sent) {
+    return { ok: true, message: `Convite enviado para ${email}. Vale sete dias.` };
+  }
+  // Sem envio de email (p.ex. em desenvolvimento), a ligação é a única forma de
+  // o convite chegar: mostra-se a quem convidou, para a passar em mão. Quem a
+  // abre e escolhe a palavra-chave continua a ser quem aceita.
+  if (!emailConfigured()) {
+    return {
+      ok: true,
+      message: `O envio de email não está configurado. Passa esta ligação a ${memberName}: ${siteUrl()}/convite/${token}`,
+    };
+  }
+  return {
+    error: `O convite ficou registado mas o email não saiu (${mail.reason ?? "falha no envio"}). Tenta "Dar acesso" outra vez para reenviar.`,
+  };
+}
+
 export async function grantSubmitterAction(
   _prev: ActionState,
   formData: FormData,
@@ -418,20 +557,26 @@ export async function grantSubmitterAction(
   if (isEmailAllowed(email) || userByEmail(email)) {
     return { error: "Esse email já pertence a um utilizador base." };
   }
+  if (await getRepository().getAppUserByEmail(email)) {
+    return { error: "Esse email já tem acesso." };
+  }
 
-  const repo = getRepository();
-  if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
-
-  const userId = `usr_${randomUUID()}`;
-  await repo.createAppUser({ id: userId, email, name: member.name });
-  await repo.updateMember(memberId, ctx.space.id, {
-    role: "submitter",
-    linkedUserId: userId,
-    email,
-  });
+  const resultado = await criarConviteDeSubmissao(ctx, memberId, email);
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
-  return { ok: true };
+  return resultado;
+}
+
+/** Cancela um convite pendente: a ligação enviada deixa de servir. */
+export async function cancelMemberInviteAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const memberId = String(formData.get("memberId") ?? "");
+  const member = ctx.members.find((m) => m.id === memberId);
+  if (!member) return;
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id);
+  revalidatePath("/ambiente");
 }
 
 export async function revokeSubmitterAction(formData: FormData): Promise<void> {
@@ -448,6 +593,9 @@ export async function revokeSubmitterAction(formData: FormData): Promise<void> {
     role: "full",
     linkedUserId: null,
   });
+  // Um convite pendente que sobrasse era uma ligação viva para um acesso que
+  // se acabou de tirar.
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
 }
@@ -1327,15 +1475,20 @@ export async function addMemberAction(
     participatesFrom,
   });
 
-  // Dá logo acesso de submissão (role submitter + utilizador com login).
+  // O acesso segue por convite: a conta só nasce quando a pessoa aceitar. O
+  // participante fica criado na mesma — dividir despesas não depende do aceite.
   if (grantSubmit) {
-    const userId = `usr_${randomUUID()}`;
-    await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
-    await repo.updateMember(member.id, ctx.space.id, {
-      role: "submitter",
-      linkedUserId: userId,
-      email: accessEmail,
-    });
+    const convite = await criarConviteDeSubmissao(
+      { ...ctx, members: [...ctx.members, member] },
+      member.id,
+      accessEmail,
+    );
+    revalidatePath("/ambiente");
+    revalidatePath("/", "layout");
+    if (convite.error) {
+      return { error: `${parsed.data.name} ficou como participante, mas o convite falhou: ${convite.error}` };
+    }
+    return convite;
   }
 
   revalidatePath("/ambiente");
@@ -1621,6 +1774,8 @@ export async function deleteMemberAction(
   }
 
   await getRepository().deleteMember(id, ctx.space.id);
+  // Sem o participante, um convite pendente dele apontava para o vazio.
+  await getRepository().deleteMemberInvites(id, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return { ok: true };
@@ -3394,6 +3549,70 @@ export async function descobrirMarcasAction(
 }
 
 /**
+ * O domínio da marca para UMA empresa do funil, contra um prazo.
+ *
+ * É a mesma máquina dos investimentos — tabela de gestoras, depois o modelo,
+ * depois a verificação do ícone — chamada na hora em que a empresa entra no
+ * funil, para o logo aparecer sozinho: o campo manual saiu. Corre contra um
+ * prazo porque apontar uma empresa é um gesto rápido e um logo não vale dez
+ * segundos de espera; o que não chegar a tempo fica para o «Pôr logos».
+ */
+async function marcaComPrazo(nome: string): Promise<string | null> {
+  const prazo = new Promise<never[]>((res) => setTimeout(() => res([]), 6_000));
+  const encontradas = await Promise.race([descobrirMarcas([nome]).catch(() => []), prazo]);
+  return encontradas[0]?.dominio ?? null;
+}
+
+/**
+ * Descobrir e gravar a marca das empresas do funil que ainda não a têm.
+ *
+ * O par do `descobrirMarcasAction` dos investimentos, com as mesmas regras:
+ * aplica sem perguntar (um logo errado vê-se e apaga-se), e diz sempre quantos
+ * ficaram de fora.
+ */
+export async function descobrirMarcasFunilAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const linhas = (await repo.listValuations(ctx.space.id).catch(() => [])).filter(
+    (v) => !v.logoDomain,
+  );
+  if (linhas.length === 0) return { ok: true, message: "Todas já têm marca." };
+
+  // Nomes distintos: a mesma empresa com dois estudos é UMA pergunta ao modelo.
+  const nomes = [...new Set(linhas.map((v) => v.name))];
+  const encontradas = await descobrirMarcas(nomes).catch(() => []);
+  const porNome = new Map(encontradas.map((m) => [m.nome, m.dominio]));
+
+  let gravadas = 0;
+  for (const linha of linhas) {
+    const dominio = porNome.get(linha.name);
+    if (!dominio) continue;
+    try {
+      await repo.updateValuation(linha.id, ctx.space.id, { logoDomain: dominio });
+      gravadas += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a marca") };
+    }
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  const faltam = linhas.length - gravadas;
+  return {
+    ok: true,
+    message:
+      faltam > 0
+        ? `${gravadas} de ${linhas.length} com logo. ${faltam} sem marca reconhecível — essas ficam com as iniciais.`
+        : `${gravadas} com logo.`,
+  };
+}
+
+/**
  * Ir buscar o setor dos investimentos que ainda não o têm.
  *
  * Um lote de cada vez, e diz sempre quantos ficaram para trás: um resultado que
@@ -3645,6 +3864,8 @@ export async function guardarAvaliacaoAction(
       (v) => v.id === doFunil,
     );
     if (!existente) return { error: "Essa entrada do funil já não existe." };
+    // Uma linha ainda sem logo é uma segunda oportunidade de o descobrir.
+    const marcaNova = existente.logoDomain ? null : await marcaComPrazo(nome);
     try {
       await repo.setValuationEstudo(doFunil, ctx.space.id, estudo);
       await repo.updateValuation(doFunil, ctx.space.id, {
@@ -3654,6 +3875,7 @@ export async function guardarAvaliacaoAction(
         // As notas do ecrã só substituem as do funil quando há mesmo alguma
         // coisa escrita: um campo em branco não apaga o que lá estava.
         ...(notas ? { notes: notas } : {}),
+        ...(marcaNova ? { logoDomain: marcaNova } : {}),
       });
     } catch (e) {
       return { error: porqueNaoGravou(e, "a avaliação") };
@@ -3673,6 +3895,7 @@ export async function guardarAvaliacaoAction(
       stage: etapa,
       studyDate: hoje,
       notes: notas,
+      logoDomain: await marcaComPrazo(nome),
       estudo,
       createdBy: ctx.user.id,
     });
@@ -3718,11 +3941,9 @@ export async function criarAvaliacaoAction(
   const etapaBruta = String(formData.get("stage") ?? "");
   const etapa = etapaValida(etapaBruta) ? etapaBruta : "radar";
 
-  // O domínio da marca, para o logo, com a mesma validação dos investimentos:
-  // é ele que vai parar a um pedido feito pelo servidor.
-  const marcaBruta = String(formData.get("logoDomain") ?? "").trim();
-  const logoDomain = marcaBruta ? dominioValido(marcaBruta) : null;
-  if (marcaBruta && !logoDomain) return { error: "Esse domínio de marca não me parece válido." };
+  // O logo descobre-se sozinho, como nos investimentos — o campo manual saiu.
+  // Sem marca reconhecível ficam as iniciais, e o «Pôr logos» tenta mais tarde.
+  const logoDomain = await marcaComPrazo(nome);
 
   try {
     await getRepository().createValuation({
@@ -3745,7 +3966,7 @@ export async function criarAvaliacaoAction(
   return { ok: true, message: `"${nome}" ficou em "${ETAPA_LABEL[etapa]}".` };
 }
 
-/** Corrigir o que está escrito num cartão do funil: nome, símbolo, marca, notas. */
+/** Corrigir o que está escrito num cartão do funil: nome, símbolo, notas. */
 export async function editarAvaliacaoAction(
   _prev: ActionState,
   formData: FormData,
@@ -3764,7 +3985,10 @@ export async function editarAvaliacaoAction(
   );
   if (!existente) return { error: "Essa avaliação já não existe." };
 
-  const patch: { name?: string; symbol?: string | null; notes?: string | null; logoDomain?: string | null } = {};
+  // O logo já não se edita à mão: descobre-se sozinho (na criação e no
+  // «Pôr logos»), e um logo errado corrige-se por lá — não por um campo que
+  // pedia um domínio a quem só queria emendar uma nota.
+  const patch: { name?: string; symbol?: string | null; notes?: string | null } = {};
 
   const nome = String(formData.get("name") ?? "").trim();
   if (nome) patch.name = nome;
@@ -3775,15 +3999,6 @@ export async function editarAvaliacaoAction(
   }
   if (formData.has("notes")) {
     patch.notes = String(formData.get("notes") ?? "").trim() || null;
-  }
-  if (formData.has("logoDomain")) {
-    const m = String(formData.get("logoDomain") ?? "").trim();
-    if (!m) patch.logoDomain = null;
-    else {
-      const d = dominioValido(m);
-      if (!d) return { error: "Esse domínio de marca não me parece válido." };
-      patch.logoDomain = d;
-    }
   }
 
   try {

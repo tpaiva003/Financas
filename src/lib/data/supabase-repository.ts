@@ -932,6 +932,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.rpc("registar_tentativa", {
+      p_chave: chave,
+      p_janela_ms: janelaMs,
+      p_tecto: tecto,
+    });
+    if (error) throw new Error(error.message);
+    return Boolean(data);
+  }
+
   async countAppUsersCreatedOn(day: string): Promise<number> {
     const db = getSupabaseAdmin();
     const { count, error } = await db
@@ -1943,6 +1954,111 @@ export class SupabaseRepository implements Repository {
     if (!marcado || marcado.length === 0) return null;
 
     return { userId: data.user_id as string };
+  }
+
+  async createMemberInvite(input: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    // Convidar outra vez substitui: dois convites vivos para o mesmo
+    // participante seriam duas ligações válidas a apontar para o mesmo sítio.
+    await db
+      .from("member_invites")
+      .delete()
+      .eq("member_id", input.memberId)
+      .eq("space_id", input.spaceId)
+      .is("accepted_at", null);
+    const { error } = await db.from("member_invites").insert({
+      id: `min_${randomUUID()}`,
+      space_id: input.spaceId,
+      member_id: input.memberId,
+      email: input.email,
+      token_hash: input.tokenHash,
+      invited_by: input.invitedBy,
+      expires_at: input.expiresAt,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async peekMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("member_invites")
+      .select("space_id, member_id, email, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.accepted_at || new Date(data.expires_at as string) < new Date()) return null;
+    return {
+      spaceId: data.space_id as string,
+      memberId: data.member_id as string,
+      email: data.email as string,
+    };
+  }
+
+  async acceptMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("member_invites")
+      .select("id, space_id, member_id, email, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.accepted_at || new Date(data.expires_at as string) < new Date()) return null;
+
+    // Como no consumo dos tokens de recuperação: marca-se ANTES de devolver, e
+    // o `is("accepted_at", null)` fecha a corrida — dos dois pedidos que passem
+    // o select, só um encontra o convite ainda por aceitar.
+    const { data: marcado, error: e2 } = await db
+      .from("member_invites")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", data.id as string)
+      .is("accepted_at", null)
+      .select("id");
+    if (e2) throw new Error(e2.message);
+    if (!marcado || marcado.length === 0) return null;
+
+    return {
+      spaceId: data.space_id as string,
+      memberId: data.member_id as string,
+      email: data.email as string,
+    };
+  }
+
+  async deleteMemberInvites(memberId: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("member_invites")
+      .delete()
+      .eq("member_id", memberId)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listMemberInvites(spaceId: string): Promise<{ memberId: string; email: string }[]> {
+    const db = getSupabaseAdmin();
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("member_invites")
+        .select("member_id, email, expires_at")
+        .eq("space_id", spaceId)
+        .is("accepted_at", null)
+        .order("created_at", { ascending: true })
+        .range(de, ate),
+    );
+    const agora = new Date();
+    return data
+      .filter((r: any) => new Date(r.expires_at as string) >= agora)
+      .map((r: any) => ({ memberId: r.member_id as string, email: r.email as string }));
   }
 
   async listIncome(spaceId: string): Promise<Income[]> {

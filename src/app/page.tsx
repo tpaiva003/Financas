@@ -11,6 +11,25 @@ export const metadata = {
   title: "Rachar · Contas à Moda do Porto",
   description:
     "Rachar divide as contas da casa e não pára aí: importa os extratos, mostra para onde vai o dinheiro, soma o que tens menos o que deves e diz-te em que ano trabalhar passa a ser opcional. Privado, sem anúncios, nascido no Porto.",
+  alternates: { canonical: "/" },
+};
+
+/**
+ * Os dados estruturados que os motores de busca (e os LLMs) leem para saber o
+ * que isto É, sem adivinhar a partir do texto. Só factos que a própria landing
+ * já afirma — nada de avaliações inventadas nem números que não existem.
+ */
+const DADOS_ESTRUTURADOS = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "Rachar",
+  url: "https://rachar.pt",
+  applicationCategory: "FinanceApplication",
+  operatingSystem: "Web",
+  inLanguage: "pt-PT",
+  description:
+    "App para dividir despesas partilhadas, importar extratos bancários, acompanhar património e investimentos, e planear a independência financeira.",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
 };
 
 export default function LandingPage() {
@@ -34,6 +53,10 @@ export default function LandingPage() {
         />
       </noscript>
 
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(DADOS_ESTRUTURADOS) }}
+      />
       <ScrollState />
       <SiteHeader />
       <Hero />

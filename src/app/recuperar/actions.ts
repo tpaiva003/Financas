@@ -6,6 +6,7 @@ import { getRepository } from "@/lib/data";
 import { TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { userByEmail } from "@/lib/users";
 import { hashPassword, passwordIssue } from "@/lib/password";
+import { tentativaCabe } from "@/lib/rate-limit";
 import { sendPasswordReset } from "@/lib/email/send";
 
 export interface ResetState {
@@ -33,6 +34,11 @@ export async function requestPasswordResetAction(
     message: "Se essa conta existir, enviámos um email com as instruções.",
   };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return resposta;
+
+  // O tecto responde a MESMA coisa que o sucesso: 3 pedidos por hora por email
+  // visado chegam para quem se esqueceu, e cada pedido a mais era um email na
+  // caixa de outra pessoa. Responder diferente diria quais emails existem.
+  if (!(await tentativaCabe("recuperar", email))) return resposta;
 
   const repo = getRepository();
   const user = userByEmail(email) ?? (await repo.getAppUserByEmail(email).catch(() => null));

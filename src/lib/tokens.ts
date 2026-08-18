@@ -17,6 +17,15 @@ import { createHash } from "node:crypto";
 /** Uma hora. Tempo para abrir o email, não para deixar a ligação a apodrecer. */
 export const TOKEN_VALIDITY_MS = 60 * 60 * 1000;
 
+/**
+ * Sete dias, e não a hora da reposição: quem pede uma reposição está à frente
+ * da caixa de email nesse momento; quem é convidado por um familiar pode só
+ * abrir o email no fim de semana. Um convite caducado reenvia-se, mas cada
+ * reenvio é uma pessoa a queixar-se a outra — a validade folgada é a que faz
+ * o caminho normal funcionar à primeira.
+ */
+export const INVITE_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** O que fica na base de dados é isto, nunca o token. */
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");

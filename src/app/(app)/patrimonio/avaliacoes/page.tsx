@@ -4,6 +4,7 @@ import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { montarFunil, type AvaliacaoResumo } from "@/lib/domain";
 import { resumoAnexosAvailable } from "@/lib/services/resumo-anexos-service";
+import { DescobrirMarcas } from "@/components/DescobrirMarcas";
 import { FunilAvaliacoes } from "@/components/FunilAvaliacoes";
 import { NovaAvaliacao } from "@/components/NovaAvaliacao";
 import type { AnexoAvaliacaoView } from "@/components/AvaliacaoAnexos";
@@ -78,6 +79,10 @@ export default async function Page() {
       </div>
 
       <NovaAvaliacao hoje={hoje} />
+
+      {/* O mesmo «Pôr logos» dos investimentos, para as linhas que ficaram
+          sem marca (o campo manual saiu; o logo descobre-se sozinho). */}
+      {funil.some((a) => !a.logoDomain) ? <DescobrirMarcas alvo="funil" /> : null}
 
       <FunilAvaliacoes
         funil={funil}

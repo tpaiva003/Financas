@@ -15,9 +15,25 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/recuperar/abc123")).toBe(true);
   });
 
+  // Quem aceita um convite ainda nem conta tem: mandá-lo para o /login é
+  // mandá-lo para uma porta que não abre.
+  it("a página de aceitar um convite é pública", () => {
+    expect(isPublicPath("/convite/abc123")).toBe(true);
+    // Sem token não há nada para mostrar: só o [token] é público.
+    expect(isPublicPath("/convite")).toBe(false);
+  });
+
   it("as páginas legais são públicas", () => {
     expect(isPublicPath("/privacidade")).toBe(true);
     expect(isPublicPath("/termos")).toBe(true);
+  });
+
+  // Um robots.txt atrás de login lê-se como "site sem robots.txt" — e foi
+  // assim que ele nasceu: o middleware respondia ao Google com o /login.
+  it("os metadados dos motores de busca são públicos", () => {
+    expect(isPublicPath("/robots.txt")).toBe(true);
+    expect(isPublicPath("/sitemap.xml")).toBe(true);
+    expect(isPublicPath("/opengraph-image")).toBe(true);
   });
 
   it("a app continua privada", () => {

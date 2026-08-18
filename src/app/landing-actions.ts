@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
+import { MENSAGEM_TECTO, tentativaCabe } from "@/lib/rate-limit";
 
 const schema = z.object({
   name: z.string().trim().max(100).optional(),
@@ -36,6 +37,13 @@ export async function submitContactAction(
   }
   if (!parsed.data.consent) {
     return { error: "Aceita a política de privacidade para podermos responder." };
+  }
+
+  // Tecto por email indicado: o honeypot apanha bots ingénuos, isto apanha o
+  // resto. Vem depois da validação para não gastar janela com pedidos que iam
+  // ser recusados de graça.
+  if (!(await tentativaCabe("contacto", parsed.data.email))) {
+    return { error: MENSAGEM_TECTO };
   }
 
   try {
@@ -96,6 +104,12 @@ export async function waitlistAction(
   // e sem base legal para o enviar a entrada não serve para nada.
   if (!parsed.data.consent) {
     return { error: "Aceita ser contactado para te podermos avisar quando abrir vaga." };
+  }
+
+  // O mesmo tecto do contacto. A resposta do sucesso é igual para email novo e
+  // repetido; a do tecto pode ser franca — não diz nada sobre a fila.
+  if (!(await tentativaCabe("waitlist", parsed.data.email))) {
+    return { error: MENSAGEM_TECTO };
   }
 
   try {

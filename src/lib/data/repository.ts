@@ -1011,6 +1011,36 @@ export interface Repository {
   /** Utilizadores adicionais (submitters) com login próprio. */
   getAppUserByEmail(email: string): Promise<AppUser | null>;
   createAppUser(input: AppUser): Promise<void>;
+
+  // Convites de participante (acesso de submissão opt-in).
+  //
+  // A conta do convidado NÃO existe enquanto o convite está pendente: só nasce
+  // quando ele aceita. Guarda-se o hash do token, como nos de recuperação.
+  /** Cria o convite, substituindo qualquer convite pendente do mesmo participante. */
+  createMemberInvite(input: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+  }): Promise<void>;
+  /** O convite por aceitar e dentro da validade, SEM o consumir (para a página o mostrar). */
+  peekMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null>;
+  /**
+   * Aceita o convite: marca-o como aceite e devolve-o. `null` se já foi aceite,
+   * expirou ou não existe — e a marcação é uma operação só, para dois pedidos
+   * simultâneos não aceitarem ambos.
+   */
+  acceptMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null>;
+  /** Apaga os convites pendentes de um participante (revogar, cancelar, eliminar). */
+  deleteMemberInvites(memberId: string, spaceId: string): Promise<void>;
+  /** Os convites pendentes do ambiente, para o ecrã de participantes. */
+  listMemberInvites(spaceId: string): Promise<{ memberId: string; email: string }[]>;
   /**
    * Quantas contas nasceram neste dia ("AAAA-MM-DD", UTC).
    *
@@ -1018,6 +1048,20 @@ export interface Repository {
    * para o registo aberto não virar alojamento gratuito de dados por engano.
    */
   countAppUsersCreatedOn(day: string): Promise<number>;
+
+  /**
+   * Regista uma tentativa num formulário público e diz se ainda cabe.
+   *
+   * Janela fixa por chave ("escopo:identificador"): a primeira tentativa abre
+   * a janela, as seguintes incrementam, e quando a janela expira recomeça-se.
+   * A conta e a decisão são UMA operação do lado dos dados — dois pedidos
+   * simultâneos não podem ler ambos "ainda cabe".
+   *
+   * **Quem chama decide o que fazer a um erro, e a resposta certa é recusar**:
+   * um limitador que falha aberto não limita nada exatamente quando a base de
+   * dados está em pior estado para aguentar abuso.
+   */
+  registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean>;
   /**
    * Põe alguém na fila. Repetir não faz subir: o mesmo email fica onde estava,
    * com a data de entrada original.

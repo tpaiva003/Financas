@@ -27,8 +27,40 @@ const auth = readFileSync("src/lib/auth.ts", "utf8");
 
 describe("entrada com credenciais", () => {
   it("não grava uma palavra-chave nova a quem ainda não tem nenhuma", () => {
-    // O que não pode voltar: `setUserPasswordHash` no caminho da entrada.
-    expect(auth).not.toContain("setUserPasswordHash");
+    /**
+     * O invariante exato, e não a proibição cega. "Nenhum `setUserPasswordHash`
+     * no ficheiro" era mais forte do que o necessário e ficou falso quando a
+     * promoção do hash no login apareceu (600 mil iterações): essa escrita é
+     * legítima porque só acontece DEPOIS de a palavra-chave certa abrir o hash
+     * que já existia. O que não pode voltar é escrever um hash a quem não tem
+     * nenhum — o ramo `!existing` tem de recusar sem escrever nada.
+     */
+    const ramoSemConta = auth.slice(
+      auth.indexOf("if (!existing)"),
+      auth.indexOf("}", auth.indexOf("if (!existing)")),
+    );
+    expect(ramoSemConta).not.toContain("setUserPasswordHash");
+    expect(ramoSemConta).toContain("return null");
+
+    // E a única escrita permitida vem depois da verificação bem-sucedida:
+    // guarda-se atrás do needsRehash, nunca antes do `if (!ok) return null`.
+    const escritas = auth.split("setUserPasswordHash").length - 1;
+    expect(escritas).toBe(1);
+    expect(auth.indexOf("setUserPasswordHash")).toBeGreaterThan(
+      auth.indexOf("if (!ok) return null"),
+    );
+    expect(auth).toContain("needsRehash(existing)");
+  });
+
+  it("o tecto de tentativas vem antes de qualquer PBKDF2", () => {
+    // Com o tecto batido não se queima CPU nenhuma: o `tentativaCabe` tem de
+    // aparecer antes do primeiro uso da palavra-chave. Sem isto, o limitador
+    // limitava o sucesso mas não o custo.
+    const authorize = auth.slice(auth.indexOf("authorize:"));
+    const tecto = authorize.indexOf("tentativaCabe(");
+    expect(tecto).toBeGreaterThan(-1);
+    expect(tecto).toBeLessThan(authorize.indexOf("verifyPassword("));
+    expect(tecto).toBeLessThan(authorize.indexOf("getUserPasswordHash("));
   });
 
   it("recusa a conta sem palavra-chave em vez de a adotar", () => {

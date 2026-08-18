@@ -2864,3 +2864,60 @@ corria a cada chamada. Com a série mensal era uma vez por mês; com as janelas
 passou a ser em cada ponta de cada período e em cada dia de movimento lá dentro,
 vezes dois índices. Agora calcula-se uma vez e o valor de cada dia fica em
 cache — os dois índices e as sete janelas perguntam pelos mesmos dias.
+
+## Endurecimento e itens do Word de 17/08 (sessão de 2026-08-18)
+
+### Tectos de tentativas: a chave é o email, não o IP
+O limitador dos formulários públicos (login, recuperação, fila de espera,
+contacto) conta por **email visado**. O ataque que interessa travar numa app
+destas é o dirigido — alguém a tentar entrar na conta de uma pessoa que
+conhece — e esse trava-se por conta. Um tecto por IP castigava a casa inteira
+atrás do mesmo NAT e não custa nada a quem tem muitos IPs. **Falha fechado**:
+se a base de dados não responde, recusa-se — um limitador que falha aberto
+desliga-se exatamente quando ela está pior para aguentar abuso.
+
+### Convites de participante: a conta nasce no aceite, e valem 7 dias
+Dar acesso de submissão criava a conta na hora, pela mão de quem convidava.
+Passou a convite com ligação (`/convite/[token]`, hash guardado como nos tokens
+de recuperação): a conta só existe quando o convidado escolhe a palavra-chave.
+A validade é de **7 dias** e não a hora da recuperação: quem pede uma
+recuperação está à frente do email nesse momento; quem é convidado por um
+familiar pode só abrir no fim de semana.
+
+### SEO: o noindex global saiu da raiz
+O `robots: { index: false }` no layout de raiz era resto da fase privada e
+escondia o site inteiro — landing incluída. A regra desceu para o layout do
+grupo `(app)` e para as páginas de token. O robots.txt e o sitemap são rotas do
+Next e tiveram de entrar na lista pública do middleware: sem isso o Google
+recebia um redirecionamento para o /login no lugar do robots.txt.
+
+### Recibo → despesa: como se lê a invariante "a IA escolhe colunas, não lê dados"
+A leitura de recibos parece contrariar a invariante, e a leitura combinada é
+esta: a invariante existe para que **montantes, dedup e câmbio** nunca dependam
+de um modelo — e continua intacta no import. Num recibo fotografado não há
+coluna nenhuma para escolher; o contrato é o mesmo do contrato de crédito:
+**o modelo copia o que está impresso** (total, data, loja — sem somar linhas
+nem converter moedas), o `reviewRecibo` **determinístico e testado** decide o
+que é utilizável (recusa moeda estrangeira — sem câmbio não se grava preço —,
+datas do futuro, totais absurdos; arredonda cêntimos em código), a **categoria
+sai das regras da app** sobre o nome da loja (as mesmas do import, nunca do
+modelo), e **nada grava sem a pessoa rever o formulário preenchido e carregar
+em guardar**. Sem `ANTHROPIC_API_KEY` o caminho não existe nem se anuncia.
+
+### Streak de registos: deriva-se, não se guarda
+O streak (item 9 do Word) conta **dias seguidos com registo feito pela própria
+pessoa**, pelo dia do `createdAt` — a mesma régua da «última atividade»: um
+import conta como o dia em que foi feito, não como trinta. Deriva das despesas
+existentes, sem tabela nova: nada para migrar nem dessincronizar. Um dia ainda
+sem registo não apaga o streak às 00:01 — mostra-o em risco («é hoje que ele se
+mantém»), porque perder tudo à meia-noite desmotiva precisamente quem vinha
+registar. Só aparece a partir de 2 dias: «streak de 1» é ruído.
+
+### O logo do funil descobre-se sozinho; o campo manual saiu
+Os investimentos descobriam a marca sozinhos (tabela de gestoras → modelo →
+ícone verificado) e o funil pedia um «Domínio da marca» escrito à mão — e por
+isso os logos do funil funcionavam pior. O campo saiu dos três formulários; a
+descoberta corre na criação de cada entrada (com prazo de 6 s — apontar uma
+empresa é um gesto rápido e um logo não vale a espera) e há um «Pôr logos» no
+funil igual ao dos investimentos para apanhar o resto. Um logo errado
+apaga-se a redescobrir; o que não tem marca reconhecível fica com as iniciais.

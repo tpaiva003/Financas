@@ -3,12 +3,56 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-18. O **PR #45 foi integrado e está em produção**
-> (www.rachar.pt, merge `5a8a93e`): as janelas da carteira contra os índices,
-> dois erros de cálculo com vendas corrigidos, o corte do mês parcial nos
-> relatórios e a revisão da landing (secções 0 e 0.1). Este branch
-> (`claude/repository-review-uttqoc`, PR #43) traz o **modo demo self-serve** e
-> a **revisão do backend** (secção 0bis), e já tem esse main fundido cá dentro.
+> Última atualização: 2026-08-18 (noite). Os **PRs #45 e #43 estão integrados e
+> em produção** (www.rachar.pt): janelas contra os índices, correções de cálculo
+> com vendas, mês parcial, revisão da landing, modo demo self-serve e revisão do
+> backend. O trabalho em curso vive no branch
+> `claude/rachar-landing-page-zdliyf` (**PR #46, rascunho**) — ver a secção
+> 0-novo: capturas novas, endurecimento (PBKDF2 600k, tectos de tentativas,
+> convites opt-in — migrações **0044 e 0045 já aplicadas** no Supabase), SEO,
+> recibo→despesa e streak. Autorizado pelo Tiago com «Avança com todos, exceto
+> os SSO par ajá».
+
+---
+
+## 0-novo. Sessão de 2026-08-18 (noite) — endurecimento, SEO, recibo e streak
+
+Branch `claude/rachar-landing-page-zdliyf`, **PR #46 (rascunho)**. Seis commits,
+cada um com o quality gate completo (testes, typecheck, lint, build) verde:
+
+- **Capturas da landing regeneradas** (`npm run shots`) com o seed atualizado
+  (mês parcial até ao dia 18, cotações até 17/08).
+- **PBKDF2 a 600 mil iterações** (OWASP), com promoção do hash no próprio
+  login (rehash-on-login) e o hash fantasma do timing regenerado a 600k;
+  tectos do plano e contagem de registos passam a **falhar fechado**.
+- **Tectos de tentativas** nos quatro formulários públicos (login, recuperar,
+  fila de espera, contacto), por email visado, janela fixa atómica na base de
+  dados — **migração 0044 aplicada e validada em produção**. No login o tecto
+  corre ANTES de qualquer PBKDF2.
+- **Convites de participante opt-in** — dar acesso deixou de criar a conta na
+  hora: cria um convite de 7 dias; a conta nasce quando a pessoa aceita em
+  `/convite/[token]` (página pública) e escolhe a palavra-chave. **Migração
+  0045 aplicada.** Revogar/cancelar/eliminar mata a ligação; o ecrã de
+  participantes mostra «convite enviado» com cancelamento.
+- **SEO** — o `robots:{index:false}` GLOBAL saiu do layout de raiz (escondia o
+  site inteiro do Google); noindex desceu para o grupo `(app)` e páginas de
+  token; entram `/robots.txt`, `/sitemap.xml`, Open Graph/Twitter com imagem
+  gerada no build, canónicos e schema.org na landing. As três rotas novas
+  tiveram de entrar em `lib/public-routes.ts` — o middleware respondia ao
+  Google com um redirect para o login.
+- **Recibo → despesa** (item 8 do Word) — «Ler o recibo e preencher» na
+  despesa nova: o modelo copia o impresso, o `reviewRecibo` determinístico
+  valida (recusa moeda estrangeira, datas futuras, totais absurdos), a
+  categoria vem das regras da app, e nada grava sem a pessoa confirmar.
+  Leitura da invariante registada em `DECISOES.md`.
+- **Streak de registos** (item 9 do Word) — derivado do `createdAt` das
+  despesas do próprio, sem tabela nova; aparece no dashboard a partir de 2
+  dias; um dia ainda sem registo mostra-o em risco em vez de o apagar.
+
+**Por fazer / à espera do Tiago:** SSO (excluído por ele «par ajá»); as
+referências estéticas do ponto 2.1 do Word (precisa do gosto dele); registar o
+domínio no Google Search Console (só ele pode — passos enviados no chat);
+fundir o PR #46 quando ele disser.
 
 ---
 
@@ -21,9 +65,9 @@ mensal punha a carteira a desabar a cada venda contra um índice que nunca
 vendia — a *diferença* mostrada estava certa, errados eram os valores de que
 saía), o **corte do mês parcial** no "este mês vs o anterior" dos relatórios
 (a referência passa a contar até ao mesmo dia, com rótulo), e os seis pontos
-do documento de revisão da landing de 17/08. Ficaram por fazer os itens 8 e 9
-desse documento — recibo→despesa e streak — à espera de decisão do Tiago
-(secção "Decisões").
+do documento de revisão da landing de 17/08. Os itens 8 e 9 desse documento —
+recibo→despesa e streak — foram autorizados a 18/08 e estão feitos no PR #46
+(ver secção 0-novo).
 
 - **`src/lib/domain/janelas.ts`** — `desempenhoNaJanela`, sete períodos
   (1d, 7d, 15d, 1m, 3m, 6m, 1a) com a rentabilidade **ponderada no tempo** da

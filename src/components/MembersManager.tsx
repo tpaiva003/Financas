@@ -7,6 +7,7 @@ import {
   deleteMemberAction,
   grantSubmitterAction,
   revokeSubmitterAction,
+  cancelMemberInviteAction,
   linkMemberAccountAction,
   type ActionState,
 } from "@/app/(app)/actions";
@@ -28,9 +29,12 @@ export interface AccountOpt {
 export function MembersManager({
   members,
   accounts = [],
+  pendingInvites = {},
 }: {
   members: MemberOpt[];
   accounts?: AccountOpt[];
+  /** Participante → email do convite pendente (ainda por aceitar). */
+  pendingInvites?: Record<string, string>;
 }) {
   return (
     <ul className="card divide-y divide-hair2 p-2">
@@ -40,6 +44,7 @@ export function MembersManager({
           member={m}
           accounts={accounts}
           canDelete={members.length > 1}
+          inviteEmail={pendingInvites[m.id] ?? null}
         />
       ))}
     </ul>
@@ -52,10 +57,12 @@ function MemberRow({
   member,
   accounts,
   canDelete,
+  inviteEmail,
 }: {
   member: MemberOpt;
   accounts: AccountOpt[];
   canDelete: boolean;
+  inviteEmail: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [granting, setGranting] = useState(false);
@@ -102,6 +109,11 @@ function MemberRow({
           <div className="min-w-0">
             <p className="truncate text-[15px] text-fg">{member.name}</p>
             {member.email ? <p className="truncate font-mono text-[11px] text-fg-faint">{member.email}</p> : null}
+            {inviteEmail && !member.linkedUserId ? (
+              <p className="truncate text-[11px] text-fg-muted">
+                Convite enviado para {inviteEmail}, à espera do aceite.
+              </p>
+            ) : null}
             {delState.error ? <p role="alert" className="mt-0.5 text-[11px] text-debt">{delState.error}</p> : null}
           </div>
         </div>
@@ -110,13 +122,24 @@ function MemberRow({
             <span className="chip border-hair text-fg-muted">submete</span>
           ) : member.linkedUserId ? (
             <span className="chip border-credit/30 text-credit">tem acesso</span>
+          ) : inviteEmail ? (
+            <span className="chip border-hair text-fg-muted" title={`Convite enviado para ${inviteEmail}`}>
+              convidado
+            </span>
           ) : null}
           <button type="button" onClick={() => setEditing(true)} className="btn-ghost px-2.5 text-xs">Editar</button>
-          {/* Dar acesso de submissão a um participante sem conta. */}
-          {!member.linkedUserId ? (
+          {/* Dar acesso de submissão a um participante sem conta. Enquanto o
+              convite espera pelo aceite, o botão passa a ser cancelá-lo. */}
+          {!member.linkedUserId && !inviteEmail ? (
             <button type="button" onClick={() => setGranting((v) => !v)} className="btn-ghost px-2.5 text-xs">
               Dar acesso
             </button>
+          ) : null}
+          {inviteEmail && !member.linkedUserId ? (
+            <form action={cancelMemberInviteAction}>
+              <input type="hidden" name="memberId" value={member.id} />
+              <CancelInviteButton />
+            </form>
           ) : null}
           {isSubmitter ? (
             <form action={revokeSubmitterAction}>
@@ -177,6 +200,12 @@ function MemberRow({
           {grantState.error ? <p role="alert" className="mt-1 text-xs text-debt">{grantState.error}</p> : null}
         </form>
       ) : null}
+
+      {/* A resposta do convite fica visível depois de o formulário fechar: é
+          aqui que vive a ligação para passar em mão quando o email não sai. */}
+      {grantState.ok && grantState.message ? (
+        <p className="mt-2 break-all text-xs text-credit">{grantState.message}</p>
+      ) : null}
     </li>
   );
 }
@@ -198,6 +227,15 @@ function LinkButton() {
 function GrantButton() {
   const { pending } = useFormStatus();
   return <button type="submit" disabled={pending} className="btn-primary shrink-0 text-sm">{pending ? "A dar acesso…" : "Dar acesso"}</button>;
+}
+
+function CancelInviteButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="btn-ghost px-2.5 text-xs" title="Cancelar convite">
+      {pending ? "…" : "Cancelar convite"}
+    </button>
+  );
 }
 
 function RevokeButton() {
