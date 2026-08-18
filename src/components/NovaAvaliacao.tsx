@@ -59,6 +59,8 @@ export function NovaAvaliacao({ hoje }: { hoje: string }) {
         <Campo id="na-simbolo" nome="symbol" label="Símbolo (opcional)" mono placeholder="googl.us" />
       </div>
 
+      {/* O logo já não se pede: descobre-se sozinho a partir do nome, como
+          nos investimentos. Sem marca reconhecível ficam as iniciais. */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Campo
           id="na-data"
@@ -68,27 +70,18 @@ export function NovaAvaliacao({ hoje }: { hoje: string }) {
           valorInicial={hoje}
           ajuda="O dia em que a apontaste. Manda na ordem do funil."
         />
-        <Campo
-          id="na-marca"
-          nome="logoDomain"
-          label="Domínio da marca (opcional)"
-          mono
-          placeholder="abc.xyz"
-          ajuda="Só para o logo. Sem isto ficam as iniciais."
-        />
-      </div>
-
-      <div>
-        <label className="label" htmlFor="na-etapa">
-          Etapa
-        </label>
-        <select id="na-etapa" name="stage" defaultValue="radar" className="input">
-          {ETAPAS.map((e) => (
-            <option key={e} value={e}>
-              {ETAPA_LABEL[e]}
-            </option>
-          ))}
-        </select>
+        <div>
+          <label className="label" htmlFor="na-etapa">
+            Etapa
+          </label>
+          <select id="na-etapa" name="stage" defaultValue="radar" className="input">
+            {ETAPAS.map((e) => (
+              <option key={e} value={e}>
+                {ETAPA_LABEL[e]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div>

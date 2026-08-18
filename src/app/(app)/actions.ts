@@ -99,7 +99,6 @@ import {
   etapaSugerida,
   ETAPA_LABEL,
   assinatura,
-  dominioValido,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -3550,6 +3549,70 @@ export async function descobrirMarcasAction(
 }
 
 /**
+ * O domínio da marca para UMA empresa do funil, contra um prazo.
+ *
+ * É a mesma máquina dos investimentos — tabela de gestoras, depois o modelo,
+ * depois a verificação do ícone — chamada na hora em que a empresa entra no
+ * funil, para o logo aparecer sozinho: o campo manual saiu. Corre contra um
+ * prazo porque apontar uma empresa é um gesto rápido e um logo não vale dez
+ * segundos de espera; o que não chegar a tempo fica para o «Pôr logos».
+ */
+async function marcaComPrazo(nome: string): Promise<string | null> {
+  const prazo = new Promise<never[]>((res) => setTimeout(() => res([]), 6_000));
+  const encontradas = await Promise.race([descobrirMarcas([nome]).catch(() => []), prazo]);
+  return encontradas[0]?.dominio ?? null;
+}
+
+/**
+ * Descobrir e gravar a marca das empresas do funil que ainda não a têm.
+ *
+ * O par do `descobrirMarcasAction` dos investimentos, com as mesmas regras:
+ * aplica sem perguntar (um logo errado vê-se e apaga-se), e diz sempre quantos
+ * ficaram de fora.
+ */
+export async function descobrirMarcasFunilAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const linhas = (await repo.listValuations(ctx.space.id).catch(() => [])).filter(
+    (v) => !v.logoDomain,
+  );
+  if (linhas.length === 0) return { ok: true, message: "Todas já têm marca." };
+
+  // Nomes distintos: a mesma empresa com dois estudos é UMA pergunta ao modelo.
+  const nomes = [...new Set(linhas.map((v) => v.name))];
+  const encontradas = await descobrirMarcas(nomes).catch(() => []);
+  const porNome = new Map(encontradas.map((m) => [m.nome, m.dominio]));
+
+  let gravadas = 0;
+  for (const linha of linhas) {
+    const dominio = porNome.get(linha.name);
+    if (!dominio) continue;
+    try {
+      await repo.updateValuation(linha.id, ctx.space.id, { logoDomain: dominio });
+      gravadas += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a marca") };
+    }
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  const faltam = linhas.length - gravadas;
+  return {
+    ok: true,
+    message:
+      faltam > 0
+        ? `${gravadas} de ${linhas.length} com logo. ${faltam} sem marca reconhecível — essas ficam com as iniciais.`
+        : `${gravadas} com logo.`,
+  };
+}
+
+/**
  * Ir buscar o setor dos investimentos que ainda não o têm.
  *
  * Um lote de cada vez, e diz sempre quantos ficaram para trás: um resultado que
@@ -3801,6 +3864,8 @@ export async function guardarAvaliacaoAction(
       (v) => v.id === doFunil,
     );
     if (!existente) return { error: "Essa entrada do funil já não existe." };
+    // Uma linha ainda sem logo é uma segunda oportunidade de o descobrir.
+    const marcaNova = existente.logoDomain ? null : await marcaComPrazo(nome);
     try {
       await repo.setValuationEstudo(doFunil, ctx.space.id, estudo);
       await repo.updateValuation(doFunil, ctx.space.id, {
@@ -3810,6 +3875,7 @@ export async function guardarAvaliacaoAction(
         // As notas do ecrã só substituem as do funil quando há mesmo alguma
         // coisa escrita: um campo em branco não apaga o que lá estava.
         ...(notas ? { notes: notas } : {}),
+        ...(marcaNova ? { logoDomain: marcaNova } : {}),
       });
     } catch (e) {
       return { error: porqueNaoGravou(e, "a avaliação") };
@@ -3829,6 +3895,7 @@ export async function guardarAvaliacaoAction(
       stage: etapa,
       studyDate: hoje,
       notes: notas,
+      logoDomain: await marcaComPrazo(nome),
       estudo,
       createdBy: ctx.user.id,
     });
@@ -3874,11 +3941,9 @@ export async function criarAvaliacaoAction(
   const etapaBruta = String(formData.get("stage") ?? "");
   const etapa = etapaValida(etapaBruta) ? etapaBruta : "radar";
 
-  // O domínio da marca, para o logo, com a mesma validação dos investimentos:
-  // é ele que vai parar a um pedido feito pelo servidor.
-  const marcaBruta = String(formData.get("logoDomain") ?? "").trim();
-  const logoDomain = marcaBruta ? dominioValido(marcaBruta) : null;
-  if (marcaBruta && !logoDomain) return { error: "Esse domínio de marca não me parece válido." };
+  // O logo descobre-se sozinho, como nos investimentos — o campo manual saiu.
+  // Sem marca reconhecível ficam as iniciais, e o «Pôr logos» tenta mais tarde.
+  const logoDomain = await marcaComPrazo(nome);
 
   try {
     await getRepository().createValuation({
@@ -3901,7 +3966,7 @@ export async function criarAvaliacaoAction(
   return { ok: true, message: `"${nome}" ficou em "${ETAPA_LABEL[etapa]}".` };
 }
 
-/** Corrigir o que está escrito num cartão do funil: nome, símbolo, marca, notas. */
+/** Corrigir o que está escrito num cartão do funil: nome, símbolo, notas. */
 export async function editarAvaliacaoAction(
   _prev: ActionState,
   formData: FormData,
@@ -3920,7 +3985,10 @@ export async function editarAvaliacaoAction(
   );
   if (!existente) return { error: "Essa avaliação já não existe." };
 
-  const patch: { name?: string; symbol?: string | null; notes?: string | null; logoDomain?: string | null } = {};
+  // O logo já não se edita à mão: descobre-se sozinho (na criação e no
+  // «Pôr logos»), e um logo errado corrige-se por lá — não por um campo que
+  // pedia um domínio a quem só queria emendar uma nota.
+  const patch: { name?: string; symbol?: string | null; notes?: string | null } = {};
 
   const nome = String(formData.get("name") ?? "").trim();
   if (nome) patch.name = nome;
@@ -3931,15 +3999,6 @@ export async function editarAvaliacaoAction(
   }
   if (formData.has("notes")) {
     patch.notes = String(formData.get("notes") ?? "").trim() || null;
-  }
-  if (formData.has("logoDomain")) {
-    const m = String(formData.get("logoDomain") ?? "").trim();
-    if (!m) patch.logoDomain = null;
-    else {
-      const d = dominioValido(m);
-      if (!d) return { error: "Esse domínio de marca não me parece válido." };
-      patch.logoDomain = d;
-    }
   }
 
   try {

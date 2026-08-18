@@ -2912,3 +2912,12 @@ existentes, sem tabela nova: nada para migrar nem dessincronizar. Um dia ainda
 sem registo não apaga o streak às 00:01 — mostra-o em risco («é hoje que ele se
 mantém»), porque perder tudo à meia-noite desmotiva precisamente quem vinha
 registar. Só aparece a partir de 2 dias: «streak de 1» é ruído.
+
+### O logo do funil descobre-se sozinho; o campo manual saiu
+Os investimentos descobriam a marca sozinhos (tabela de gestoras → modelo →
+ícone verificado) e o funil pedia um «Domínio da marca» escrito à mão — e por
+isso os logos do funil funcionavam pior. O campo saiu dos três formulários; a
+descoberta corre na criação de cada entrada (com prazo de 6 s — apontar uma
+empresa é um gesto rápido e um logo não vale a espera) e há um «Pôr logos» no
+funil igual ao dos investimentos para apanhar o resto. Um logo errado
+apaga-se a redescobrir; o que não tem marca reconhecível fica com as iniciais.
