@@ -158,7 +158,21 @@ function mkExpense(e: {
 const HISTORY_START = "2025-07";
 /** Último mês do histórico; fica parcial, como um mês a decorrer. */
 const HISTORY_END = "2026-08";
-const PARTIAL_UNTIL_DAY = 5;
+/**
+ * Até que dia é que o mês a decorrer tem despesas.
+ *
+ * **Era 5, e o exemplo envelheceu.** Um mês a decorrer que pára ao dia 5 quando
+ * o calendário já vai no 18 não se lê como um mês a meio: lê-se como treze dias
+ * sem se gastar nada, e o ecrã da análise mostrava uma queda enorme contra o
+ * mês anterior. Depois de a referência passar a ser cortada nos mesmos dias
+ * (ver `buildMonthComparison`), a queda que sobrava era mesmo só falta de
+ * dados.
+ *
+ * Com 18 entram seis dos sete movimentos do padrão, o que dá um mês a decorrer
+ * com forma. É o preço de um exemplo com datas fixas: envelhece, e de vez em
+ * quando tem de se lhe pegar.
+ */
+const PARTIAL_UNTIL_DAY = 18;
 
 interface Recurring {
   day: number;
@@ -282,7 +296,7 @@ const QUOTES_START = "2025-07-01";
  * `isStale` (ver `domain/quotes.ts`) dá dois dias de folga, por isso uma série
  * que acaba aqui é considerada fresca e **a app desenha-se sem ir à rede**.
  */
-const QUOTES_END = "2026-08-11";
+const QUOTES_END = "2026-08-17";
 
 /**
  * Câmbio usado nos exemplos em dólares: unidades de USD por euro.

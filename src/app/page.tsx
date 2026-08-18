@@ -239,13 +239,23 @@ function FichaFlutuante({
   );
 }
 
-/** Arcos concêntricos por trás do aparelho, puramente decorativos. */
+/**
+ * Arcos concêntricos por trás do aparelho, puramente decorativos.
+ *
+ * **No azul da marca e não no cinzento do texto.** Em cinzento eram uma textura
+ * anónima: podiam estar em qualquer página de qualquer produto. O azul dos
+ * azulejos é a única cor que esta página tem, e usá-la aqui liga o fundo ao
+ * botão, ao halo e aos números destacados em vez de a deixar sozinha no canto.
+ *
+ * A opacidade sobe com a mudança porque o azul-tinta tem menos contraste contra
+ * o papel do que o preto: com os 0,1 de antes, em azul, não se via nada.
+ */
 function Arcos() {
   return (
     <svg
       aria-hidden
       viewBox="0 0 400 400"
-      className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-auto w-[150%] -translate-x-1/2 -translate-y-1/2 text-fg"
+      className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-auto w-[150%] -translate-x-1/2 -translate-y-1/2 text-marca-tinta"
     >
       {[120, 165, 200].map((r, i) => (
         <circle
@@ -255,8 +265,8 @@ function Arcos() {
           r={r}
           fill="none"
           stroke="currentColor"
-          strokeWidth="0.5"
-          opacity={0.1 - i * 0.025}
+          strokeWidth="0.75"
+          opacity={0.3 - i * 0.07}
         />
       ))}
     </svg>
@@ -342,20 +352,26 @@ const OUVE_SE = [
  * olhos.
  *
  * **O que está escrito no HTML continua a ser a lista.** O efeito é uma camada
- * de CSS por cima com duas formas: o anel em ecrã largo, e no telemóvel um
- * baralho de cartas em que o scroll troca as frases no mesmo sítio, com a
- * mesma cadência de paragens. Ambas exigem suporte a linhas de tempo de scroll
- * e ninguém a pedir menos movimento; fora disso lê-se a lista de sempre. Uma
- * secção onde cinco de seis frases só aparecem se o browser souber animar com
- * o scroll seria uma secção que esconde conteúdo.
+ * de CSS por cima com duas formas: o anel, em ecrã largo e com rato, e o
+ * baralho de cartas onde o scroll troca as frases no mesmo sítio, com a mesma
+ * cadência de paragens. O baralho serve o telemóvel e também os ecrãs largos
+ * de toque, porque o anel depende de 3D que alguns browsers de tablet não
+ * fazem bem. Ambas exigem suporte a linhas de tempo de scroll e ninguém a
+ * pedir menos movimento; fora disso lê-se a lista de sempre. Uma secção onde
+ * cinco de seis frases só aparecem se o browser souber animar com o scroll
+ * seria uma secção que esconde conteúdo.
  *
  * Por isso a lista **não** leva `Reveal group`: a revelação em cascata mexe no
  * `transform` de cada filho, que é precisamente onde o anel escreve a posição
  * de cada frase no círculo. Ganhava a revelação e o anel ficava achatado.
  */
 function OQueSeOuve() {
+  // Sem folga em baixo: o palco do anel já tem um terço de ecrã vazio por
+  // baixo do cartão — é o espaço por onde as frases rodam — e somar-lhe a
+  // margem desta secção mais a da seguinte dava quase meio ecrã de nada entre
+  // uma coisa e a outra.
   return (
-    <section className="wash relative isolate py-20 sm:py-28">
+    <section className="wash relative isolate pt-20 sm:pt-28">
       <div className="anel-cena">
         <div className="anel-palco">
           <div className="mx-auto w-full max-w-4xl px-6">
@@ -400,7 +416,7 @@ const AREAS_DETALHE = [
     k: "Dividir",
     t: "Dividir sem fazer contas",
     d: "Meias, percentagem, valor fixo ou quotas, e por despesa. Quem pagou é independente de como se divide. Tocas no saldo e vês exatamente as despesas que o compõem, até ao cêntimo. Acertas e fica a zero, com histórico.",
-    span: "sm:col-span-12 lg:col-span-7 lg:row-span-2",
+    span: "sm:col-span-12 lg:col-span-7",
   },
   {
     k: "Importar",
@@ -424,13 +440,13 @@ const AREAS_DETALHE = [
     k: "Património",
     t: "O que tens menos o que deves",
     d: "Contas, depósitos, imóveis, investimentos e dívidas na mesma conta. Ao crédito à habitação juntas a prestação e a taxa e ficas a saber a data do último pagamento e quanto pagas de juros até lá.",
-    span: "sm:col-span-6 lg:col-span-5",
+    span: "sm:col-span-6 lg:col-span-7",
   },
   {
     k: "FIRE",
     t: "O ano em que trabalhar é opcional",
     d: "O gasto anual a dividir pela taxa de levantamento segura dá o número. Com o que poupas por mês e o retorno esperado, sai quantos anos faltam. Em termos reais, já descontada a inflação, e com as regras ajustáveis: a dos 4% é um ponto de partida, não uma lei da física.",
-    span: "sm:col-span-6 lg:col-span-7",
+    span: "sm:col-span-6 lg:col-span-5",
   },
 ];
 
@@ -501,7 +517,12 @@ function ProvaImportar() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/importar" className="peca-browser flutua mx-auto hidden md:block">
+          <BrowserFrame
+            url="rachar.pt/importar"
+            href="#contacto"
+            accao="Quero isto para os meus extratos"
+            className="peca-browser flutua mx-auto hidden md:block"
+          >
             <Shot
               base="/landing/importar-desktop"
               alt={ALT_IMPORTAR}
@@ -582,7 +603,12 @@ function Investimentos() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/patrimonio/ativos" className="peca-browser flutua mx-auto hidden md:block">
+          <BrowserFrame
+            url="rachar.pt/patrimonio/ativos"
+            href="#contacto"
+            accao="Quero ver a minha carteira assim"
+            className="peca-browser flutua mx-auto hidden md:block"
+          >
             <Shot
               base="/landing/carteira-desktop"
               alt={ALT_CARTEIRA}
@@ -648,10 +674,18 @@ function PorqueEsta() {
           <div className="lg:sticky lg:top-28">
             <p className="eyebrow eyebrow-tick">Porquê esta</p>
             <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-              As apps de dividir contas falham sempre nos mesmos sítios.
+              As apps que toda a gente usa falham sempre nos mesmos sítios.
             </h2>
+            {/*
+              Direto quanto ao que elas fazem, sem dizer o nome de nenhuma.
+              Nomear era pedir um problema de marca por uma frase que não
+              acrescenta nada: quem já usou reconhece a lista à segunda linha,
+              e quem não usou não fica a saber mais por ler uma marca.
+            */}
             <p className="mt-4 text-[15px] text-fg-muted text-pretty">
-              Esta resolve-os, um a um.
+              Não as nomeamos — quem já dividiu uma conta sabe quais são. A
+              lista à direita é o que elas fazem, e o que esta faz em vez
+              disso.
             </p>
           </div>
         </Reveal>
@@ -664,7 +698,14 @@ function PorqueEsta() {
                 className="mt-2.5 h-px w-3 shrink-0 bg-fg-faint/40 transition-all duration-200 group-hover:w-4 group-hover:bg-debt/60"
               />
               <div>
-                <p className="text-[13px] leading-relaxed text-fg-faint">{v.eles}</p>
+                {/* "Elas" dito uma vez por linha, para as duas frases se
+                    lerem como um par e não como um parágrafo de duas alturas. */}
+                <p className="text-[13px] leading-relaxed text-fg-faint">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint/70">
+                    Elas
+                  </span>{" "}
+                  {v.eles}
+                </p>
                 <p className="mt-1 text-[15px] font-medium leading-relaxed text-fg text-pretty">
                   {v.nos}
                 </p>
@@ -702,7 +743,12 @@ function ProvaAnalise() {
               />
             </PhoneFrame>
           </div>
-          <BrowserFrame url="rachar.pt/relatorios" className="peca-browser flutua mx-auto hidden md:block">
+          <BrowserFrame
+            url="rachar.pt/relatorios"
+            href="#contacto"
+            accao="Quero ver as minhas contas assim"
+            className="peca-browser flutua mx-auto hidden md:block"
+          >
             <Shot
               base="/landing/analise-desktop"
               alt={ALT_ANALISE}

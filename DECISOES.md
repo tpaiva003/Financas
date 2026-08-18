@@ -2751,3 +2751,116 @@ entrar — e o `npm run shots` deixou de conseguir tirar capturas. As contas de
 exemplo passam a trazer a palavra-chave `demo1234` já definida
 (`seedPasswords()` no seed), **só nesse modo**: o caminho de produção não muda
 nada.
+
+## O mesmo feitio em todos os ecrãs, desta vez medido — 2026-08-17
+
+Uma revisão da landing contra a regra "uma peça com forma própria tem de ter a
+mesma forma no ecrã de toda a gente". A sessão de 2026-08-15 já tinha aprendido
+metade disto (as molduras passaram a escalar com a altura); faltava a outra
+metade, e estava escondida nos cartões das frases.
+
+**Não se discutiu com capturas de ecrã: mediu-se.** Dezasseis viewports, com
+rácios de aspeto diferentes e não só áreas diferentes, e em cada um o
+`getBoundingClientRect()` de cada peça. O rácio largura/altura é o defeito num
+número só: se ele se mexe entre viewports, há dois eixos a decidir cada um o
+seu.
+
+O que a medição disse, antes de mexer:
+
+| Peça | Rácio | Veredicto |
+|---|---|---|
+| Moldura do telemóvel | 0,4621 em **todos** os 16 | já estava certa |
+| Cartão do anel (1024→1080 de largura) | 1,7232 → 1,8214 | muda de feitio |
+| Cartão do baralho (360 de largura, 560→740 de altura) | 0,9606 → 0,8125 | muda de feitio |
+
+E o estrago que isso dava: **num telemóvel de 360x560 o cartão acabava 27px por
+baixo da borda do ecrã**, cortado — precisamente no tamanho onde a condição
+`min-height: 560px` julgava estar a proteger.
+
+A causa é a mesma nas duas linhas: **a altura vinha de um sítio e a largura de
+outro.** No baralho, `height: min(24rem, 58svh)` lia a altura da janela
+enquanto a largura vinha do texto. No anel, `--anel-raio: min(27rem, 40vw)`
+punha a largura a seguir a janela com a altura presa em `14rem`. Ninguém
+escreveu "estica isto"; a esticadela nasce da soma dos dois, que é porque
+sobrevive a uma revisão.
+
+A correção é estrutural e não um número afinado:
+
+- As frases deixam de ser `position: absolute; inset: 0` e passam a empilhar-se
+  na **mesma célula de uma grelha** (`grid-area: 1 / 1`). Continuam no mesmo
+  sítio, mas agora a altura da caixa é a **do cartão mais alto** — uma
+  propriedade do texto, não da janela. De caminho, isto arrumou um segundo
+  problema que a medição apanhou: a 1024 de largura o texto do anel já só tinha
+  4px até à borda do cartão, por a caixa ter 14rem escritos à mão.
+- O raio do anel passa a ser fixo (`27rem`). Verificado a 1024 de largura: os
+  cartões ocupam de 38 a 986, com folga dos dois lados e sem scroll lateral.
+- O cartão do baralho ganha `max-width: 34rem`. Num tablet chegava aos 672px e
+  ficava uma tarjeta baixa e comprida.
+
+**O anel em 3D passa a exigir `pointer: fine`.** Não é sobre o tamanho: é que o
+anel vive de `preserve-3d` com `backface-visibility`, e há browsers de Android
+que achatam o primeiro e enganam-se no segundo — as frases de trás apareceriam
+escritas ao contrário. Um tablet grande passava o teste da largura e chumbava o
+do 3D. O baralho passa a apanhá-los (`(max-width: 1023px) or (pointer: coarse)`)
+e faz o mesmo sem depender do GPU. As duas condições são exclusivas uma da
+outra, o que se verificou com o ponteiro emulado: iPad, Chromebook de toque e
+telemóvel vão todos ao baralho; 1024 com rato vai ao anel.
+
+Depois da correção, os mesmos 16 viewports: rácio constante dentro de cada
+largura, nada de texto fora do cartão, nada de cartão fora do ecrã. O pior caso
+(360x560) passou de **27px cortados** a **13,8px de folga**.
+
+Fica **`npm run medir`** (`scripts/medir-landing.mjs`), que repete a medição
+toda contra a app a servir e sai com código 1 se alguma peça mudar de forma. A
+verificação que vale é a das alturas: o mesmo viewport de largura com alturas
+diferentes: uma peça honesta não muda de forma quando só a altura da janela
+muda, e foi por aí que o baralho foi apanhado. Como precisa de um Chromium, há
+também `src/app/landing-proporcoes.test.ts` no `npm run test`, que garante que a
+regra continua escrita na folha de estilos — falha com as duas linhas antigas
+citadas pelo nome.
+
+## A carteira contra o índice também **num período**, e não só desde o início
+
+A comparação que existia responde a "valeu a pena?": aplica ao índice os mesmos
+reforços nas mesmas datas desde o primeiro movimento, e mostra a série mês a
+mês. Não responde a "como é que isto está a correr agora" — e as duas coisas
+podem ser verdade em sentidos opostos ao mesmo tempo: uma carteira que bateu o
+índice desde 2021 pode estar a perder para ele há três meses.
+
+Ficam sete janelas (1 dia, 7, 15, 1 mês, 3, 6, 1 ano), cada uma com a
+rentabilidade da carteira, a do índice e a diferença em pontos percentuais.
+
+**A rentabilidade da carteira é ponderada no tempo, e isso não é um detalhe de
+implementação.** A conta óbvia — `valor_hoje / valor_no_início` — trata um
+reforço como se fosse lucro. Quem meteu 10 000 € a meio do mês vê a carteira
+subir 10 000 € e a conta anuncia-lhe uma subida que ninguém ganhou. E o erro é
+**maior** nas janelas curtas, não menor: quanto mais curto o período, mais um
+reforço pesa contra o que o mercado teve tempo de fazer. No caso do teste — 10%
+de subida, reforço a dobrar a carteira, mais 10% — a resposta certa é 21%, a
+conta ingénua dá 131% e pôr o reforço na base do troço anterior dá 15,5%.
+
+Daí os **dois pontos no dia do movimento**: o primeiro tira o dinheiro que
+entrou e fecha com ele o troço que vinha de trás, o segundo serve de base ao
+troço seguinte já com o dinheiro novo lá dentro. É o mesmo padrão que o
+`positionValuePoints` já usava, e o `timeWeightedReturn` ignora pares na mesma
+data precisamente para isto funcionar.
+
+**Duas recusas, ambas com teste que chumba contra a versão sem elas:**
+
+- **Uma janela mais velha do que a carteira não se desenha.** "1 ano: +4%" numa
+  carteira de três meses mede um trimestre e diz um ano, e não há como quem lê
+  desconfiar da frase.
+- **As duas pontas no mesmo fecho não dão 0,0% — dão nada.** Numa
+  segunda-feira, com o último fecho na sexta, tanto o início como o fim de uma
+  janela de um dia recuam para sexta. A conta dava +0,0% dos dois lados, que se
+  lê como "esteve parado" quando o que se passa é que ainda não há dia nenhum
+  para comparar. Acontece **todas as segundas**, e em qualquer feriado. Para o
+  detetar foi preciso o `diaDoPreco`, que devolve *qual* é o fecho que o
+  `precoNoDia` usaria; o `precoNoDia` passa a assentar nele, sem mudar de
+  comportamento.
+
+Também se tirou do `carteiraEm` a reconstrução dos preços de todos os bens, que
+corria a cada chamada. Com a série mensal era uma vez por mês; com as janelas
+passou a ser em cada ponta de cada período e em cada dia de movimento lá dentro,
+vezes dois índices. Agora calcula-se uma vez e o valor de cada dia fica em
+cache — os dois índices e as sete janelas perguntam pelos mesmos dias.

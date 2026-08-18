@@ -16,7 +16,9 @@
 import { getRepository } from "@/lib/data";
 import {
   BENCHMARKS,
+  JANELAS,
   buildPosition,
+  desempenhoNaJanela,
   normalizeSymbol,
   quotesToPrices,
   precoNoDia,
@@ -25,6 +27,7 @@ import {
   xirr,
   type BenchmarkComparison,
   type CashFlow,
+  type DesempenhoDaJanela,
   type PontoDaComparacao,
   type Trade,
 } from "@/lib/domain";
@@ -43,6 +46,14 @@ export interface BenchmarkResult {
    * é perder terreno. O mesmo número.
    */
   serie: PontoDaComparacao[];
+  /**
+   * O mesmo confronto em períodos fechados: 1 dia, 7, 15, 1 mês, 3, 6, 1 ano.
+   *
+   * A série mensal desde o início responde a "valeu a pena?"; estas respondem a
+   * "como é que está a correr agora", que é outra pergunta. Uma carteira pode
+   * estar à frente do índice desde 2021 e atrás dele há três meses.
+   */
+  janelas: DesempenhoDaJanela[];
   /** Porque é que não deu, quando não dá. */
   problem: string | null;
   /** Data da cotação mais recente usada. */
@@ -248,6 +259,68 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
   if (flows.length === 0 || !firstDate) return null;
 
   const today = new Date().toISOString().slice(0, 10);
+
+  /**
+   * As cotações de cada bem convertidas para euros, calculadas **uma vez**.
+   *
+   * Isto vivia dentro do `carteiraEm`, que corria uma vez por mês de série. Com
+   * as janelas passou a correr também em cada ponta de cada período e em cada
+   * dia de movimento lá dentro, vezes dois índices — e reconstruir o histórico
+   * de preços de todos os bens a cada chamada deixou de ser um pormenor.
+   *
+   * A razão contra o último fecho aplicada ao preço em euros de hoje é a mesma
+   * conversão que a reconstrução do património já usa: é o que faz a moeda
+   * desaparecer sem precisar do câmbio de cada dia.
+   */
+  const precosPorBem: { movimentos: Trade[]; precos: Record<string, number> }[] = [];
+  let algumBemSemCotacoes = false;
+  for (const { bem, movimentos } of comparaveis) {
+    const simbolo = normalizeSymbol(String(bem.symbol ?? ""));
+    const guardadas = simbolo ? (cotacoesPorSimbolo.get(simbolo) ?? []) : [];
+    const ultima = guardadas.at(-1);
+    if (!ultima || ultima.closeCents <= 0 || !bem.unitPriceCents) {
+      algumBemSemCotacoes = true;
+      break;
+    }
+    const emEurosPorFecho = bem.unitPriceCents / ultima.closeCents;
+    const precos: Record<string, number> = {};
+    for (const q of guardadas) precos[q.date] = q.closeCents * emEurosPorFecho;
+    precosPorBem.push({ movimentos, precos });
+  }
+
+  /**
+   * O que a carteira valia num dia, ou `null` quando não se consegue saber.
+   *
+   * Um bem sem cotações nesse dia tira o dia inteiro: uma carteira meia contada
+   * contra um índice inteiro não é comparação. O resultado guarda-se por dia
+   * porque os dois índices e as sete janelas perguntam pelos mesmos dias.
+   */
+  const carteiraPorDia = new Map<string, number | null>();
+  const carteiraEm = (dia: string): number | null => {
+    const jaSabido = carteiraPorDia.get(dia);
+    if (jaSabido !== undefined) return jaSabido;
+
+    let valor: number | null = null;
+    if (!algumBemSemCotacoes) {
+      let total = 0;
+      let completo = true;
+      for (const { movimentos, precos } of precosPorBem) {
+        const preco = precoNoDia(precos, dia);
+        if (preco === null) {
+          completo = false;
+          break;
+        }
+        // As unidades que havia naquele dia, dos movimentos até lá.
+        const ate = movimentos.filter((m) => m.date <= dia);
+        if (ate.length === 0) continue;
+        total += buildPosition(ate).quantity * preco;
+      }
+      if (completo) valor = Math.round(total);
+    }
+    carteiraPorDia.set(dia, valor);
+    return valor;
+  };
+
   // Só as entradas de dinheiro compram unidades do índice. As saídas (vendas,
   // dividendos) são dinheiro que deixou de estar investido dos dois lados.
   const benchmarks = await Promise.all(
@@ -273,6 +346,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
           description: b.description,
           comparison: null,
           serie: [],
+          janelas: [],
           problem: series?.problem ?? "Sem cotações para comparar.",
           lastDate: null,
           symbol: null,
@@ -297,32 +371,35 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
        * uma carteira meia contada contra um índice inteiro não é comparação.
        */
       const serie = serieDaComparacao({
-        fluxos: flows.filter((f) => f.amountCents > 0),
+        // **Todos** os fluxos, e não só as entradas. As saídas tiram unidades
+        // ao índice e são somadas de volta aos dois lados lá dentro; filtrá-las
+        // aqui deixava a carteira a cair sozinha em cada venda.
+        fluxos: flows,
         precosDoIndice: prices,
         de: firstDate!,
         ate: today,
-        carteiraEm: (dia) => {
-          let total = 0;
-          for (const { bem, movimentos } of comparaveis) {
-            const simbolo = normalizeSymbol(String(bem.symbol ?? ""));
-            const guardadas = simbolo ? (cotacoesPorSimbolo.get(simbolo) ?? []) : [];
-            const ultima = guardadas.at(-1);
-            if (!ultima || ultima.closeCents <= 0 || !bem.unitPriceCents) return null;
-
-            const emEurosPorFecho = bem.unitPriceCents / ultima.closeCents;
-            const precos: Record<string, number> = {};
-            for (const q of guardadas) precos[q.date] = q.closeCents * emEurosPorFecho;
-            const preco = precoNoDia(precos, dia);
-            if (preco === null) return null;
-
-            // As unidades que havia naquele dia, dos movimentos até lá.
-            const ate = movimentos.filter((m) => m.date <= dia);
-            if (ate.length === 0) continue;
-            total += buildPosition(ate).quantity * preco;
-          }
-          return Math.round(total);
-        },
+        carteiraEm,
       });
+
+      /**
+       * O mesmo confronto em períodos fechados.
+       *
+       * Os fluxos vão **todos**, e não só as entradas como na série mensal. Ali
+       * as saídas ficam de fora porque não compram unidades do índice; aqui
+       * medem-se troços de rentabilidade da carteira, e uma venda que tira
+       * dinheiro sem ser prejuízo tem de descer a base do troço seguinte —
+       * senão lê-se como uma queda que não houve.
+       */
+      const janelas = JANELAS.map((janela) =>
+        desempenhoNaJanela({
+          janela,
+          ate: today,
+          primeiroDia: firstDate!,
+          carteiraEm,
+          precosDoIndice: prices,
+          fluxos: flows,
+        }),
+      );
 
       /**
        * Porque é que não há comparação, dito com precisão.
@@ -351,6 +428,7 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
         description: b.description,
         comparison,
         serie,
+        janelas,
         problem,
         lastDate: series.lastDate,
         symbol: series.symbol,

@@ -576,7 +576,10 @@
    * vale a pena, porque não obriga a manter um segundo caminho em JavaScript.
    */
   @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+    /* `pointer: fine` além da largura: um tablet deitado tem 1024px e continua
+       a ser um dedo, e animação presa ao scroll num ecrã de toque luta com o
+       scroll do próprio browser. */
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (pointer: fine) {
       @keyframes flutuar {
         from {
           transform: translateY(2.2rem);
@@ -626,8 +629,15 @@
      * com o título e o anel lá dentro: num ecrã mesmo baixo, o cartão da
      * frente ia bater no parágrafo de cima. Verificado a 640 de altura com
      * folga; o limite é a rede de segurança para baixo disso.
+     *
+     * O `pointer: fine` não é sobre o tamanho do ecrã, é sobre o 3D. Este anel
+     * vive de `preserve-3d` com `backface-visibility`, e há browsers de
+     * Android que achatam o primeiro e enganam-se no segundo — as costas das
+     * frases de trás apareciam escritas ao contrário. Um tablet grande passa o
+     * teste da largura e chumbava o do 3D. Com o ponteiro na condição, quem
+     * toca no ecrã fica com o baralho, que faz o mesmo sem depender do GPU.
      */
-    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (min-height: 600px) {
+    @media (prefers-reduced-motion: no-preference) and (pointer: fine) and (min-width: 1024px) and (min-height: 600px) {
       .anel-cena {
         /* Alto de propósito: é este comprimento que dá o curso ao scroll.
            Seis paragens em 300vh dá meio ecrã de rolo por frase, que é o que
@@ -650,7 +660,14 @@
       }
 
       .anel {
-        position: relative;
+        /*
+         * As seis no mesmo sítio, empilhadas pela grelha e não por
+         * `position: absolute`. A diferença não é de estilo: com `inset: 0` a
+         * altura dos cartões era a da caixa, e a caixa tinha um número fixo lá
+         * escrito; assim a altura passa a ser a da frase mais alta. O texto
+         * deixa de comer a margem interior e ninguém tem de adivinhar 14rem.
+         */
+        display: grid;
         /* Em anel não há coluna, logo não há espaçamento de coluna. O centro
            tem de bater certo com o ponto de fuga do palco, senão o anel roda
            torto e a frase da frente aparece de lado. */
@@ -660,10 +677,27 @@
          * do círculo, e a corda desse arco mede exatamente o raio. Daí a
          * largura ser o raio menos a folga entre vizinhas. Mexer num sem mexer
          * no outro dá cartões sobrepostos ou um anel com buracos.
+         *
+         * O raio é fixo de propósito. Quando era `min(27rem, 40vw)`, a largura
+         * do cartão seguia a janela e a altura não, e o cartão mudava de forma
+         * entre os 1024 e os 1080 de largura — o mesmo desenho com dois
+         * feitios, que é o defeito que esta secção existe para não ter.
          */
-        --anel-raio: min(27rem, 40vw);
+        --anel-raio: 27rem;
+        /*
+         * Quanto se apagam as frases que não estão de frente. Vive no anel e
+         * não em cada frase de propósito: herda-se para as seis, e uma
+         * declaração na própria frase ganhava sempre à do tema por ser mais
+         * específica — o claro nunca chegava a aplicar-se.
+         *
+         * Sobre papel apaga-se mais. O mesmo valor dá resultados opostos nos
+         * dois temas: texto claro sobre fundo escuro desaparece, texto quase
+         * preto sobre papel continua a ler-se — e volta o defeito que isto veio
+         * corrigir, com as frases de lado a parecerem mal formatadas em vez de
+         * estarem ao longe.
+         */
+        --anel-apagado: 0.14;
         width: calc(var(--anel-raio) - 1.5rem);
-        height: 14rem;
         transform-style: preserve-3d;
         animation: girar-anel linear both;
         animation-timeline: --anel;
@@ -720,8 +754,9 @@
       }
 
       .anel-frase {
-        position: absolute;
-        inset: 0;
+        /* Todas na mesma célula: é isto que as põe no mesmo sítio e, ao mesmo
+           tempo, dá à grelha a altura da mais alta. */
+        grid-area: 1 / 1;
         display: grid;
         align-content: center;
         gap: 0.75rem;
@@ -734,6 +769,149 @@
         transform: rotateY(calc(var(--i) * 60deg)) translateZ(var(--anel-raio));
         /* Sem isto viam-se as costas das três de trás, escritas ao contrário. */
         backface-visibility: hidden;
+
+        /*
+         * **Só a frase da frente é que se lê.**
+         *
+         * As duas vizinhas estão a 60 graus e a perspetiva encolhe-lhes o
+         * texto na horizontal. À distância a que ficavam — legíveis, mas
+         * espremidas — não se liam como estando de lado: liam-se como texto
+         * mal formatado, e o defeito aparente era da tipografia e não do
+         * ângulo. Uma peça que parece partida chama mais atenção do que a
+         * frase que está mesmo a ser mostrada.
+         *
+         * Apagá-las resolve as duas coisas: deixam de competir com a da
+         * frente e passam a ler-se como o que são, profundidade. Não se
+         * escondem de todo (`visibility` ou `opacity: 0`) porque o anel
+         * perdia o volume e ficava um cartão a aparecer e a desaparecer no
+         * escuro.
+         *
+         * Cada uma tem a sua série de fotogramas porque o destaque de cada
+         * frase acontece num troço diferente do mesmo rolo — a de índice `i`
+         * está de frente entre os 18i% e os 18i+8%, que são as mesmas paragens
+         * do `girar-anel` aqui em cima. Mexer numa obriga a mexer na outra.
+         *
+         * Os desvanecimentos **sobrepõem-se de propósito**. Com fades curtos,
+         * a que saía já estava apagada quando a seguinte começava a acender, e
+         * a meio de cada passagem o palco ficava um instante às escuras — um
+         * pisca-pisca a cada frase. Agora cruzam-se a meio caminho.
+         */
+        animation: anel-destaque-0 linear both;
+        animation-timeline: --anel;
+        animation-range: contain 0% contain 100%;
+      }
+
+      @keyframes anel-destaque-0 {
+        0%,
+        8% {
+          opacity: 1;
+        }
+        17%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-1 {
+        0%,
+        9% {
+          opacity: var(--anel-apagado);
+        }
+        18%,
+        26% {
+          opacity: 1;
+        }
+        35%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-2 {
+        0%,
+        27% {
+          opacity: var(--anel-apagado);
+        }
+        36%,
+        44% {
+          opacity: 1;
+        }
+        53%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-3 {
+        0%,
+        45% {
+          opacity: var(--anel-apagado);
+        }
+        54%,
+        62% {
+          opacity: 1;
+        }
+        71%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-4 {
+        0%,
+        63% {
+          opacity: var(--anel-apagado);
+        }
+        72%,
+        80% {
+          opacity: 1;
+        }
+        89%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-5 {
+        0%,
+        81% {
+          opacity: var(--anel-apagado);
+        }
+        90%,
+        98% {
+          opacity: 1;
+        }
+      }
+
+      /*
+       * Sobre papel apaga-se mais.
+       *
+       * O mesmo 0,14 dá resultados opostos nos dois temas: texto claro sobre
+       * fundo escuro desaparece, texto quase preto sobre papel continua a
+       * ler-se — e volta o defeito que isto veio corrigir, com as frases de
+       * lado a parecerem mal formatadas em vez de estarem ao longe.
+       */
+      html[data-theme="light"] .anel {
+        --anel-apagado: 0.06;
+      }
+
+      .anel-frase:nth-child(1) {
+        animation-name: anel-destaque-0;
+      }
+      .anel-frase:nth-child(2) {
+        animation-name: anel-destaque-1;
+      }
+      .anel-frase:nth-child(3) {
+        animation-name: anel-destaque-2;
+      }
+      .anel-frase:nth-child(4) {
+        animation-name: anel-destaque-3;
+      }
+      .anel-frase:nth-child(5) {
+        animation-name: anel-destaque-4;
+      }
+      .anel-frase:nth-child(6) {
+        animation-name: anel-destaque-5;
       }
 
       .anel-frase-texto {
@@ -749,8 +927,13 @@
      * pela seguinte, com um fundido curto na passagem. A altura mínima é a
      * rede de segurança dos telemóveis em paisagem, onde o cartão não cabia
      * inteiro com o título por cima.
+     *
+     * O `pointer: coarse` traz para aqui os ecrãs largos de toque, que o anel
+     * já não quer por causa do 3D. As duas condições são exclusivas uma da
+     * outra — o anel pede ponteiro fino E 1024 para cima, este pede estreito
+     * OU toque — por isso nunca há um viewport onde as duas peguem.
      */
-    @media (prefers-reduced-motion: no-preference) and (max-width: 1023px) and (min-height: 560px) {
+    @media (prefers-reduced-motion: no-preference) and ((max-width: 1023px) or (pointer: coarse)) and (min-height: 560px) {
       .anel-cena {
         /* O mesmo curso do anel: meio ecrã de rolo por frase. */
         height: 320vh;
@@ -770,11 +953,22 @@
       }
 
       .anel {
-        position: relative;
+        /*
+         * As seis no mesmo sítio, pela grelha. A altura do baralho passa a ser
+         * a do cartão mais alto e mais nada.
+         *
+         * Era `min(24rem, 58svh)`: a altura vinha da janela e a largura vinha
+         * do texto, dois eixos a decidir cada um o seu, e o cartão mudava de
+         * feitio de telemóvel para telemóvel. Num ecrã de 560 de altura a
+         * conta dava 325px e o fundo do cartão ficava 27px por baixo da borda
+         * — cortado, exatamente onde a rede de segurança devia ter apanhado.
+         */
+        display: grid;
         margin-top: 2.5rem;
-        /* A altura do baralho é a do cartão mais alto: a frase mais comprida
-           com a resposta mais comprida, verificada a 360px de largura. */
-        height: min(24rem, 58svh);
+        /* Num tablet o cartão chegava aos 672px de largura e ficava uma
+           tarjeta baixa e comprida. O texto não precisa de tanta linha. */
+        max-width: 34rem;
+        margin-inline: auto;
       }
 
       .anel > li + li {
@@ -782,8 +976,7 @@
       }
 
       .anel-frase {
-        position: absolute;
-        inset: 0;
+        grid-area: 1 / 1;
         display: grid;
         align-content: center;
         padding: 1.75rem 1.5rem;

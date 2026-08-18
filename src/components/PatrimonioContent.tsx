@@ -50,6 +50,7 @@ import {
 } from "@/lib/domain";
 import { FocoPatrimonio } from "@/components/FocoPatrimonio";
 import { GraficoContraIndice } from "@/components/GraficoContraIndice";
+import { JanelasContraIndice } from "@/components/JanelasContraIndice";
 import { FireCalculator } from "@/components/FireCalculator";
 import { PlanoAviso } from "@/components/PlanoAviso";
 import { AssetForm } from "@/components/AssetForm";
@@ -1144,6 +1145,23 @@ async function PortfolioReturnSection({
                   {b.comparison.differenceCents >= 0
                     ? "Estás à frente."
                     : "Estás atrás."}
+                  {/*
+                    Sem esta frase, os dois valores contradizem o "Vale hoje"
+                    logo acima e não há nada a explicar a diferença. Ambos
+                    contam o dinheiro que já saiu para a conta, porque o índice
+                    levou com as mesmas saídas nas mesmas datas — e sem isso o
+                    valor dele chega a sair negativo em quem vendeu com lucro.
+                  */}
+                  {b.comparison.withdrawnCents > 0 ? (
+                    <>
+                      {" "}
+                      Os dois incluem os{" "}
+                      <span className="tnum">
+                        {formatCents(b.comparison.withdrawnCents)}
+                      </span>{" "}
+                      que já voltaram de vendas e dividendos.
+                    </>
+                  ) : null}
                 </p>
               ) : (
                 <p className="mt-0.5 text-xs text-fg-faint">{b.problem}</p>
@@ -1152,6 +1170,8 @@ async function PortfolioReturnSection({
               {b.comparison && b.serie.length >= 2 ? (
                 <GraficoContraIndice pontos={b.serie} label={b.label} />
               ) : null}
+              {/* "Valeu a pena?" está acima; isto responde a "e agora?". */}
+              <JanelasContraIndice janelas={b.janelas} label={b.label} />
               <p className="mt-0.5 text-[11px] text-fg-faint">
                 {b.description}
                 {b.symbol && b.lastDate

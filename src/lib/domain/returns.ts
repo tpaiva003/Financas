@@ -152,12 +152,28 @@ export function annualize(totalReturnPct: number, from: string, to: string): num
 }
 
 export interface BenchmarkComparison {
-  /** Valor que a carteira teria se o mesmo dinheiro tivesse ido para o índice. */
+  /**
+   * O que o mesmo dinheiro valeria hoje no índice: as unidades que sobraram
+   * **mais o dinheiro que se foi tirando** (ver `withdrawnCents`).
+   */
   benchmarkValueCents: number;
-  /** Total investido (soma das entradas). */
+  /**
+   * Total **posto**, e não o posto menos o tirado.
+   *
+   * Era líquido, e isso fazia duas coisas más de uma vez: numa carteira que
+   * vendeu mais do que comprou dava zero ou negativo, e as duas percentagens
+   * desapareciam por divisão impossível; numa que vendeu quase tudo dava um
+   * denominador minúsculo e percentagens de centenas por cento.
+   */
   investedCents: number;
-  /** Valor real da carteira. */
+  /**
+   * O que a carteira vale hoje: as posições abertas **mais o dinheiro que
+   * voltou** das vendas e dos dividendos. É o par do `benchmarkValueCents`, e
+   * tem de incluir o mesmo para os dois serem comparáveis.
+   */
   portfolioValueCents: number;
+  /** Dinheiro que saiu do investimento — vendas e dividendos — pelo caminho. */
+  withdrawnCents: number;
   /** Carteira menos índice. Positivo = bateste o índice. */
   differenceCents: number;
   /** Rentabilidade da carteira sobre o investido, em percentagem. */
@@ -173,7 +189,26 @@ export interface BenchmarkComparison {
  * que a maior parte do dinheiro pode ter entrado no último mês, e nesse caso os
  * 20% do índice nunca estiveram disponíveis para esse dinheiro.
  *
+ * ## O dinheiro que sai tem de aparecer dos dois lados
+ *
+ * As vendas e os dividendos são fluxos negativos: tiram unidades ao índice tal
+ * como tiraram dinheiro à carteira. Só que a carteira **recebeu esse dinheiro**
+ * e o índice, na conta antiga, não recebia nada — o valor dele era só o das
+ * unidades que sobravam.
+ *
+ * Numa carteira que bate o índice e realiza o ganho, isso rebenta: vender por
+ * 20 000 € o que custou 10 000 € tira ao índice mais unidades do que lá tinham
+ * entrado, e o "valor no índice" sai **negativo**. Não é um caso exótico — é o
+ * caso bom, o de quem ganhou. Com posições fechadas na carteira, acontece.
+ *
+ * Somar o dinheiro retirado aos dois lados devolve os dois números ao mundo
+ * real. **A diferença entre eles não muda** (é a mesma parcela dos dois lados),
+ * e por isso o "estás atrás X €" que já se mostrava estava certo — o que estava
+ * errado eram os dois valores de que ele saía.
+ *
  * @param prices cotações do índice por data, em cêntimos.
+ * @param portfolioValueCents valor das posições **abertas**. O dinheiro que já
+ *   voltou é somado aqui dentro, a partir dos próprios fluxos.
  */
 export function simulateBenchmark(
   flows: CashFlow[],
@@ -186,6 +221,7 @@ export function simulateBenchmark(
 
   let units = 0;
   let investedCents = 0;
+  let withdrawnCents = 0;
 
   for (const f of [...flows].sort((a, b) => toTime(a.date) - toTime(b.date))) {
     const price = priceOn(prices, f.date);
@@ -203,19 +239,24 @@ export function simulateBenchmark(
      */
     if (price === null || price <= 0) return null;
     units += f.amountCents / price;
-    investedCents += f.amountCents;
+    if (f.amountCents >= 0) investedCents += f.amountCents;
+    else withdrawnCents += -f.amountCents;
   }
 
-  const benchmarkValueCents = Math.round(units * finalPrice);
+  // As unidades que sobraram, mais o dinheiro que se foi tirando pelo caminho.
+  const benchmarkTotalCents = Math.round(units * finalPrice) + withdrawnCents;
+  const portfolioTotalCents = portfolioValueCents + withdrawnCents;
+
   return {
-    benchmarkValueCents,
+    benchmarkValueCents: benchmarkTotalCents,
     investedCents,
-    portfolioValueCents,
-    differenceCents: portfolioValueCents - benchmarkValueCents,
+    portfolioValueCents: portfolioTotalCents,
+    withdrawnCents,
+    differenceCents: portfolioTotalCents - benchmarkTotalCents,
     portfolioReturnPct:
-      investedCents > 0 ? ((portfolioValueCents - investedCents) / investedCents) * 100 : null,
+      investedCents > 0 ? ((portfolioTotalCents - investedCents) / investedCents) * 100 : null,
     benchmarkReturnPct:
-      investedCents > 0 ? ((benchmarkValueCents - investedCents) / investedCents) * 100 : null,
+      investedCents > 0 ? ((benchmarkTotalCents - investedCents) / investedCents) * 100 : null,
   };
 }
 
