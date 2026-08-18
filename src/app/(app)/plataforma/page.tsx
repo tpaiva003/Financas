@@ -52,6 +52,12 @@ export default async function PlataformaPage() {
   const accounts = await getRepository()
     .listAppUsers()
     .catch(() => []);
+  // A fila de espera do registo. Quem espera primeiro aparece primeiro: a
+  // ordem de chegada é a promessa que a fila faz.
+  const fila = await getRepository()
+    .listWaitlist()
+    .catch(() => []);
+  const porConvidar = fila.filter((w) => !w.invitedAt);
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
 
   /**
@@ -190,6 +196,45 @@ export default async function PlataformaPage() {
             <p className="mt-2 text-xs text-fg-faint">
               As contas base (as tuas e da Clara) vêm das variáveis de ambiente e
               não se removem aqui.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="eyebrow mb-3">
+              Fila de espera{porConvidar.length > 0 ? ` · ${porConvidar.length} à espera` : ""}
+            </h3>
+            {fila.length === 0 ? (
+              <p className="rounded-xl border border-hair2 p-6 text-center text-sm text-fg-muted">
+                Ninguém na fila. As entradas chegam da landing e da porta
+                fechada do registo.
+              </p>
+            ) : (
+              <ul className="divide-y divide-hair2 rounded-xl border border-hair2">
+                {fila.map((w) => (
+                  <li key={w.email} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-fg">{w.email}</p>
+                      <p className="text-xs text-fg-faint">
+                        {w.name ? `${w.name} · ` : ""}
+                        {w.source ?? "?"} · {w.createdAt.slice(0, 10)}
+                      </p>
+                    </div>
+                    {w.invitedAt ? (
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-credit">
+                        convidada {w.invitedAt.slice(0, 10)}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-fg-faint">
+                        à espera
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-fg-faint">
+              Para convidar alguém da fila, usa o «Dar acesso a alguém» aqui em
+              cima com o mesmo email — a fila marca sozinha que o convite saiu.
             </p>
           </div>
         </div>

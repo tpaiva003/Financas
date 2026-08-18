@@ -38,7 +38,7 @@ export async function generateDueRecurring(spaceId: string, asOf?: string): Prom
 
     for (const date of occurrences) {
       try {
-        if (await repo.recurringExpenseExists(t.id, date)) continue;
+        if (await repo.recurringExpenseExists(t.id, t.spaceId, date)) continue;
         await repo.createExpense({
           spaceId: t.spaceId,
           description: t.description,

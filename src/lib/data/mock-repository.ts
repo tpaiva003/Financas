@@ -254,13 +254,17 @@ export class MockRepository implements Repository {
     store.members = store.members.filter((m) => !(m.id === id && m.spaceId === spaceId));
   }
 
-  async countMemberActivity(memberId: string): Promise<number> {
+  async countMemberActivity(memberId: string, spaceId: string): Promise<number> {
     const store = getStore();
     const exp = store.expenses.filter(
-      (e) => !e.deletedAt && (e.payerId === memberId || e.ownerId === memberId),
+      (e) =>
+        e.spaceId === spaceId &&
+        !e.deletedAt &&
+        (e.payerId === memberId || e.ownerId === memberId),
     ).length;
     const set = store.settlements.filter(
-      (s) => s.fromUserId === memberId || s.toUserId === memberId,
+      (s) =>
+        s.spaceId === spaceId && (s.fromUserId === memberId || s.toUserId === memberId),
     ).length;
     return exp + set;
   }
@@ -451,9 +455,17 @@ export class MockRepository implements Repository {
     store.recurring = store.recurring.filter((r) => !(r.id === id && r.spaceId === spaceId));
   }
 
-  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+  async recurringExpenseExists(
+    recurringId: string,
+    spaceId: string,
+    transactionDate: string,
+  ): Promise<boolean> {
     return getStore().expenses.some(
-      (e) => e.recurringId === recurringId && e.transactionDate === transactionDate && !e.deletedAt,
+      (e) =>
+        e.recurringId === recurringId &&
+        e.spaceId === spaceId &&
+        e.transactionDate === transactionDate &&
+        !e.deletedAt,
     );
   }
 
@@ -664,6 +676,12 @@ export class MockRepository implements Repository {
 
   async listWaitlist(): Promise<WaitlistEntry[]> {
     return [...getStore().waitlist];
+  }
+
+  async markWaitlistInvited(email: string, atISO: string): Promise<void> {
+    const e = email.trim().toLowerCase();
+    const w = getStore().waitlist.find((x) => x.email === e);
+    if (w) w.invitedAt = atISO;
   }
 
   async listAppUsers(): Promise<AppUser[]> {

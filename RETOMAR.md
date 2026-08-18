@@ -3,22 +3,27 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-18. Duas frentes em paralelo: o **back end**
-> (posições fechadas e separador decimal já em main) e a **landing pública**
-> (branch `claude/rachar-landing-page-zdliyf`). O outro agente está a arrancar
-> o **modo demo** (contas com ações limitadas) — ver nota na secção 1.
+> Última atualização: 2026-08-18. O **PR #45 foi integrado e está em produção**
+> (www.rachar.pt, merge `5a8a93e`): as janelas da carteira contra os índices,
+> dois erros de cálculo com vendas corrigidos, o corte do mês parcial nos
+> relatórios e a revisão da landing (secções 0 e 0.1). Este branch
+> (`claude/repository-review-uttqoc`, PR #43) traz o **modo demo self-serve** e
+> a **revisão do backend** (secção 0bis), e já tem esse main fundido cá dentro.
 
 ---
 
 ## 0. Sessão de 2026-08-17/18 — a carteira contra o índice, por período
 
-**Feito e verde** (1148 testes, typecheck, lint, build), no ramo
-`claude/rachar-landing-page-zdliyf` — o mesmo do PR #45, **por falta de outro
-ramo autorizado**. Não tem relação nenhuma com as proporções da landing que o
-#45 traz: se o #45 for fechado por redundância contra o #43, **este trabalho
-tem de ser levado para outro lado antes disso** (`git cherry-pick` do commit
-das janelas para um ramo novo a partir do `main`). É a primeira coisa a
-resolver numa sessão nova.
+**Integrado no main pelo PR #45 (2026-08-18) e em produção.** Ao trabalho das
+janelas juntaram-se, no mesmo PR: **dois erros de cálculo em carteiras com
+vendas** (o "no índice terias" saía negativo em quem realiza ganhos, e a série
+mensal punha a carteira a desabar a cada venda contra um índice que nunca
+vendia — a *diferença* mostrada estava certa, errados eram os valores de que
+saía), o **corte do mês parcial** no "este mês vs o anterior" dos relatórios
+(a referência passa a contar até ao mesmo dia, com rótulo), e os seis pontos
+do documento de revisão da landing de 17/08. Ficaram por fazer os itens 8 e 9
+desse documento — recibo→despesa e streak — à espera de decisão do Tiago
+(secção "Decisões").
 
 - **`src/lib/domain/janelas.ts`** — `desempenhoNaJanela`, sete períodos
   (1d, 7d, 15d, 1m, 3m, 6m, 1a) com a rentabilidade **ponderada no tempo** da
@@ -37,8 +42,10 @@ janela de 1 ano aparece recusada de propósito: o primeiro movimento é de
 2025-09-24 e a janela começaria em 2025-08-17. É o comportamento certo, não uma
 falha do exemplo.
 
-**Por fazer:** ninguém viu isto no browser ainda — falta correr a app com o
-seed e confirmar a tabela nos dois índices, em telemóvel e em desktop.
+Visto a servir, com o seed: a tabela desenha-se nos dois índices, a 1280 e a
+390 de largura, sem scroll lateral. Com as cotações do seed a acabarem na
+véspera, a janela de 1 dia aparece recusada ("o fecho de X serve as duas
+pontas") — é o comportamento certo a uma segunda-feira, não uma falha.
 
 ---
 
@@ -632,66 +639,75 @@ que recebeu e aponta para a variável de ambiente; o preço pode sempre ser escr
 
 ---
 
-## 4. Modo demo self-serve — canalização em falta
+## 4. Modo demo self-serve — LIGADO de ponta a ponta (2026-08-16)
 
-A lógica está feita e testada. Falta ligar tudo. Confirmado na revisão: **8 dos
-9 pontos estão mesmo por fazer** (o do RGPD está parcialmente feito, ver abaixo).
+O que durante várias sessões esteve "feito e testado mas sem uma única linha a
+usá-lo" está agora ligado. Verificado contra o código nesta data:
 
-- [x] **Migrações `0021` a `0027` aplicadas** (o Tiago correu-as no Supabase a
-      2026-08-09). Já valem as correções do saldo e do dedup, os períodos de
-      taxa, a quota nos bens, o preço da zona nos imóveis e o histórico do
-      património.
-- [ ] **Métodos de repositório** — contar contas criadas hoje; listar ambientes
-      gratuitos com a última atividade; marcar aviso; congelar/descongelar;
-      gravar na lista de espera. Em `Repository`, `SupabaseRepository` e
-      `MockRepository`. Existe já um `lastActivity` no `getPlatformStats`, mas o
-      `SpaceSummary` não traz o `plan` (não dá para escolher os gratuitos) e o
-      `lastActivity` sai só das datas das despesas — **não conta os logins**, que
-      é o que a própria regra 3 do `retencao.ts` exige.
-- [ ] **Rota de cron da retenção** + entrada no `vercel.json`.
-- [ ] **Fazer o congelamento significar alguma coisa** — bloquear escritas nos
-      ambientes congelados e explicar na app porque está bloqueado. **Sem isto o
-      resto é decorativo.** Hoje são **zero linhas**: não há uma única ocorrência
-      de `frozen`/`congelado` em `.ts`/`.tsx`. Toca em ~40 caminhos de escrita.
-- [ ] **Ligar o `decideSignup` ao registo.**
-- [ ] **Formulário da lista de espera.** Hoje a landing escreve em
-      `contact_messages`, não em `waitlist`.
-- [ ] **Texto de RGPD na `/privacidade`.** ⚠️ **A nota anterior estava errada:** a
-      página **não** fala "do mundo antigo, de dois utilizadores convidados". Já
-      está datada de 5/8/2026 e já descreve ambientes isolados, subcontratantes e
-      apagamento de conta. O que falta mesmo é só o texto dos 90 dias e do
-      congelamento — e a secção de retenção atual ("enquanto tiveres conta")
-      passa a contradizê-lo.
-- [ ] **Emails** — aviso de congelamento e convite de saída da fila. O Resend
-      está mesmo configurado; só existem `sendInvite` e `sendPasswordReset`.
+- [x] **Migrações `0021` a `0027`** aplicadas (2026-08-09) e **`0043`** criada
+      (o Tiago tem o link; acrescenta `spaces.last_activity_at`, preenche o
+      passado e cria o índice parcial da retenção). **O cron da retenção
+      devolve erro até a `0043` correr** — a app em si não é afetada.
+- [x] **Domínio** — `retentionVerdict` ganhou `frozenAt` e os estados
+      `congelado` (não se recongela: um cron diário reescrevia a data) e
+      `descongelar` (voltou a haver vida, ou passou a `full`).
+- [x] **Métodos de repositório** — `touchSpaceActivity`,
+      `listSpacesForRetention` (só gratuitos, filtrado no repositório como
+      última linha de defesa; `plan is null` conta como gratuito),
+      `markRetentionWarned`, `setSpaceFrozen`, `countAppUsersCreatedOn`,
+      `addToWaitlist` (repetir não reescreve), `listWaitlist`,
+      `markWaitlistInvited`. Nos três: interface, Supabase, mock.
+- [x] **Entrar conta como atividade** — o `getSpaceContext` marca
+      `last_activity_at` ao abrir o ambiente, no máximo uma vez por dia
+      (`precisaDeMarcarAtividade`). Erro engolido: falhar a marca não pode
+      deitar abaixo a página.
+- [x] **Congelamento com dentes** — guarda única em `lib/congelamento.ts`
+      (`congelado()` ignora `frozen_at` velho em ambientes `full`), e um teste
+      (`congelamento-actions.test.ts`) que **lê o código-fonte das 87 server
+      actions** e obriga cada uma a passar pela guarda ou a estar na lista de
+      excepções com motivo. Uma action nova sem guarda parte o `npm run test`
+      no dia em que nasce. Excepções: leituras, cookies, fora-de-ambiente, e
+      direitos que nunca se bloqueiam (apagar os próprios dados, pedir ajuda,
+      reativar).
+- [x] **Aviso no layout + «Reativar»** (`AvisoCongelado.tsx`,
+      `reativarAmbienteAction`) — um clique, sem aprovação de ninguém; marca
+      atividade para o cron da noite não recongelar.
+- [x] **Cron** — `/api/cron/retencao` às 06:15 UTC (`vercel.json`), mesmo
+      padrão de segredo do de cotações (falha fechada sem `CRON_SECRET`).
+      Serviço em `retencao-service.ts`: a marca do aviso fica **antes** do
+      envio (um Resend instável não pode virar um aviso por dia à mesma
+      pessoa), e a passagem devolve relatório do que fez.
+- [x] **Email de aviso** (`sendRetentionWarning`) — sem um único número de
+      dentro do ambiente; diz duas vezes que nada se apaga.
+- [x] **`decideSignup` ligado** — no `signInCallback`, no único ramo por onde
+      uma conta nasce sozinha (SSO + registo aberto). Convites do admin não
+      passam por lá. Quem não cabe vai para `/login?cheio=1`.
+- [x] **Fila de espera** — `waitlistAction` em `landing-actions.ts` (honeypot,
+      consentimento obrigatório, resposta igual para email novo e repetido — o
+      formulário não é oráculo de quem está na fila), componente
+      `FilaDeEspera` na porta fechada do `/login`, fila visível na
+      `/plataforma` com «convidada/à espera», e o `inviteUserAction` marca
+      `invited_at` sozinho quando o convite sai para um email da fila.
+- [x] **RGPD na `/privacidade`** — os 90 dias, o congelamento (com o "não se
+      apaga nada" e o «Reativar") e a secção da lista de espera. Data
+      atualizada para 16/8/2026.
+- [ ] **A landing ainda escreve em `contact_messages`.** A `waitlistAction`
+      está pronta e é pública — falta o agente da landing apontar o formulário
+      dele para ela (ou usar o componente `FilaDeEspera` com
+      `source="landing"`). Deixado de fora de propósito para não pisar o
+      `page.tsx` que ele tem em curso.
+- [ ] **Convite de saída da fila em lote** — hoje convida-se um a um pela
+      `/plataforma` («Dar acesso a alguém» com o email da fila). Chega para
+      1 conta/dia.
 - [ ] **`AUTH_OPEN_REGISTRATION=true`** — só no fim, e é decisão do Tiago.
-      **Agora também depende das correções de segurança da secção 3.3.**
+      Continua a depender de fechar a "primeira entrada define a palavra-chave"
+      (fechada a 2026-08-14 com o convite por ligação) — **essa parte está
+      resolvida**; a decisão de ligar continua por tomar.
 
-### A migração `0021` tem o bug que ela própria diz ter evitado
-
-O cabeçalho da `0021` explica, com razão, que um `create table if not exists`
-sobre uma tabela existente passa em silêncio sem criar nada. E depois, duas
-instruções abaixo, faz exatamente o mesmo com um índice:
-
-```sql
-create unique index if not exists waitlist_email_key on waitlist (lower(email));
-```
-
-A `0001_init.sql` já declara `email text not null unique` na `waitlist`, e o
-Postgres chama ao índice dessa restrição **`waitlist_email_key`** — o mesmo nome.
-O `if not exists` encontra-o, emite um `NOTICE` e **nunca cria o índice sobre
-`lower(email)`**. O comentário promete que "se já houver duplicados, isto falha —
-e é bom que falhe agora": não falha, passa calado, e `A@x.pt` e `a@x.pt` ficam
-como duas pessoas diferentes. Dar-lhe outro nome resolve.
-
-Na mesma migração, o comentário *"Sem políticas: só o service role lhe toca"* é
-falso: a `0001_init.sql` já criou duas políticas na `waitlist` que a `0021` não
-remove, uma delas a permitir `insert` a qualquer cliente que ponha
-`consent = true`.
-
-E o domínio ainda não está pronto para ser ligado: o `RetentionInput` não tem
-`frozenAt`, por isso o `retentionVerdict` não distingue "deve congelar" de "já
-está congelado" — um cron diário voltava a decidir `congelar` todos os dias.
+(As notas antigas sobre o bug do índice da `0021` e o `frozenAt` em falta
+saíram daqui: a `0021` corrigida está aplicada — verificado no Supabase,
+`waitlist_email_lower_key` existe e as políticas caíram — e o domínio da
+retenção distingue `congelado` de `por congelar` desde 2026-08-16.)
 
 ---
 

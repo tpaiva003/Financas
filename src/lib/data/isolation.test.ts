@@ -306,3 +306,50 @@ describe("updateIncome", () => {
     expect(i?.amountCents).toBe(2_550_00);
   });
 });
+
+/**
+ * Os dois últimos métodos que procuravam sem filtrar pelo ambiente.
+ *
+ * `countMemberActivity` e `recurringExpenseExists` estavam protegidos apenas
+ * pelos chamadores — funcionava hoje, partia no dia em que ganhassem um
+ * segundo chamador. A regra da casa não admite exceções: um método que
+ * procure por id sem filtrar pelo ambiente é uma falha de segurança.
+ */
+describe("a atividade de um participante conta-se dentro do ambiente", () => {
+  it("não conta despesas de outro ambiente com o mesmo id de participante", async () => {
+    const r = new MockRepository();
+    const despesas = await r.listExpenses({ spaceId: MEU, viewerId: "" });
+    const partilhada = despesas.find((e) => e.kind === "shared" && !e.deletedAt);
+    if (!partilhada) throw new Error("seed sem despesa partilhada — teste inútil");
+
+    // No ambiente certo há atividade.
+    expect(await r.countMemberActivity(partilhada.payerId, MEU)).toBeGreaterThan(0);
+    // Visto de outro ambiente, o mesmo participante não tem atividade nenhuma.
+    expect(await r.countMemberActivity(partilhada.payerId, ALHEIO)).toBe(0);
+  });
+});
+
+describe("uma despesa recorrente pertence ao seu ambiente", () => {
+  it("não se encontra a partir de outro ambiente", async () => {
+    const r = new MockRepository();
+    const criada = await r.createExpense({
+      spaceId: MEU,
+      description: "Renda",
+      amountCents: 800_00,
+      currency: "EUR",
+      transactionDate: "2026-08-01",
+      categoryId: null,
+      payerId: "quem-paga",
+      kind: "shared",
+      split: { type: "EQUAL" },
+      origin: "manual",
+      ownerId: "quem-paga",
+      createdBy: "quem-paga",
+      recurringId: "rec_teste_isolamento",
+    });
+    expect(criada.recurringId).toBe("rec_teste_isolamento");
+
+    expect(await r.recurringExpenseExists("rec_teste_isolamento", MEU, "2026-08-01")).toBe(true);
+    expect(await r.recurringExpenseExists("rec_teste_isolamento", ALHEIO, "2026-08-01")).toBe(false);
+  });
+});

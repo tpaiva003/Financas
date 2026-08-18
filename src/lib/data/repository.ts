@@ -933,8 +933,8 @@ export interface Repository {
   addMember(input: AddMemberInput): Promise<Member>;
   updateMember(id: string, spaceId: string, patch: UpdateMemberInput): Promise<void>;
   deleteMember(id: string, spaceId: string): Promise<void>;
-  /** Nº de despesas/acertos (não eliminados) que referenciam este participante. */
-  countMemberActivity(memberId: string): Promise<number>;
+  /** Nº de despesas/acertos (não eliminados) que referenciam este participante, no seu ambiente. */
+  countMemberActivity(memberId: string, spaceId: string): Promise<number>;
 
   listExpenses(filters: ExpenseFilters): Promise<Expense[]>;
   /**
@@ -968,7 +968,7 @@ export interface Repository {
   updateRecurring(id: string, spaceId: string, patch: UpdateRecurringInput): Promise<void>;
   deleteRecurring(id: string, spaceId: string): Promise<void>;
   /** Já existe uma despesa gerada para este template nesta data? (idempotência) */
-  recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean>;
+  recurringExpenseExists(recurringId: string, spaceId: string, transactionDate: string): Promise<boolean>;
   /**
    * Aplica alterações do template às despesas JÁ geradas por ele (não eliminadas).
    * O valor, se fornecido, é aplicado a todas ou só às pendentes (estimativas),
@@ -1030,6 +1030,8 @@ export interface Repository {
   }): Promise<void>;
   /** A fila, para a consola do dono. */
   listWaitlist(): Promise<WaitlistEntry[]>;
+  /** Regista que o convite saiu, para a fila mostrar quem ainda espera. */
+  markWaitlistInvited(email: string, atISO: string): Promise<void>;
   deleteAppUser(id: string): Promise<void>;
   /** Desliga a conta dos participantes, sem apagar o histórico. */
   unlinkUserFromMembers(userId: string): Promise<void>;
