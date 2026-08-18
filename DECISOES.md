@@ -2903,3 +2903,12 @@ datas do futuro, totais absurdos; arredonda cêntimos em código), a **categoria
 sai das regras da app** sobre o nome da loja (as mesmas do import, nunca do
 modelo), e **nada grava sem a pessoa rever o formulário preenchido e carregar
 em guardar**. Sem `ANTHROPIC_API_KEY` o caminho não existe nem se anuncia.
+
+### Streak de registos: deriva-se, não se guarda
+O streak (item 9 do Word) conta **dias seguidos com registo feito pela própria
+pessoa**, pelo dia do `createdAt` — a mesma régua da «última atividade»: um
+import conta como o dia em que foi feito, não como trinta. Deriva das despesas
+existentes, sem tabela nova: nada para migrar nem dessincronizar. Um dia ainda
+sem registo não apaga o streak às 00:01 — mostra-o em risco («é hoje que ele se
+mantém»), porque perder tudo à meia-noite desmotiva precisamente quem vinha
+registar. Só aparece a partir de 2 dias: «streak de 1» é ruído.

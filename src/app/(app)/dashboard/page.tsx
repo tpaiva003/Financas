@@ -5,7 +5,7 @@ import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
-import { formatCents } from "@/lib/domain";
+import { formatCents, streakDeRegistos } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { OnboardingCard } from "@/components/OnboardingCard";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -62,6 +62,21 @@ export default async function DashboardPage() {
     await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
   ).filter((r) => r.status.state !== "never");
 
+  /**
+   * O streak: dias seguidos com registo FEITO pela própria pessoa (dia do
+   * `createdAt`, a mesma régua da "última atividade" — um import conta como o
+   * dia em que foi feito, não como trinta). Deriva das despesas que já estão
+   * carregadas: sem tabela nova, sem pedido a mais.
+   */
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const streak = streakDeRegistos(
+    recent
+      .filter((e) => e.createdBy === ctx.user.id)
+      .map((e) => (e.createdAt ?? "").slice(0, 10))
+      .filter(Boolean),
+    hojeISO,
+  );
+
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
@@ -88,6 +103,37 @@ export default async function DashboardPage() {
       {onboarding ? <OnboardingCard onboarding={onboarding} /> : null}
 
       <InstallPrompt />
+
+      {/*
+        O streak só aparece quando existe (nada de "0 dias" a envergonhar), e
+        um dia ainda sem registo mostra-o em risco em vez de o apagar às 00:01.
+      */}
+      {streak.atual >= 2 ? (
+        <Link
+          href="/despesas/nova"
+          className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
+        >
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full bg-panel2 text-lg">
+              🔥
+            </span>
+            <div>
+              <p className="text-sm font-medium">
+                {streak.atual} dias seguidos a registar
+                {streak.recorde > streak.atual ? (
+                  <span className="text-fg-faint"> · recorde: {streak.recorde}</span>
+                ) : null}
+              </p>
+              <p className="text-xs text-fg-muted">
+                {streak.registadoHoje
+                  ? "Hoje já está. As contas em dia são isto."
+                  : "Ainda não registaste hoje — é hoje que ele se mantém."}
+              </p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
+      ) : null}
 
       {pendingApprovals.length > 0 ? (
         <Link
