@@ -34,6 +34,7 @@ const SEM_GUARDA: Record<string, string> = {
   // Não escrevem nada: leem, pré-visualizam ou sugerem.
   previewImportAction: "só lê o ficheiro e mostra a pré-visualização",
   previewBrokerAction: "só lê o ficheiro e mostra a pré-visualização",
+  previewReceiptAction: "lê o recibo e devolve uma proposta, não grava",
   listKnownAccounts: "leitura",
   lookupPropertyPriceAction: "consulta o INE, não grava",
   extractCreditContractAction: "lê o PDF e devolve uma proposta, não grava",

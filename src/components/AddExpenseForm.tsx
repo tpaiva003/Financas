@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { createExpenseAction, type ActionState } from "@/app/(app)/actions";
+import {
+  createExpenseAction,
+  previewReceiptAction,
+  type ActionState,
+  type ReciboPreviewState,
+} from "@/app/(app)/actions";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { formatCents } from "@/lib/domain";
 import { parseMoneyToCents } from "@/lib/money-input";
@@ -22,6 +27,7 @@ export function AddExpenseForm({
   today,
   descriptions = [],
   isSubmitter = false,
+  leituraDeRecibo = false,
 }: {
   categories: Category[];
   members: MemberOpt[];
@@ -30,7 +36,8 @@ export function AddExpenseForm({
   descriptions?: string[];
   /** O autor é um "submitter": despesa fica pendente de aprovação. */
   isSubmitter?: boolean;
-  /** Membros plenos que podem aprovar (quando submitter). */
+  /** A leitura assistida de recibos está configurada no servidor? */
+  leituraDeRecibo?: boolean;
 }) {
   const [state, formAction] = useFormState(createExpenseAction, initial);
 
@@ -39,6 +46,39 @@ export function AddExpenseForm({
   const [percentA, setPercentA] = useState(50);
   const [soleId, setSoleId] = useState(members[0]?.id ?? "");
   const [amountStr, setAmountStr] = useState("");
+
+  /**
+   * A proposta lida do recibo. Preenche o formulário e MAIS NADA: quem grava
+   * continua a ser o botão de guardar, com a pessoa a ver os campos primeiro.
+   * A `chave` força o remount dos campos não controlados com os novos
+   * defaultValue — sem tocar no que a pessoa já tiver escrito depois.
+   */
+  const [proposta, setProposta] = useState<
+    (NonNullable<ReciboPreviewState["proposta"]> & { chave: number }) | null
+  >(null);
+  const [leituraErro, setLeituraErro] = useState<string | null>(null);
+  const [aLer, startLeitura] = useTransition();
+  const ficheiroRef = useRef<HTMLInputElement>(null);
+
+  function lerRecibo() {
+    const ficheiro = ficheiroRef.current?.files?.[0];
+    if (!ficheiro) {
+      setLeituraErro("Escolhe primeiro a fotografia do recibo.");
+      return;
+    }
+    setLeituraErro(null);
+    startLeitura(async () => {
+      const fd = new FormData();
+      fd.set("receipt", ficheiro);
+      const r = await previewReceiptAction({}, fd);
+      if (r.proposta) {
+        setProposta({ ...r.proposta, chave: Date.now() });
+        setAmountStr((r.proposta.amountCents / 100).toFixed(2).replace(".", ","));
+      } else {
+        setLeituraErro(r.error ?? "Não consegui ler este recibo.");
+      }
+    });
+  }
 
   const amountCents = parseMoneyToCents(amountStr);
   const shareA = Math.round((amountCents * percentA) / 100);
@@ -82,12 +122,14 @@ export function AddExpenseForm({
         <div>
           <label className="label" htmlFor="description">Descrição</label>
           <input
+            key={proposta ? `desc-${proposta.chave}` : "desc"}
             id="description"
             name="description"
             type="text"
             required
             list="desc-suggestions"
             autoComplete="off"
+            defaultValue={proposta?.description}
             placeholder="Ex.: Continente, jantar…"
             className="input"
           />
@@ -103,11 +145,23 @@ export function AddExpenseForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label" htmlFor="transactionDate">Data</label>
-            <input id="transactionDate" name="transactionDate" type="date" defaultValue={today} required className="input" />
+            <input
+              key={proposta ? `data-${proposta.chave}` : "data"}
+              id="transactionDate"
+              name="transactionDate"
+              type="date"
+              defaultValue={proposta?.date ?? today}
+              required
+              className="input"
+            />
           </div>
           <div>
             <label className="label" htmlFor="categoryId">Categoria</label>
-            <CategoryCombobox categories={categories} />
+            <CategoryCombobox
+              key={proposta ? `cat-${proposta.chave}` : "cat"}
+              categories={categories}
+              initialId={proposta?.categoryId ?? ""}
+            />
           </div>
         </div>
 
@@ -135,12 +189,45 @@ export function AddExpenseForm({
         <div>
           <label className="label" htmlFor="receipt">Recibo (opcional)</label>
           <input
+            ref={ficheiroRef}
             id="receipt"
             name="receipt"
             type="file"
             accept="image/*,application/pdf"
+            onChange={() => setLeituraErro(null)}
             className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-panel2 file:px-3 file:py-2 file:text-sm file:text-fg hover:file:bg-panel2/70"
           />
+          {/* Ler o recibo e preencher: o modelo propõe, os campos ficam à
+              vista, e quem grava continua a ser o botão lá de baixo. */}
+          {leituraDeRecibo ? (
+            <div className="mt-2 space-y-2">
+              <button
+                type="button"
+                onClick={lerRecibo}
+                disabled={aLer}
+                className="btn-secondary text-xs"
+              >
+                {aLer ? "A ler o recibo…" : "Ler o recibo e preencher"}
+              </button>
+              {leituraErro ? (
+                <p role="alert" className="text-xs text-debt">{leituraErro}</p>
+              ) : null}
+              {proposta ? (
+                <div className="rounded-xl border border-hair bg-panel2/40 p-3 text-xs text-fg-muted">
+                  <p>
+                    Preenchi o valor, a descrição{proposta.date ? ", a data" : ""}
+                    {proposta.categoryId ? " e a categoria" : ""} a partir do recibo.
+                    <span className="text-fg"> Confere antes de guardar</span> — nada fica
+                    registado sem carregares em guardar.
+                  </p>
+                  {proposta.notas ? <p className="mt-1 text-fg-faint">{proposta.notas}</p> : null}
+                  {proposta.avisos.map((a) => (
+                    <p key={a} className="mt-1 text-debt">{a}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 

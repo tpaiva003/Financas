@@ -25,6 +25,7 @@ import {
   creditContractExtractAvailable,
   extractCreditContract,
 } from "@/lib/services/credit-contract-service";
+import { extractRecibo } from "@/lib/services/recibo-service";
 import { readPdfText } from "@/lib/import/read-file";
 import { getInePriceTable } from "@/lib/services/ine-service";
 import {
@@ -60,6 +61,7 @@ import { sendInvite, sendMemberInvite, emailConfigured, siteUrl } from "@/lib/em
 import {
   toCents,
   validateSplit,
+  classify,
   nextOccurrence,
   accountsVisibleTo,
   isForeign,
@@ -115,6 +117,83 @@ async function handleReceipt(expenseId: string, spaceId: string, formData: FormD
   } catch {
     // upload de recibo falhou: não bloqueia a gravação da despesa
   }
+}
+
+/** O que a leitura de um recibo devolve ao formulário. Nada disto está gravado. */
+export interface ReciboPreviewState {
+  error?: string;
+  proposta?: {
+    amountCents: number;
+    description: string;
+    /** `null` = o recibo não deu data fiável; o formulário usa a de hoje. */
+    date: string | null;
+    /** Sugerida pelas MESMAS regras determinísticas do import, não pelo modelo. */
+    categoryId: string | null;
+    avisos: string[];
+    /** O que o modelo percebeu do documento, para confirmar que leu o certo. */
+    notas: string;
+  };
+}
+
+const RECIBO_IMAGENS = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+const RECIBO_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Lê o recibo e PROPÕE a despesa — não grava nada.
+ *
+ * O contrato é o do contrato de crédito: o modelo copia o que está impresso, o
+ * `reviewRecibo` (determinístico, testado) decide o que é utilizável, e a
+ * pessoa confirma no formulário. A categoria nem sequer vem do modelo: sai das
+ * regras de classificação da app, sobre o nome da loja.
+ */
+export async function previewReceiptAction(
+  _prev: ReciboPreviewState,
+  formData: FormData,
+): Promise<ReciboPreviewState> {
+  await getSpaceContext(); // exige sessão; a leitura não toca no ambiente
+  const file = formData.get("receipt");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Escolhe primeiro a fotografia do recibo." };
+  }
+  if (file.size > RECIBO_MAX_BYTES) {
+    return { error: "O ficheiro é grande de mais (máximo 8 MB)." };
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  let entrada: import("@/lib/services/recibo-service").ReciboInput;
+  if ((RECIBO_IMAGENS as readonly string[]).includes(file.type)) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    entrada = {
+      kind: "imagem",
+      mediaType: file.type as (typeof RECIBO_IMAGENS)[number],
+      dataBase64: bytes.toString("base64"),
+    };
+  } else if (file.type === "application/pdf") {
+    const texto = await readPdfText(Buffer.from(await file.arrayBuffer())).catch(() => "");
+    entrada = { kind: "texto", texto };
+  } else {
+    return { error: "Formato não suportado: usa uma fotografia (JPG/PNG) ou um PDF." };
+  }
+
+  const lido = await extractRecibo(entrada, hoje);
+  if (!lido.proposta) {
+    return { error: lido.problem ?? "Não consegui ler este recibo." };
+  }
+
+  // A categoria vem das regras da app (as mesmas do import), nunca do modelo.
+  const rules = await getRepository().listClassificationRules().catch(() => []);
+  const sugestao = classify(lido.proposta.description, rules);
+
+  return {
+    proposta: {
+      amountCents: lido.proposta.amountCents,
+      description: lido.proposta.description,
+      date: lido.proposta.date,
+      categoryId: sugestao.categoryId ?? null,
+      avisos: lido.proposta.avisos,
+      notas: lido.notas,
+    },
+  };
 }
 
 

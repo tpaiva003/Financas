@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
+import { reciboExtractAvailable } from "@/lib/services/recibo-service";
 
 export const metadata = { title: "Nova despesa · Rachar" };
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export default async function NovaDespesaPage() {
         today={today}
         descriptions={descriptions}
         isSubmitter={isSubmitter}
+        leituraDeRecibo={reciboExtractAvailable()}
       />
     </div>
   );

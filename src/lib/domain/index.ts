@@ -52,3 +52,4 @@ export * from "./bruto-liquido";
 export * from "./comparar-setor";
 export * from "./serie-comparacao";
 export * from "./janelas";
+export * from "./recibo";
