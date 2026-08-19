@@ -36,25 +36,34 @@ export function ExpensesFilter({
 
   const first = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const ultimoTexto = useRef(initial.q);
 
-  // Aplica os filtros ao vivo (sem botão), com pequeno debounce no texto.
+  // Aplica os filtros ao vivo (sem botão). Os selects e as datas são eventos
+  // discretos e aplicam-se depressa; o TEXTO espera mais: cada aplicação é um
+  // render completo do servidor a ler as despesas todas, e a 250ms escrever
+  // "continente" custava quatro renders pelo caminho.
   useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
+    const aEscrever = q !== ultimoTexto.current;
+    ultimoTexto.current = q;
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const p = new URLSearchParams();
-      if (q) p.set("q", q);
-      if (categoryId) p.set("categoryId", categoryId);
-      if (payerId) p.set("payerId", payerId);
-      if (kind) p.set("kind", kind);
-      if (from) p.set("from", from);
-      if (to) p.set("to", to);
-      const qs = p.toString();
-      router.replace(qs ? `/despesas?${qs}` : "/despesas", { scroll: false });
-    }, 250);
+    timer.current = setTimeout(
+      () => {
+        const p = new URLSearchParams();
+        if (q) p.set("q", q);
+        if (categoryId) p.set("categoryId", categoryId);
+        if (payerId) p.set("payerId", payerId);
+        if (kind) p.set("kind", kind);
+        if (from) p.set("from", from);
+        if (to) p.set("to", to);
+        const qs = p.toString();
+        router.replace(qs ? `/despesas?${qs}` : "/despesas", { scroll: false });
+      },
+      aEscrever ? 550 : 150,
+    );
     return () => clearTimeout(timer.current);
   }, [q, categoryId, payerId, kind, from, to, router]);
 
