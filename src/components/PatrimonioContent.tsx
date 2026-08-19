@@ -566,7 +566,7 @@ export async function PatrimonioContent({
             spaceId={ctx.space.id}
             net={net}
             today={today}
-            dados={{ stored, trades }}
+            dados={{ stored, trades, splits }}
             foco={foco}
           />
         </Suspense>
