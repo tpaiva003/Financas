@@ -1,10 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { getRepository } from "@/lib/data";
 import { BENCHMARKS, symbolCandidates } from "@/lib/domain";
-import { getQuoteSeries } from "@/lib/services/quotes-service";
+import { getQuoteSeries, refreshStalePrices } from "@/lib/services/quotes-service";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * O cabeçalho corresponde ao segredo, sem deixar o tempo de resposta contar
@@ -31,9 +31,12 @@ function bearerMatches(header: string | null, secret: string): boolean {
  * cotações são partilhadas por todos os ambientes, uma passagem serve toda a
  * gente, e a partir daí as páginas desenham-se sem esperar por ninguém.
  *
- * **Não altera preços de ativos**, só a cache. Quem escreve o preço em cada
- * investimento continua a ser a visita à página, que é onde se sabe a que
- * ambiente pertence e onde se pode dizer o que aconteceu.
+ * **E fecha o ciclo: escreve o preço em cada investimento.** Era a visita à
+ * página que escrevia, e isso punha fetches de câmbio e uma escrita por ativo
+ * no meio de um GET, com o utilizador à espera. Agora a página só lê
+ * (`lerFrescura`); quem põe os `unit_price_cents` em dia é isto — à noite
+ * depois do fecho americano e de manhã antes de alguém entrar — e o botão
+ * «Atualizar preços» para quem não quer esperar.
  */
 export async function GET(req: Request) {
   // A Vercel assina os pedidos do cron. Sem isto, era um endereço público a
@@ -71,9 +74,24 @@ export async function GET(req: Request) {
   );
 
   const ok = results.filter((r) => r.ok).length;
+
+  // Com a cache cheia, escrever os preços é o caminho rápido do
+  // refreshStalePrices (sem force): quase tudo sai do atalho "já há fecho
+  // fresco guardado", e o que precisar de rede gasta o tecto normal. Um
+  // ambiente a falhar não pode impedir os outros.
+  const espacos = await repo.listSpacesComInvestimentos().catch(() => []);
+  const escritas = await Promise.all(
+    espacos.map(async (spaceId) => {
+      const frescura = await refreshStalePrices(spaceId).catch(() => []);
+      return { spaceId, escritos: frescura.filter((f) => f.refreshed).length };
+    }),
+  );
+
   return Response.json({
     atualizados: ok,
     falhados: results.length - ok,
+    ambientes: escritas.length,
+    precosEscritos: escritas.reduce((s, e) => s + e.escritos, 0),
     detalhe: results,
   });
 }

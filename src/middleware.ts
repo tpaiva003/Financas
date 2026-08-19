@@ -43,7 +43,11 @@ export const config = {
   // pedidos pelo browser antes de haver sessão nenhuma. Passar por aqui punha
   // o middleware a responder-lhes com um redirecionamento para o login, que é
   // o que estragava as imagens da landing.
+  //
+  // `api/logo`, `api/fx` e `api/market` validam a sessão elas próprias — o
+  // middleware decifrava o JWE e o handler fazia o mesmo trabalho outra vez,
+  // dezenas de vezes por carregamento da carteira (um pedido por logo).
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|landing/|icon.svg|apple-icon.svg).*)",
+    "/((?!api/auth|api/cron|api/logo|api/fx|api/market|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|landing/|icon.svg|apple-icon.svg).*)",
   ],
 };

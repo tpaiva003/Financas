@@ -80,7 +80,7 @@ import {
 } from "@/lib/services/networth-history-service";
 import { NetWorthChart } from "@/components/NetWorthChart";
 import { buildPortfolioReturn } from "@/lib/services/portfolio-service";
-import { refreshStalePrices } from "@/lib/services/quotes-service";
+import { lerFrescura } from "@/lib/services/quotes-service";
 
 export type PatrimonioView = "resumo" | "ativos" | "dividas" | "fire";
 
@@ -127,12 +127,13 @@ export async function PatrimonioContent({
   const precisaDeAnexos = view === "ativos" || view === "dividas";
   const precisaDeDespesas = view === "fire";
 
-  // Preços em dia antes de ler os bens — e só quando a vista mostra
-  // investimentos. Só vai à fonte o que estiver velho, com tecto de tempo, e as
-  // cotações são partilhadas, por isso cada símbolo é buscado uma vez por dia no
-  // serviço inteiro. Nunca falha para o lado de deitar a página abaixo.
+  // A frescura dos preços LÊ-SE, não se põe em dia aqui: quem escreve é o
+  // cron (noite e manhã) e o botão «Atualizar preços». O refreshStalePrices
+  // fazia fetches de câmbio e uma escrita por ativo no meio do GET — com o
+  // utilizador à espera — e no pior caso somava segundos por símbolo
+  // desconhecido. A página mostra o que está guardado e a data de cada fecho.
   const freshness = precisaDeCotacoes
-    ? await refreshStalePrices(ctx.space.id).catch(() => [])
+    ? await lerFrescura(ctx.space.id).catch(() => [])
     : [];
   const quoteDateOf = new Map(freshness.map((f) => [f.assetId, f.quoteDate]));
   const quoteProblemOf = new Map(freshness.map((f) => [f.assetId, f.problem]));
@@ -158,8 +159,8 @@ export async function PatrimonioContent({
   const [stored, trades, splits, anexosTodos, expenses] = await Promise.all([
     // Leituras memoizadas por pedido: a comparação com os índices, atrás do
     // Suspense, volta a pedir estas três — e recebe estas respostas em vez de
-    // pagar três leituras completas outra vez. Correm DEPOIS do
-    // refreshStalePrices lá em cima, por isso trazem os preços já escritos.
+    // pagar três leituras completas outra vez. (Já nada escreve preços no
+    // render: quem os põe em dia é o cron e o botão.)
     lerAtivos(ctx.space.id).catch(() => [] as Asset[]),
     lerMovimentos(ctx.space.id).catch(() => []),
     lerSplits(ctx.space.id).catch(() => []),

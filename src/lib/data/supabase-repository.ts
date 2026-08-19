@@ -1923,6 +1923,63 @@ export class SupabaseRepository implements Repository {
     return [...new Set(data.map((r: any) => r.symbol).filter(Boolean))];
   }
 
+  async getAssetLogoDomain(assetId: string, userId: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("assets")
+      .select("logo_domain, space_id")
+      .eq("id", assetId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data?.logo_domain) return null;
+    // A pertença decide o acesso: quem não é membro pleno daquele ambiente não
+    // recebe nada — nem a confirmação de que o bem existe.
+    const { data: m, error: e2 } = await db
+      .from("members")
+      .select("role")
+      .eq("space_id", data.space_id as string)
+      .eq("linked_user_id", userId)
+      .maybeSingle();
+    if (e2) throw new Error(e2.message);
+    if (!m || m.role === "submitter") return null;
+    return data.logo_domain as string;
+  }
+
+  async getValuationLogoDomain(valuationId: string, userId: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("valuations")
+      .select("logo_domain, space_id")
+      .eq("id", valuationId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data?.logo_domain) return null;
+    const { data: m, error: e2 } = await db
+      .from("members")
+      .select("role")
+      .eq("space_id", data.space_id as string)
+      .eq("linked_user_id", userId)
+      .maybeSingle();
+    if (e2) throw new Error(e2.message);
+    if (!m || m.role === "submitter") return null;
+    return data.logo_domain as string;
+  }
+
+  async listSpacesComInvestimentos(): Promise<string[]> {
+    const db = getSupabaseAdmin();
+    // Paginado pela mesma razão do listAllAssetSymbols: cresce com a
+    // plataforma, e um ambiente cortado ficava sem preços escritos pelo cron.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("assets")
+        .select("space_id")
+        .eq("kind", "investimento")
+        .order("id")
+        .range(de, ate),
+    );
+    return [...new Set(data.map((r: any) => String(r.space_id)))];
+  }
+
   async latestQuoteDate(symbol: string): Promise<string | null> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

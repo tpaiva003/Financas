@@ -760,8 +760,10 @@ export async function markMessageReadAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().markContactMessageRead(id);
+  // Só a página das mensagens: o global apagava o Router Cache do browser
+  // inteiro por causa de um badge que, com as páginas dinâmicas, se atualiza
+  // na navegação seguinte de qualquer forma.
   revalidatePath("/mensagens");
-  revalidatePath("/", "layout");
 }
 
 export async function archiveMessageAction(formData: FormData): Promise<void> {
@@ -771,8 +773,9 @@ export async function archiveMessageAction(formData: FormData): Promise<void> {
   if (!id) return;
   const archived = String(formData.get("archived") ?? "") === "true";
   await getRepository().setContactMessageArchived(id, archived);
+  // Como no marcar-como-lida: o badge não justifica apagar a app inteira da
+  // memória do browser.
   revalidatePath("/mensagens");
-  revalidatePath("/", "layout");
 }
 
 export async function setMessageNotesAction(formData: FormData): Promise<void> {

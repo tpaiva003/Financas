@@ -18,6 +18,8 @@
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
+import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { randomUUID } from "node:crypto";
 import { authConfig } from "./auth.config";
 import { userByEmail } from "./users";
@@ -42,7 +44,23 @@ import { getRepository } from "./data";
 const HASH_FANTASMA =
   "pbkdf2$600000$3wO3dD0KT0Ow9AF/EyRFOA==$RjCqv7VDftmT2jMhz08CTf5178KVo2AlHh4GN9OJIhk=";
 
-const providers: NextAuthConfig["providers"] = [...authConfig.providers];
+/**
+ * Os providers vivem TODOS aqui (runtime Node) — os OAuth incluídos, que
+ * antes estavam no `auth.config.ts` e entravam no bundle edge do middleware
+ * em todos os pedidos, sem botão nenhum na UI que os usasse. Continuam
+ * configurados e sem UI, como o CLAUDE.md documenta.
+ */
+const providers: NextAuthConfig["providers"] = [
+  Google({
+    clientId: process.env.AUTH_GOOGLE_ID,
+    clientSecret: process.env.AUTH_GOOGLE_SECRET,
+  }),
+  MicrosoftEntraID({
+    clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+    clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
+    issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
+  }),
+];
 
 providers.push(
   Credentials({

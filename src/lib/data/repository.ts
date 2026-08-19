@@ -1192,6 +1192,21 @@ export interface Repository {
   latestQuoteDate(symbol: string): Promise<string | null>;
   /** Todos os símbolos registados, de todos os ambientes. Só para diagnóstico. */
   listAllAssetSymbols(): Promise<string[]>;
+  /**
+   * Os ambientes que têm investimentos, para o cron escrever os preços de
+   * todos — não só de quem abriu a página nesse dia.
+   */
+  listSpacesComInvestimentos(): Promise<string[]>;
+  /**
+   * O domínio da marca de um bem, SE o utilizador for membro pleno do ambiente
+   * do bem. A rota dos logos chamava o contexto inteiro (4-5 consultas) e lia
+   * TODOS os bens do ambiente — por cada logo de cada cartão. A verificação de
+   * pertença fica aqui dentro, como manda a regra da casa: um id vindo do
+   * pedido não é prova de nada.
+   */
+  getAssetLogoDomain(assetId: string, userId: string): Promise<string | null>;
+  /** O mesmo, para uma empresa do funil de avaliação. */
+  getValuationLogoDomain(valuationId: string, userId: string): Promise<string | null>;
   createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade>;
   deleteAssetTrade(id: string, spaceId: string): Promise<void>;
   /**

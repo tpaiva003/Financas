@@ -21,6 +21,7 @@
 
 import { memoPorPedido } from "@/lib/memo-por-pedido";
 import { getRepository } from "@/lib/data";
+import { lerAtivos } from "@/lib/data/leituras";
 import type { StoredQuote } from "@/lib/data";
 import { fetchReferenceRate } from "./fx-rate";
 import {
@@ -515,6 +516,60 @@ async function toEurAtDate(
  * espera é pedida, e uma espera pedida não é o mesmo que uma imposta.
  */
 const MAX_IDAS_A_REDE_POR_VISITA = 6;
+
+/**
+ * A frescura dos preços SEM pôr nada em dia: só o que está guardado.
+ *
+ * É o que as páginas usam. O `refreshStalePrices` fazia, no meio do GET, um
+ * fetch de câmbio por moeda estrangeira e uma escrita por ativo cujo preço
+ * mudou — e no pior caso (símbolos que a fonte não conhece) até 6 idas à rede
+ * com 3s de tecto cada, com o utilizador à espera. Quem põe em dia agora é o
+ * cron (que corre isto de noite e de manhã com escrita) e o botão «Atualizar
+ * preços»; a página só LÊ, e diz de quando é cada cotação.
+ */
+export async function lerFrescura(spaceId: string): Promise<PriceFreshness[]> {
+  const repo = getRepository();
+  const assets = await lerAtivos(spaceId).catch(() => []);
+  const withSymbol = assets.filter((a) => a.kind === "investimento" && a.symbol);
+  if (withSymbol.length === 0) return [];
+
+  const candidatosDeTodos = withSymbol.flatMap((a) => symbolCandidates(a.symbol!));
+  const guardadas = await repo.latestQuotesFor(candidatosDeTodos).catch(() => new Map());
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  return withSymbol.map((a): PriceFreshness => {
+    const melhor = symbolCandidates(a.symbol!)
+      .map((c) => ({ c, q: guardadas.get(c) }))
+      .find((x) => x.q);
+    if (!melhor?.q) {
+      return {
+        assetId: a.id,
+        symbol: a.symbol!,
+        quoteDate: null,
+        refreshed: false,
+        problem:
+          "Ainda não há cotação guardada deste símbolo. Carrega em «Atualizar preços» para a ir buscar.",
+        quoteCents: null,
+        quoteCurrency: null,
+      };
+    }
+    const q = melhor.q;
+    return {
+      assetId: a.id,
+      symbol: melhor.c,
+      quoteDate: q.date,
+      refreshed: false,
+      // Uma cotação velha identificada como velha é informação, não avaria: o
+      // cron apanha-a à noite, e o botão resolve já quem não quer esperar.
+      problem: isStale(q.date, hoje)
+        ? "A cotação guardada já tem uns dias. O cron atualiza à noite; «Atualizar preços» resolve já."
+        : null,
+      ...(isForeign(q.currency)
+        ? { quoteCents: q.closeCents, quoteCurrency: q.currency }
+        : { quoteCents: null, quoteCurrency: null }),
+    };
+  });
+}
 
 export async function refreshStalePrices(
   spaceId: string,
