@@ -50,6 +50,7 @@ export type {
   CreateAssetInput,
   AssetTrade,
   CreateAssetTradeInput,
+  StoredAssetSplit,
   StoredQuote,
   Income,
   CreateIncomeInput,

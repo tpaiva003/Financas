@@ -23,10 +23,11 @@
  */
 
 import { getRepository } from "@/lib/data";
-import type { Asset, AssetTrade } from "@/lib/data";
+import type { Asset, AssetTrade, StoredAssetSplit } from "@/lib/data";
 import {
   BENCHMARKS,
   buildCreditoPlano,
+  fatorDepoisDe,
   juntarHistorico,
   priceOn,
   normalizeSnapshots,
@@ -132,7 +133,7 @@ async function reconstruirDoPassado(
    * abertura do resumo, com a carteira inteira a atravessar a rede outra vez
    * para dar exactamente o mesmo resultado.
    */
-  jaLidos?: { stored: Asset[]; trades: AssetTrade[] },
+  jaLidos?: { stored: Asset[]; trades: AssetTrade[]; splits?: StoredAssetSplit[] },
 ): Promise<NetWorthSnapshot[]> {
   const repo = getRepository();
   const [stored, trades] = jaLidos
@@ -142,6 +143,21 @@ async function reconstruirDoPassado(
         repo.listAssetTrades(spaceId).catch(() => []),
       ]);
   if (stored.length === 0) return [];
+  const splits =
+    jaLidos?.splits ?? (await repo.listAssetSplits(spaceId).catch(() => []));
+
+  /**
+   * As unidades na unidade de HOJE, com os desdobramentos aplicados.
+   *
+   * As cotações guardadas vêm ajustadas a desdobramentos; contar unidades
+   * pré-split contra preços pós-split fazia uma compra de NVIDIA anterior ao
+   * 10:1 valer um décimo em todos os meses reconstruídos. A lista de ativos já
+   * convertia; a reconstrução lia em bruto.
+   */
+  const splitsPorBem = new Map<string, StoredAssetSplit[]>();
+  for (const sp of splits) {
+    splitsPorBem.set(sp.assetId, [...(splitsPorBem.get(sp.assetId) ?? []), sp]);
+  }
 
   const movimentosDe = new Map<string, { date: string; unidades: number }[]>();
   for (const t of trades) {
@@ -150,7 +166,8 @@ async function reconstruirDoPassado(
     if (t.kind !== "compra" && t.kind !== "venda") continue;
     const q = typeof t.quantity === "number" ? Math.abs(t.quantity) : 0;
     if (q <= 0) continue;
-    const unidades = t.kind === "venda" ? -q : q;
+    const fator = fatorDepoisDe(splitsPorBem.get(t.assetId) ?? [], t.date);
+    const unidades = (t.kind === "venda" ? -q : q) * fator;
     movimentosDe.set(t.assetId, [...(movimentosDe.get(t.assetId) ?? []), { date: t.date, unidades }]);
   }
 
@@ -300,7 +317,7 @@ export async function getNetWorthHistoryCompleto(
   spaceId: string,
   hoje: string,
   /** Ver `reconstruirDoPassado`: evita reler o que a página já tem. */
-  jaLidos?: { stored: Asset[]; trades: AssetTrade[] },
+  jaLidos?: { stored: Asset[]; trades: AssetTrade[]; splits?: StoredAssetSplit[] },
 ): Promise<NetWorthSnapshot[]> {
   const [medido, estimado] = await Promise.all([
     getNetWorthHistory(spaceId),

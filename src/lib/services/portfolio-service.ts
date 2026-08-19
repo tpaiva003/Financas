@@ -17,6 +17,7 @@ import { getRepository } from "@/lib/data";
 import {
   BENCHMARKS,
   JANELAS,
+  aplicarSplits,
   buildPosition,
   desempenhoNaJanela,
   normalizeSymbol,
@@ -137,13 +138,36 @@ export interface PortfolioReturn {
  */
 export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioReturn | null> {
   const repo = getRepository();
-  const [assets, trades] = await Promise.all([
+  const [assets, tradesEmBruto, splits] = await Promise.all([
     repo.listAssets(spaceId).catch(() => []),
     repo.listAssetTrades(spaceId).catch(() => []),
+    repo.listAssetSplits(spaceId).catch(() => []),
   ]);
 
   const investments = assets.filter((a) => a.kind === "investimento");
-  if (investments.length === 0 || trades.length === 0) return null;
+  if (investments.length === 0 || tradesEmBruto.length === 0) return null;
+
+  /**
+   * Os desdobramentos aplicam-se AQUI também, e foi por não se aplicarem que
+   * esta secção mentiu em silêncio.
+   *
+   * A lista de ativos e o detalhe já convertiam os movimentos para a unidade
+   * de hoje; esta comparação lia-os em bruto. Uma compra de NVIDIA anterior ao
+   * 10:1 entrava com um décimo das unidades a multiplicar pelo preço de hoje —
+   * a posição valia 10× a menos SÓ nesta secção, o "vale hoje" daqui
+   * contradizia o de cima, e o detector de incoerências não acusava porque
+   * corre sobre os movimentos já convertidos. O dinheiro dos fluxos não muda
+   * com isto; só as contagens de unidades.
+   */
+  const splitsPorBem = new Map<string, typeof splits>();
+  for (const sp of splits) {
+    splitsPorBem.set(sp.assetId, [...(splitsPorBem.get(sp.assetId) ?? []), sp]);
+  }
+  const trades = tradesEmBruto.map((t) => {
+    const doBem = splitsPorBem.get(t.assetId);
+    if (!doBem || doBem.length === 0) return t;
+    return { ...t, ...aplicarSplits([t as Trade], doBem)[0]! };
+  });
 
   /**
    * As cotações de todos os investimentos, numa consulta só.
