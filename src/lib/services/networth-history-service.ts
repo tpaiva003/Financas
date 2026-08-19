@@ -188,8 +188,17 @@ async function reconstruirDoPassado(
     .filter((a) => a.kind === "investimento" && a.symbol)
     .map((a) => normalizeSymbol(String(a.symbol)))
     .filter((x): x is string => Boolean(x));
+  // Só desde o mês mais antigo a reconstruir (com folga para o recuo aos dias
+  // úteis): a reconstrução olha 36 meses para trás, não dez anos, e era dez
+  // anos de cada símbolo que esta leitura trazia.
+  const dataMaisAntiga = datas.length > 0 ? datas[datas.length - 1]! : null;
+  const desdeQuando = dataMaisAntiga
+    ? new Date(new Date(`${dataMaisAntiga}T00:00:00Z`).getTime() - 15 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+    : undefined;
   const cotacoesPorSimbolo = await repo
-    .listQuotesFor(simbolosDaCarteira)
+    .listQuotesFor(simbolosDaCarteira, desdeQuando)
     .catch(() => new Map<string, { date: string; closeCents: number }[]>());
 
   let outrosAtivosCents = 0;

@@ -19,6 +19,7 @@
  * velho identificado como velho é informação; um preço inventado não é.
  */
 
+import { memoPorPedido } from "@/lib/memo-por-pedido";
 import { getRepository } from "@/lib/data";
 import type { StoredQuote } from "@/lib/data";
 import { fetchReferenceRate } from "./fx-rate";
@@ -182,7 +183,44 @@ async function fetchFromSource(
  * `since` limita o que se lê da base de dados: para a comparação com o índice
  * basta desde o primeiro reforço, não desde sempre.
  */
-export async function getQuoteSeries(
+/**
+ * Memoizada por pedido: o mesmo símbolo com as mesmas opções, pedido duas
+ * vezes no mesmo render (o histórico do património e a comparação com os
+ * índices pedem exatamente as mesmas séries), lê-se uma vez só.
+ *
+ * A chave são os ARGUMENTOS primitivos — símbolo e opções desdobradas — e não
+ * o objeto de opções: o `cache()` do React compara por identidade, e um
+ * literal `{ since }` novo em cada chamada nunca acertava na cache.
+ */
+export function getQuoteSeries(
+  rawSymbol: string,
+  options: {
+    since?: string | null;
+    force?: boolean;
+    latestOnly?: boolean;
+    timeoutMs?: number;
+  } = {},
+): Promise<QuoteSeries> {
+  return getQuoteSeriesMemo(
+    rawSymbol,
+    options.since ?? null,
+    options.force ?? false,
+    options.latestOnly ?? false,
+    options.timeoutMs,
+  );
+}
+
+const getQuoteSeriesMemo = memoPorPedido(
+  (
+    rawSymbol: string,
+    since: string | null,
+    force: boolean,
+    latestOnly: boolean,
+    timeoutMs: number | undefined,
+  ) => getQuoteSeriesFresh(rawSymbol, { since, force, latestOnly, timeoutMs }),
+);
+
+async function getQuoteSeriesFresh(
   rawSymbol: string,
   options: {
     since?: string | null;

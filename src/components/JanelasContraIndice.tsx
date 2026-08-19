@@ -45,7 +45,7 @@ export function JanelasContraIndice({
   const comNumeros = janelas.filter(
     (j) => j.carteiraPct !== null && j.indicePct !== null && j.diferencaPct !== null,
   );
-  if (comNumeros.length === 0) return null;
+  if (janelas.length === 0) return null;
 
   /**
    * Os períodos que faltam, **com o nome**, agrupados pelo motivo.
@@ -60,6 +60,29 @@ export function JanelasContraIndice({
   for (const j of janelas) {
     if (j.motivo === null) continue;
     porMotivo.set(j.motivo, [...(porMotivo.get(j.motivo) ?? []), j.label]);
+  }
+
+  /**
+   * Falharam TODAS? Diz-se na mesma, com os motivos.
+   *
+   * Isto devolvia `null` — nem tabela, nem explicação — e quem tinha ouvido
+   * falar dos períodos abria o ecrã e não via nada, sem forma de saber se a
+   * funcionalidade não existia ou se faltavam dados. Uma ausência sem motivo
+   * lê-se como avaria.
+   */
+  if (comNumeros.length === 0) {
+    return (
+      <div className="mt-2">
+        <p className="text-[11px] text-fg-faint">
+          Sem períodos comparáveis com o {label} por agora:
+        </p>
+        {[...porMotivo.entries()].map(([motivo, labels]) => (
+          <p key={motivo} className="mt-1 text-[11px] text-fg-faint">
+            <span className="text-fg-muted">{listaLegivel(labels)}:</span> {motivo}
+          </p>
+        ))}
+      </div>
+    );
   }
 
   return (

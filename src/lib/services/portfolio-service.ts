@@ -151,13 +151,29 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
    * Servem para saber o que a carteira valia em cada mês do passado — sem elas
    * só se sabe o valor de hoje, e um número sozinho não diz se o desnível
    * contra o índice está a abrir ou a fechar.
+   *
+   * **Desde o primeiro movimento, e não desde sempre.** Nada aqui pergunta por
+   * um dia anterior à primeira compra — a série começa aí e as janelas recusam
+   * períodos mais velhos do que a carteira — e uma carteira de 2024 não tem de
+   * pagar dez anos de histórico de cada símbolo. A folga de 15 dias cobre o
+   * recuo do `precoNoDia` (fins de semana, feriados).
    */
+  const primeiroMovimento = trades.reduce(
+    (min, t) => (min === null || t.date < min ? t.date : min),
+    null as string | null,
+  );
+  const desde = primeiroMovimento
+    ? new Date(new Date(`${primeiroMovimento}T00:00:00Z`).getTime() - 15 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+    : undefined;
   const cotacoesPorSimbolo = await repo
     .listQuotesFor(
       investments
         .filter((a) => a.symbol)
         .map((a) => normalizeSymbol(String(a.symbol)))
         .filter((x): x is string => Boolean(x)),
+      desde,
     )
     .catch(() => new Map<string, { date: string; closeCents: number }[]>());
 
@@ -273,14 +289,26 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
    * desaparecer sem precisar do câmbio de cada dia.
    */
   const precosPorBem: { movimentos: Trade[]; precos: Record<string, number> }[] = [];
-  let algumBemSemCotacoes = false;
   for (const { bem, movimentos } of comparaveis) {
     const simbolo = normalizeSymbol(String(bem.symbol ?? ""));
     const guardadas = simbolo ? (cotacoesPorSimbolo.get(simbolo) ?? []) : [];
     const ultima = guardadas.at(-1);
     if (!ultima || ultima.closeCents <= 0 || !bem.unitPriceCents) {
-      algumBemSemCotacoes = true;
-      break;
+      /**
+       * Sem cotações (ou sem preço de hoje que as converta para euros) não se
+       * sabe o valor deste bem nos dias em que TINHA unidades — mas uma
+       * posição fechada vale zero em qualquer dia depois do fecho, e isso
+       * sabe-se sem cotação nenhuma.
+       *
+       * Era este o buraco que escondia as janelas: bastava UMA posição
+       * fechada sem símbolo (e as fechadas entram sempre na comparação,
+       * porque os fluxos delas são exatos) para a reconstrução desistir de
+       * TODOS os dias, e as sete janelas recusavam numa carteira em que os
+       * períodos recentes nem precisavam desse bem. A decisão desce para o
+       * dia, no `carteiraEm`.
+       */
+      precosPorBem.push({ movimentos, precos: {} });
+      continue;
     }
     const emEurosPorFecho = bem.unitPriceCents / ultima.closeCents;
     const precos: Record<string, number> = {};
@@ -300,23 +328,26 @@ export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioRe
     const jaSabido = carteiraPorDia.get(dia);
     if (jaSabido !== undefined) return jaSabido;
 
-    let valor: number | null = null;
-    if (!algumBemSemCotacoes) {
-      let total = 0;
-      let completo = true;
-      for (const { movimentos, precos } of precosPorBem) {
-        const preco = precoNoDia(precos, dia);
-        if (preco === null) {
-          completo = false;
-          break;
-        }
-        // As unidades que havia naquele dia, dos movimentos até lá.
-        const ate = movimentos.filter((m) => m.date <= dia);
-        if (ate.length === 0) continue;
-        total += buildPosition(ate).quantity * preco;
+    let total = 0;
+    let completo = true;
+    for (const { movimentos, precos } of precosPorBem) {
+      // As unidades que havia naquele dia, dos movimentos até lá. PRIMEIRO as
+      // unidades, só depois o preço: um bem ainda não comprado — ou já
+      // fechado — vale zero nesse dia e não precisa de cotação nenhuma.
+      // Exigir o preço primeiro fazia um ETF comprado em 2024 invalidar todos
+      // os fins de mês de 2021 da série.
+      const ate = movimentos.filter((m) => m.date <= dia);
+      if (ate.length === 0) continue;
+      const unidades = buildPosition(ate).quantity;
+      if (unidades <= 0) continue;
+      const preco = precoNoDia(precos, dia);
+      if (preco === null) {
+        completo = false;
+        break;
       }
-      if (completo) valor = Math.round(total);
+      total += unidades * preco;
     }
+    const valor = completo ? Math.round(total) : null;
     carteiraPorDia.set(dia, valor);
     return valor;
   };
