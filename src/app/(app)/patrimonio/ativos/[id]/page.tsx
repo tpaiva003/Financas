@@ -31,7 +31,7 @@ import {
   updateAssetSymbolAction,
   apagarSplitAction,
 } from "@/app/(app)/actions";
-import { refreshStalePrices } from "@/lib/services/quotes-service";
+import { lerFrescura } from "@/lib/services/quotes-service";
 import { getAssetTwr } from "@/lib/services/asset-twr";
 import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import { SuggestSymbolButton } from "@/components/SuggestSymbolButton";
@@ -51,9 +51,9 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
-  // Preço em dia antes de mostrar o que quer que seja, senão as contas desta
-  // página assentam num valor do dia em que alguém carregou no botão.
-  const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
+  // A frescura LÊ-SE (quem escreve é o cron e o botão «Atualizar preços») —
+  // ver o comentário no PatrimonioContent.
+  const freshness = await lerFrescura(ctx.space.id).catch(() => []);
 
   /**
    * As quatro leituras vão JUNTAS — eram quatro idas em fila indiana, nenhuma

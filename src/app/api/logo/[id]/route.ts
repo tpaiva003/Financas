@@ -21,22 +21,29 @@
  * continuava a usar uma fonte em baixo sem ninguém perceber porquê.
  */
 
-import { getSpaceContext } from "@/lib/space";
+import { getCurrentUser } from "@/lib/session";
 import { getRepository } from "@/lib/data";
 import { dominioValido } from "@/lib/domain";
 import { buscarLogo, semLogo } from "@/lib/services/logo-service";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * O caminho é LEVE de propósito: um carregamento da carteira dispara um
+ * pedido destes por cada cartão com logo. Isto chamava o contexto inteiro
+ * (4-5 consultas) e lia TODOS os bens do ambiente — por logo. Agora é a
+ * sessão mais UMA consulta, e a verificação de pertença (incluindo o papel
+ * de submitter) vive no repositório, junto do dado que protege.
+ */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const ctx = await getSpaceContext();
-  if (ctx.viewerRole === "submitter") return semLogo();
+  const user = await getCurrentUser().catch(() => null);
+  if (!user) return semLogo();
 
-  const bem = (await getRepository().listAssets(ctx.space.id).catch(() => [])).find(
-    (a) => a.id === params.id,
-  );
+  const guardado = await getRepository()
+    .getAssetLogoDomain(params.id, user.id)
+    .catch(() => null);
   // Sem domínio não há logo, e o ecrã já sabe desenhar o monograma.
-  const dominio = bem?.logoDomain ? dominioValido(bem.logoDomain) : null;
+  const dominio = guardado ? dominioValido(guardado) : null;
   if (!dominio) return semLogo();
 
   return (await buscarLogo(dominio)) ?? semLogo();

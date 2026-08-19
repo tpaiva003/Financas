@@ -1085,6 +1085,37 @@ export class MockRepository implements Repository {
     return [...new Set(getStore().assets.map((a) => a.symbol).filter((s): s is string => Boolean(s)))];
   }
 
+  private membroPleno(spaceId: string, userId: string): boolean {
+    const m = getStore().members.find(
+      (x) => x.spaceId === spaceId && x.linkedUserId === userId,
+    );
+    return Boolean(m) && (m!.role ?? "full") !== "submitter";
+  }
+
+  async getAssetLogoDomain(assetId: string, userId: string): Promise<string | null> {
+    const a = getStore().assets.find((x) => x.id === assetId);
+    if (!a?.logoDomain) return null;
+    // A mesma regra do Supabase: sem pertença plena, nada — nem a confirmação
+    // de que o bem existe.
+    return this.membroPleno(a.spaceId, userId) ? a.logoDomain : null;
+  }
+
+  async getValuationLogoDomain(valuationId: string, userId: string): Promise<string | null> {
+    const v = getStore().valuations.find((x) => x.id === valuationId);
+    if (!v?.logoDomain) return null;
+    return this.membroPleno(v.spaceId, userId) ? v.logoDomain : null;
+  }
+
+  async listSpacesComInvestimentos(): Promise<string[]> {
+    return [
+      ...new Set(
+        getStore()
+          .assets.filter((a) => a.kind === "investimento")
+          .map((a) => a.spaceId),
+      ),
+    ];
+  }
+
   async latestQuoteDate(symbol: string): Promise<string | null> {
     const all = getStore().quotes[symbol] ?? [];
     return all.length === 0 ? null : all.reduce((a, b) => (a.date >= b.date ? a : b)).date;

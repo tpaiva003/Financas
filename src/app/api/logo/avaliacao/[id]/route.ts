@@ -12,22 +12,24 @@
  * a mais. A busca em si é partilhada (`logo-service`).
  */
 
-import { getSpaceContext } from "@/lib/space";
+import { getCurrentUser } from "@/lib/session";
 import { getRepository } from "@/lib/data";
 import { dominioValido } from "@/lib/domain";
 import { buscarLogo, semLogo } from "@/lib/services/logo-service";
 
 export const dynamic = "force-dynamic";
 
+// Leve como o gémeo dos investimentos: sessão + UMA consulta, com a pertença
+// verificada no repositório. Ver `api/logo/[id]/route.ts`.
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const ctx = await getSpaceContext();
-  if (ctx.viewerRole === "submitter") return semLogo();
+  const user = await getCurrentUser().catch(() => null);
+  if (!user) return semLogo();
 
-  const avaliacao = (await getRepository().listValuations(ctx.space.id).catch(() => [])).find(
-    (v) => v.id === params.id,
-  );
+  const guardado = await getRepository()
+    .getValuationLogoDomain(params.id, user.id)
+    .catch(() => null);
   // Sem domínio não há logo, e o ecrã já sabe desenhar as iniciais.
-  const dominio = avaliacao?.logoDomain ? dominioValido(avaliacao.logoDomain) : null;
+  const dominio = guardado ? dominioValido(guardado) : null;
   if (!dominio) return semLogo();
 
   return (await buscarLogo(dominio)) ?? semLogo();
