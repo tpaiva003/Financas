@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { montarFunil, type AvaliacaoResumo } from "@/lib/domain";
-import { resumoAnexosAvailable } from "@/lib/services/resumo-anexos-service";
+import { resumoAnexosAvailable } from "@/lib/services/ia-disponivel";
 import { DescobrirMarcas } from "@/components/DescobrirMarcas";
 import { FunilAvaliacoes } from "@/components/FunilAvaliacoes";
 import { NovaAvaliacao } from "@/components/NovaAvaliacao";
@@ -28,8 +28,10 @@ export default async function Page() {
   const repo = getRepository();
   // As tabelas podem não existir ainda (migrações 0037/0038 por correr). Um ecrã
   // vazio é melhor do que um erro, e a página diz o que fazer.
-  const guardadas = await repo.listValuations(ctx.space.id).catch(() => []);
-  const anexos = await repo.listValuationAttachments(ctx.space.id).catch(() => []);
+  const [guardadas, anexos] = await Promise.all([
+    repo.listValuations(ctx.space.id).catch(() => []),
+    repo.listValuationAttachments(ctx.space.id).catch(() => []),
+  ]);
 
   const resumos: AvaliacaoResumo[] = guardadas.map((v) => ({
     id: v.id,

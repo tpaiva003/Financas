@@ -2921,3 +2921,12 @@ descoberta corre na criação de cada entrada (com prazo de 6 s — apontar uma
 empresa é um gesto rápido e um logo não vale a espera) e há um «Pôr logos» no
 funil igual ao dos investimentos para apanhar o resto. Um logo errado
 apaga-se a redescobrir; o que não tem marca reconhecível fica com as iniciais.
+
+### Leituras de render memoizadas por pedido — e proibidas nas actions
+O /patrimonio lia os bens três vezes no mesmo render (preços, página,
+comparação atrás do Suspense). As leituras de render passam por
+`lib/data/leituras` (memoPorPedido); as actions ficam proibidas de as usar
+— quem escreve e relê no mesmo pedido leria o passado — e há um teste de
+leitura de código a guardar a proibição. O `refreshStalePrices` lê fora do
+memo de propósito: escreve preços depois de ler, e a página tem de ler o
+estado já escrito.

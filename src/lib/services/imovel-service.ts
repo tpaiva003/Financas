@@ -31,8 +31,12 @@ import { getInePriceTable } from "./ine-service";
  * O valor ao preço da zona aparece **ao lado** do valor registado e nunca por
  * cima. Não chegar a tempo não parte nada: o imóvel mostra o que tem registado,
  * que é o que já mostrava antes de isto existir.
+ *
+ * Um segundo chega: com o `revalidate` no fetch do INE, o caminho normal é a
+ * Data Cache e nem toca na rede — o tecto só se paga no primeiro pedido de
+ * cada meio dia.
  */
-const TIMEOUT_NA_PAGINA_MS = 2_500;
+const TIMEOUT_NA_PAGINA_MS = 1_000;
 
 /**
  * Estima o valor de cada imóvel que tenha custo, data e sítio.

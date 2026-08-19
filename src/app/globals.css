@@ -235,13 +235,15 @@
    * O App Router mantém o layout e troca só o conteúdo, por isso sem uma
    * chave por rota não há transição nenhuma: a página seguinte aparece de
    * repente, e é isso que dá a sensação de ecrã estático a piscar. Com a
-   * chave, cada navegação sobe seis píxeis em 380ms. Curto de propósito:
-   * quem anda a registar despesas passa por aqui dezenas de vezes ao dia.
+   * chave, cada navegação sobe seis píxeis. MUITO curto de propósito: o
+   * `both` esconde o conteúdo até a animação acabar, ou seja, isto é tempo
+   * somado DEPOIS de a página já ter chegado — e quem regista despesas passa
+   * por aqui dezenas de vezes ao dia. A 380ms lia-se como app lenta.
    */
   @keyframes page-in {
     from {
-      opacity: 0;
-      transform: translateY(6px);
+      opacity: 0.01;
+      transform: translateY(4px);
     }
     to {
       opacity: 1;
@@ -249,7 +251,7 @@
     }
   }
   .page-in {
-    animation: page-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: page-in 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 }
 

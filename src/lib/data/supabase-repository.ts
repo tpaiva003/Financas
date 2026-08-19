@@ -220,22 +220,38 @@ function rowToSettlement(r: any): Settlement {
 export class SupabaseRepository implements Repository {
   async listSpacesForUser(userId: string): Promise<Space[]> {
     const db = getSupabaseAdmin();
-    const mem = await todasAsLinhas<any>((de, ate) =>
-      db.from("members").select("space_id").eq("linked_user_id", userId).order("space_id").range(de, ate),
+    /**
+     * UMA ida, com o embed do PostgREST, em vez de duas encadeadas (members →
+     * spaces). Isto corre no getSpaceContext, ou seja, em TODAS as páginas —
+     * era a latência mais repetida da app inteira. Paginada na mesma pelo
+     * `todasAsLinhas` (na prática é sempre uma página só): uma leitura cortada
+     * aos mil esconderia ambientes sem se queixar.
+     */
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("members")
+        .select("space_id, spaces!inner(*)")
+        .eq("linked_user_id", userId)
+        .order("id")
+        .range(de, ate),
     );
-    const ids = [...new Set(mem.map((m: any) => m.space_id))];
-    if (ids.length === 0) return [];
-    // A coluna `position` pode não existir se a migração 0010 ainda não correu.
-    let rows: any[];
-    try {
-      rows = await todasAsLinhas<any>((de, ate) =>
-        db.from("spaces").select("*").in("id", ids).order("position").order("created_at").range(de, ate),
-      );
-    } catch {
-      rows = await todasAsLinhas<any>((de, ate) =>
-        db.from("spaces").select("*").in("id", ids).order("created_at").range(de, ate),
-      );
+
+    const vistos = new Set<string>();
+    const rows: any[] = [];
+    for (const m of data ?? []) {
+      const s = (m as any).spaces;
+      if (!s || vistos.has(s.id)) continue;
+      vistos.add(s.id);
+      rows.push(s);
     }
+    // A coluna `position` pode não existir se a migração 0010 ainda não
+    // correu — o `?? 0` no map já a trata; ordena-se como o SQL ordenava.
+    rows.sort((a, b) => {
+      const pa = a.position ?? 0;
+      const pb = b.position ?? 0;
+      if (pa !== pb) return pa - pb;
+      return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    });
     return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
@@ -407,7 +423,14 @@ export class SupabaseRepository implements Repository {
       if (filters.payerId) q = q.eq("payer_id", filters.payerId);
       if (filters.kind) q = q.eq("kind", filters.kind);
 
-      return q.order("transaction_date", { ascending: false }).range(de, ate);
+      // O desempate pelo id importa: as páginas agora vêm em paralelo, e sem
+      // ordem TOTAL duas despesas do mesmo dia podem trocar de página entre
+      // duas consultas — uma entra duas vezes, outra desaparece, e o saldo
+      // fica errado em silêncio. Como nos acertos e nos anexos.
+      return q
+        .order("transaction_date", { ascending: false })
+        .order("id")
+        .range(de, ate);
     });
 
     let rows = (data ?? []).map(rowToExpense);
@@ -1652,7 +1675,9 @@ export class SupabaseRepository implements Repository {
     const data = await todasAsLinhas<any>((de, ate) => {
       let q = db.from("asset_trades").select("*").eq("space_id", spaceId);
       if (assetId) q = q.eq("asset_id", assetId);
-      return q.order("trade_date", { ascending: true }).range(de, ate);
+      // Desempate pelo id: ordem total, para as páginas paralelas não poderem
+      // duplicar nem perder movimentos do mesmo dia.
+      return q.order("trade_date", { ascending: true }).order("id").range(de, ate);
     });
     return data.map(rowToAssetTrade);
   }
@@ -1767,7 +1792,9 @@ export class SupabaseRepository implements Repository {
     const rows = await todasAsLinhas<any>((de, ate) => {
       let q = db.from("quotes").select("symbol, quote_date, close_cents").in("symbol", unicos);
       if (fromDate) q = q.gte("quote_date", fromDate);
-      return q.order("quote_date", { ascending: true }).range(de, ate);
+      // A chave é (symbol, quote_date): só a data não é ordem total quando há
+      // vários símbolos, e as páginas paralelas precisam de ordem total.
+      return q.order("quote_date", { ascending: true }).order("symbol").range(de, ate);
     });
 
     for (const r of rows) {

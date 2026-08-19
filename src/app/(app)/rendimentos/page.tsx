@@ -26,10 +26,11 @@ export default async function RendimentosPage() {
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
-  const income: Income[] = await repo.listIncome(ctx.space.id).catch(() => []);
-  const expenses = await repo
-    .listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId })
-    .catch(() => []);
+  // Juntas: nenhuma precisa da outra, e eram duas latências somadas.
+  const [income, expenses] = (await Promise.all([
+    repo.listIncome(ctx.space.id).catch(() => []),
+    repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }).catch(() => []),
+  ])) as [Income[], Awaited<ReturnType<typeof repo.listExpenses>>];
 
   const month = new Date().toISOString().slice(0, 7);
   const monthExpenses = expenses

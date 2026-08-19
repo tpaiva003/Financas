@@ -54,7 +54,6 @@ function dateHeader(iso: string): string {
 export default async function DespesasPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await getSpaceContext();
   const repo = getRepository();
-  const categories = await repo.listCategories(ctx.space.id);
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
   const kind =
@@ -62,16 +61,21 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
       ? (searchParams.kind as ExpenseKind)
       : undefined;
 
-  let expenses = await repo.listExpenses({
-    spaceId: ctx.space.id,
-    viewerId: ctx.viewerMemberId,
-    query: searchParams.q,
-    categoryId: searchParams.categoryId,
-    payerId: searchParams.payerId,
-    kind,
-    from: searchParams.from,
-    to: searchParams.to,
-  });
+  // As categorias e as despesas não dependem uma da outra: vão juntas.
+  const [categories, lidas] = await Promise.all([
+    repo.listCategories(ctx.space.id),
+    repo.listExpenses({
+      spaceId: ctx.space.id,
+      viewerId: ctx.viewerMemberId,
+      query: searchParams.q,
+      categoryId: searchParams.categoryId,
+      payerId: searchParams.payerId,
+      kind,
+      from: searchParams.from,
+      to: searchParams.to,
+    }),
+  ]);
+  let expenses = lidas;
 
   if (searchParams.status === "pending") {
     expenses = expenses.filter((e) => e.status === "pending");

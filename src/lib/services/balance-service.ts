@@ -5,7 +5,7 @@
 
 import { computeBalance, simplifyDebts } from "@/lib/domain";
 import type { BalanceResult, Transfer } from "@/lib/domain";
-import { getRepository } from "@/lib/data";
+import { lerAcertos, lerDespesasPartilhadas } from "@/lib/data/leituras";
 import type { Member } from "@/lib/data";
 
 export interface SpaceBalance {
@@ -21,12 +21,14 @@ export async function getSpaceBalance(
   members: Member[],
   viewerMemberId: string,
 ): Promise<SpaceBalance> {
-  const repo = getRepository();
   const memberIds = members.map((m) => m.id);
 
+  // Leituras memoizadas por pedido: a página dos acertos lê estas duas E chama
+  // isto — eram as mesmas tabelas duas vezes no mesmo render. As actions que
+  // usam o saldo leem ANTES de escrever, por isso o memo não lhes esconde nada.
   const [expenses, settlements] = await Promise.all([
-    repo.listExpenses({ spaceId, viewerId: viewerMemberId, kind: "shared" }),
-    repo.listSettlements(spaceId),
+    lerDespesasPartilhadas(spaceId, viewerMemberId),
+    lerAcertos(spaceId),
   ]);
 
   // Desde quando cada pessoa divide. Sem isto, acrescentar alguém ao ambiente

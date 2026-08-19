@@ -37,6 +37,9 @@ export function SectionNav() {
           <Link
             key={c.href}
             href={c.href}
+            // Sem prefetch, como na barra de baixo: são ligações de fundo
+            // sempre visíveis, e cada prefetch era um render do servidor.
+            prefetch={false}
             aria-current={active ? "page" : undefined}
             // Só a página atual leva forma. Seis pastilhas todas contornadas
             // liam-se como uma fila de caixas vazias, e era mais uma coisa a

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
-import { getRepository } from "@/lib/data";
+import { lerAcertos, lerDespesasPartilhadas } from "@/lib/data/leituras";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { formatCents } from "@/lib/domain";
 import { SettlementForm } from "@/components/SettlementForm";
@@ -13,14 +13,12 @@ export const dynamic = "force-dynamic";
 export default async function AcertosPage() {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
+  // As mesmas leituras que o getSpaceBalance faz por dentro — o memo por
+  // pedido (lib/data/leituras) junta as duas em uma de cada.
   const [settlements, { transfers }, sharedExpenses] = await Promise.all([
-    getRepository().listSettlements(ctx.space.id),
+    lerAcertos(ctx.space.id),
     getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
-    getRepository().listExpenses({
-      spaceId: ctx.space.id,
-      viewerId: ctx.viewerMemberId,
-      kind: "shared",
-    }),
+    lerDespesasPartilhadas(ctx.space.id, ctx.viewerMemberId),
   ]);
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
   const today = new Date().toISOString().slice(0, 10);
