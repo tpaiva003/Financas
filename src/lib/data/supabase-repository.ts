@@ -91,15 +91,33 @@ export async function todasAsLinhas<T>(
     ate: number,
   ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
-  const todas: T[] = [];
+  // As páginas seguintes vão em lotes paralelos que DOBRAM: 1, 2, 4, 8. A
+  // versão em série somava uma latência por página — cem páginas eram cem idas
+  // à rede encadeadas — e era o multiplicador escondido de todas as leituras
+  // grandes. A rampa preserva o custo das leituras pequenas (mil linhas
+  // continuam a ser dois pedidos) e o `Promise.all` preserva a ordem das
+  // páginas, por isso as linhas continuam a sair pela ordem da consulta.
+  const primeira = await pagina(0, PAGINA - 1);
+  if (primeira.error) throw new Error(primeira.error.message);
+  const todas: T[] = [...(primeira.data ?? [])];
+  if (todas.length < PAGINA) return todas;
+
+  let lote = 1;
   // Um tecto de sanidade: mesmo que algo corra mal, isto não fica a rodar.
-  for (let de = 0; de < 200_000; de += PAGINA) {
-    const { data, error } = await pagina(de, de + PAGINA - 1);
-    if (error) throw new Error(error.message);
-    const linhas = data ?? [];
-    todas.push(...linhas);
-    // Uma página incompleta é a última: não há forma mais barata de saber.
-    if (linhas.length < PAGINA) break;
+  let de = PAGINA;
+  while (de < 200_000) {
+    const resultados = await Promise.all(
+      Array.from({ length: lote }, (_, i) => pagina(de + i * PAGINA, de + (i + 1) * PAGINA - 1)),
+    );
+    for (const { data, error } of resultados) {
+      if (error) throw new Error(error.message);
+      const linhas = data ?? [];
+      todas.push(...linhas);
+      // Uma página incompleta é a última: não há forma mais barata de saber.
+      if (linhas.length < PAGINA) return todas;
+    }
+    de += PAGINA * lote;
+    lote = Math.min(lote * 2, 8);
   }
   return todas;
 }
@@ -1795,27 +1813,41 @@ export class SupabaseRepository implements Repository {
     if (unicos.length === 0) return fora;
 
     const db = getSupabaseAdmin();
-    // Uma consulta só, paginada: a tabela das cotações tem uma linha por dia e
-    // por símbolo, e com dez anos de histórico passa das mil à vontade. Uma
-    // leitura cortada aqui devolvia o preço de um dia qualquer como se fosse o
-    // último — e ninguém repararia.
-    const rows = await todasAsLinhas<any>((de, ate) =>
-      db
-        .from("quotes")
-        .select("symbol, quote_date, close_cents, currency")
-        .in("symbol", unicos)
-        .order("quote_date", { ascending: false })
-        .range(de, ate),
+    /**
+     * Um pedido curto por símbolo, em paralelo, e não uma consulta única.
+     *
+     * A versão única trazia TODAS as linhas de todos os símbolos ordenadas por
+     * data — ~100 000 linhas com dez anos de histórico — para ficar com uma
+     * por símbolo e deitar fora o resto. E como vinha paginada em série, eram
+     * ~100 idas à rede encadeadas, a cada visita ao património. Quarenta
+     * `limit(1)` em paralelo servem-se do índice (symbol, quote_date desc) e
+     * custam uma latência só.
+     */
+    const linhas = await Promise.all(
+      unicos.map(async (s) => {
+        const { data, error } = await db
+          .from("quotes")
+          .select("symbol, quote_date, close_cents, currency")
+          .eq("symbol", s)
+          .order("quote_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data as {
+          symbol: string;
+          quote_date: string;
+          close_cents: number;
+          currency?: string;
+        } | null;
+      }),
     );
 
-    // Vêm da mais recente para a mais antiga: a primeira de cada símbolo ganha.
-    for (const r of rows) {
-      const s = String(r.symbol);
-      if (fora.has(s)) continue;
-      fora.set(s, {
+    for (const r of linhas) {
+      if (!r) continue;
+      fora.set(String(r.symbol), {
         date: String(r.quote_date).slice(0, 10),
         closeCents: Number(r.close_cents),
-        currency: (r.currency as string | undefined) ?? "EUR",
+        currency: r.currency ?? "EUR",
       });
     }
     return fora;

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
@@ -447,41 +448,9 @@ export async function PatrimonioContent({
    * das duas pode deitar a página abaixo: antes da migração ser corrida, a
    * tabela não existe e o gráfico diz apenas que o histórico está a começar.
    */
-  const historico = await (async () => {
-    if (view !== "resumo") return null;
-    // A fotografia gravada é sempre a do património INTEIRO. Ver `foco`.
-    const captura = await captureNetWorthSnapshot(ctx.space.id, net, today);
-    // Os bens e os movimentos já foram lidos lá em cima: passá-los evita duas
-    // leituras completas repetidas em cada abertura do resumo.
-    const completo = await getNetWorthHistoryCompleto(ctx.space.id, today, { stored, trades });
-    /**
-     * O gráfico segue o foco, e os pontos que não sabem repartir-se saem.
-     *
-     * As fotografias antigas — e todas as reconstruídas — só guardaram o
-     * total. Reparti-lo pelas proporções de hoje desenhava uma linha de
-     * investimentos que nunca existiu. Contam-se e dizem-se por baixo.
-     */
-    const { snapshots: doFoco, semReparticao } = snapshotsDoFoco(completo, foco);
-    const series = buildNetWorthSeries(doFoco);
-    return {
-      captura,
-      series,
-      semReparticao,
-      /**
-       * Os índices são calculados sobre os PONTOS DA SÉRIE, não sobre os
-       * snapshots em bruto.
-       *
-       * A série agrupa por mês; os snapshots são um por dia. Passar os
-       * snapshots dava uma lista de outro comprimento, e o gráfico desenha
-       * cada valor pela sua posição — as linhas saíam alinhadas com meses que
-       * não são os delas, ou não saíam de todo.
-       *
-       * São contexto e nunca podem custar a página: se a fonte de cotações não
-       * responder, o gráfico desenha-se na mesma.
-       */
-      indices: await linhasDeIndice(series.points).catch(() => []),
-    };
-  })();
+  // O histórico desceu para o componente `HistoricoDoPatrimonio`, atrás de um
+  // Suspense: é a reconstrução mais cara do resumo e não pode ser ela a
+  // segurar o património líquido e os cartões, que já estão prontos.
 
   return (
     <div className="space-y-8">
@@ -587,28 +556,20 @@ export async function PatrimonioContent({
         ) : null}
       </section>
 
-      {historico ? (
-        <div className="space-y-2">
-          <NetWorthChart
-            series={historico.series}
-            captura={historico.captura}
-            indices={historico.indices}
+      {view === "resumo" ? (
+        <Suspense
+          fallback={
+            <div className="card h-64 animate-pulse" aria-label="A carregar o histórico…" />
+          }
+        >
+          <HistoricoDoPatrimonio
+            spaceId={ctx.space.id}
+            net={net}
+            today={today}
+            dados={{ stored, trades }}
+            foco={foco}
           />
-          {/* O buraco explicado. Sem isto, escolher "Investimentos" fazia o
-              gráfico encolher para dois pontos sem razão à vista — e um gráfico
-              que encolhe sozinho lê-se como avaria. */}
-          {historico.semReparticao > 0 ? (
-            <p className="text-xs text-fg-faint">
-              {historico.semReparticao === 1
-                ? "Há uma fotografia mais antiga que"
-                : `Há ${historico.semReparticao} fotografias mais antigas que`}{" "}
-              só guardou o total, sem o repartir por tipo de bem, por isso{" "}
-              {historico.semReparticao === 1 ? "fica" : "ficam"} de fora deste
-              gráfico. A repartição passou a ser guardada e daqui para a frente
-              a linha enche-se sozinha.
-            </p>
-          ) : null}
-        </div>
+        </Suspense>
       ) : null}
 
       {netFoco.byKind.length > 0 ? (
@@ -923,7 +884,16 @@ export async function PatrimonioContent({
       ) : null}
 
       {view === "ativos" ? (
-        <PortfolioReturnSection spaceId={ctx.space.id} contaminado={gralhas.length > 0} />
+        // Atrás de um Suspense, de propósito: é o trabalho mais caro da app
+        // (dois benchmarks, sete janelas, série mensal) e a lista de ativos já
+        // está pronta — aparece primeiro, e a comparação flui quando chegar.
+        <Suspense
+          fallback={
+            <div className="card h-48 animate-pulse" aria-label="A comparar com os índices…" />
+          }
+        >
+          <PortfolioReturnSection spaceId={ctx.space.id} contaminado={gralhas.length > 0} />
+        </Suspense>
       ) : null}
 
       {view === "ativos" || view === "dividas" ? (
@@ -938,6 +908,69 @@ export async function PatrimonioContent({
       <Link href="/relatorios" className="inline-block text-sm text-fg-muted hover:text-fg">
         Ver relatórios de despesa
       </Link>
+    </div>
+  );
+}
+
+/**
+ * O gráfico do histórico do património, num componente próprio para poder
+ * fluir atrás de um Suspense.
+ *
+ * A fotografia grava-se na visita e não num cron: é idempotente (uma por dia
+ * e por ambiente). Os bens e os movimentos vêm de cima, já lidos — passá-los
+ * evita duas leituras completas repetidas em cada abertura do resumo.
+ */
+async function HistoricoDoPatrimonio({
+  spaceId,
+  net,
+  today,
+  dados,
+  foco,
+}: {
+  spaceId: string;
+  net: Parameters<typeof captureNetWorthSnapshot>[1];
+  today: string;
+  dados: NonNullable<Parameters<typeof getNetWorthHistoryCompleto>[2]>;
+  foco: Parameters<typeof snapshotsDoFoco>[1];
+}) {
+  // A fotografia gravada é sempre a do património INTEIRO. Ver `foco`.
+  const captura = await captureNetWorthSnapshot(spaceId, net, today);
+  const completo = await getNetWorthHistoryCompleto(spaceId, today, dados);
+  /**
+   * O gráfico segue o foco, e os pontos que não sabem repartir-se saem.
+   *
+   * As fotografias antigas — e todas as reconstruídas — só guardaram o total.
+   * Reparti-lo pelas proporções de hoje desenhava uma linha de investimentos
+   * que nunca existiu. Contam-se e dizem-se por baixo.
+   */
+  const { snapshots: doFoco, semReparticao } = snapshotsDoFoco(completo, foco);
+  const series = buildNetWorthSeries(doFoco);
+  /**
+   * Os índices são calculados sobre os PONTOS DA SÉRIE, não sobre os
+   * snapshots em bruto: a série agrupa por mês, os snapshots são um por dia,
+   * e o gráfico desenha cada valor pela sua posição. São contexto e nunca
+   * podem custar a página: se a fonte de cotações não responder, o gráfico
+   * desenha-se na mesma.
+   */
+  const indices = await linhasDeIndice(series.points).catch(() => []);
+
+  return (
+    <div className="space-y-2">
+      <NetWorthChart series={series} captura={captura} indices={indices} />
+      {/* O buraco explicado. Sem isto, escolher "Investimentos" fazia o
+          gráfico encolher para dois pontos sem razão à vista — e um gráfico
+          que encolhe sozinho lê-se como avaria. */}
+      {semReparticao > 0 ? (
+        <p className="text-xs text-fg-faint">
+          {semReparticao === 1
+            ? "Há uma fotografia mais antiga que"
+            : `Há ${semReparticao} fotografias mais antigas que`}{" "}
+          só guardou o total, sem o repartir por tipo de bem, por isso{" "}
+          {semReparticao === 1 ? "fica" : "ficam"} de fora deste gráfico. A
+          repartição passou a ser guardada e daqui para a frente a linha
+          enche-se sozinha.
+        </p>
+      ) : null}
     </div>
   );
 }

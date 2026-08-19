@@ -6,6 +6,7 @@
  * que corresponde ao utilizador nesse ambiente.
  */
 
+import { memoPorPedido } from "@/lib/memo-por-pedido";
 import { cookies } from "next/headers";
 import { requireUser } from "./session";
 import { getRepository } from "./data";
@@ -87,7 +88,15 @@ export async function getTargetSpace(
   };
 }
 
-export async function getSpaceContext(): Promise<SpaceContext> {
+/**
+ * Memoizado por pedido com o `cache()` do React, de propósito.
+ *
+ * Isto corre no layout E outra vez em cada página — 4 a 5 consultas de cada
+ * vez, em todas as navegações da app inteira. Dentro do mesmo pedido a
+ * resposta é a mesma, e pagar duas vezes era só latência. O `cache()` morre
+ * com o pedido: uma action que escreva e um pedido novo leem sempre fresco.
+ */
+export const getSpaceContext = memoPorPedido(async function getSpaceContext(): Promise<SpaceContext> {
   const user = await requireUser();
   const repo = getRepository();
 
@@ -143,4 +152,4 @@ export async function getSpaceContext(): Promise<SpaceContext> {
     viewerRole,
     congelado: congelado(space),
   };
-}
+});
