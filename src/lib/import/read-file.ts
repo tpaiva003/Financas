@@ -11,7 +11,6 @@
  * Só os dois utilizadores autenticados podem carregar ficheiros.
  */
 
-import * as XLSX from "xlsx";
 import type { Grid } from "./columns";
 import { universoLinesToGrid } from "./pdf-universo";
 
@@ -83,7 +82,12 @@ function readCsv(buf: Buffer): Grid {
  * `parseAmountCents` já lida com o que sai daqui: "1234.56" é lido igual a
  * "1 234,56 €".
  */
-function readXlsx(buf: Buffer): Grid {
+async function readXlsx(buf: Buffer): Promise<Grid> {
+  // Import dinâmico, como o pdf-parse logo abaixo e pela mesma razão: são
+  // 7,3 MB que só interessam a quem carregou mesmo uma folha de cálculo. Com
+  // o import estático, todas as rotas que alcançavam este módulo (via
+  // actions.ts) pagavam-no no arranque a frio.
+  const XLSX = await import("xlsx");
   const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return [];
@@ -140,7 +144,7 @@ export async function readUploadToGrid(file: File): Promise<Grid> {
   const name = (file.name ?? "").toLowerCase();
   const isText = name.endsWith(".csv") || name.endsWith(".txt") || name.endsWith(".tsv");
   const isPdf = name.endsWith(".pdf");
-  const grid = isPdf ? await readPdf(buf) : isText ? readCsv(buf) : readXlsx(buf);
+  const grid = isPdf ? await readPdf(buf) : isText ? readCsv(buf) : await readXlsx(buf);
   // Remove linhas totalmente vazias, que baralham a deteção do cabeçalho.
   return grid.filter((r) => r.some((c) => (c ?? "").trim() !== ""));
 }

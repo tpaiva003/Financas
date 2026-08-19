@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
+import { lerAtivos } from "@/lib/data/leituras";
 import {
   ASSET_KIND_LABELS,
   TRADE_KIND_LABELS,
@@ -53,7 +54,29 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   // Preço em dia antes de mostrar o que quer que seja, senão as contas desta
   // página assentam num valor do dia em que alguém carregou no botão.
   const freshness = await refreshStalePrices(ctx.space.id).catch(() => []);
-  const assets = await repo.listAssets(ctx.space.id).catch(() => []);
+
+  /**
+   * As quatro leituras vão JUNTAS — eram quatro idas em fila indiana, nenhuma
+   * a precisar da anterior. Os bens vêm pela leitura memoizada (depois da
+   * atualização de preços, de propósito: traz os preços já escritos); os
+   * movimentos, desdobramentos e anexos são deste ativo só, filtrados na
+   * consulta.
+   *
+   * Sobre cada uma: os desdobramentos a `[]` quando a leitura falha é o
+   * comportamento certo por uma vez (sem eles as contas ficam como antes da
+   * funcionalidade existir); os anexos a `null` e nunca `[]`, porque "não
+   * consegui ler" não pode dizer "não tens documentos" a quem tem lá a nota
+   * de liquidação — e só entram os `pronto`.
+   */
+  const [assets, registados, splits, anexos] = await Promise.all([
+    lerAtivos(ctx.space.id).catch(() => []),
+    repo.listAssetTrades(ctx.space.id, params.id).catch(() => []),
+    repo.listAssetSplits(ctx.space.id, params.id).catch(() => []),
+    repo
+      .listAssetAttachments(ctx.space.id, params.id)
+      .then((rows) => rows.filter((a) => a.status === "pronto"))
+      .catch(() => null),
+  ]);
   const asset = assets.find((a) => a.id === params.id);
   if (!asset) notFound();
   const fresh = freshness.find((f) => f.assetId === asset.id);
@@ -63,21 +86,11 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       ? { cents: fresh.quoteCents, currency: fresh.quoteCurrency }
       : null;
 
-  const registados = await repo.listAssetTrades(ctx.space.id, asset.id).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
 
-  /**
-   * Os desdobramentos, e os movimentos vistos na unidade de hoje.
-   *
-   * Um desdobramento não é um negócio: é uma mudança de unidade de medida. As
-   * quantidades de tudo o que veio antes multiplicam, os preços por unidade
-   * dividem, e **o dinheiro não se mexe**. Ver `domain/splits.ts`.
-   *
-   * `[]` quando a leitura falha, e aqui isso é o comportamento certo por uma
-   * vez: sem desdobramentos as contas ficam como estavam antes desta
-   * funcionalidade existir, que é um estado conhecido e não uma invenção.
-   */
-  const splits = await repo.listAssetSplits(ctx.space.id, asset.id).catch(() => []);
+  // Um desdobramento não é um negócio: é uma mudança de unidade de medida.
+  // Quantidades multiplicam, preços por unidade dividem, o dinheiro não se
+  // mexe. Ver `domain/splits.ts`.
   const trades = aplicarSplits(registados as Trade[], splits);
 
   /**
@@ -87,19 +100,6 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
    * fatores, o par já não bate certo e a deteção deixaria de o ver.
    */
   const sugeridos = detetarSplits(registados as Trade[]);
-
-  /**
-   * Os documentos deste investimento.
-   *
-   * `null` quando a leitura falha, e nunca `[]`: se a migração dos anexos ainda
-   * não correu, uma lista vazia dizia "não tens documentos" a quem tem lá a
-   * nota de liquidação. Só entram os `pronto` — um anexo que ficou a meio do
-   * envio não é um ficheiro, é uma promessa.
-   */
-  const anexos = await repo
-    .listAssetAttachments(ctx.space.id, asset.id)
-    .then((rows) => rows.filter((a) => a.status === "pronto"))
-    .catch(() => null);
 
   const position = buildPosition(trades as Trade[]);
   const hasTrades = trades.length > 0;

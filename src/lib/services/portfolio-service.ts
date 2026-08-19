@@ -14,6 +14,7 @@
  */
 
 import { getRepository } from "@/lib/data";
+import { lerAtivos, lerMovimentos, lerSplits } from "@/lib/data/leituras";
 import {
   BENCHMARKS,
   JANELAS,
@@ -138,10 +139,12 @@ export interface PortfolioReturn {
  */
 export async function buildPortfolioReturn(spaceId: string): Promise<PortfolioReturn | null> {
   const repo = getRepository();
+  // Pelas leituras memoizadas: a página que nos chama já leu os três — pagar
+  // outra vez era só latência (esta secção corre atrás de um Suspense).
   const [assets, tradesEmBruto, splits] = await Promise.all([
-    repo.listAssets(spaceId).catch(() => []),
-    repo.listAssetTrades(spaceId).catch(() => []),
-    repo.listAssetSplits(spaceId).catch(() => []),
+    lerAtivos(spaceId).catch(() => []),
+    lerMovimentos(spaceId).catch(() => []),
+    lerSplits(spaceId).catch(() => []),
   ]);
 
   const investments = assets.filter((a) => a.kind === "investimento");

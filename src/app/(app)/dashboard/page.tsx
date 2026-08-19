@@ -21,14 +21,24 @@ export default async function DashboardPage() {
   const repo = getRepository();
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
-  // Gera ocorrências de recorrentes em atraso (idempotente, tolerante a falhas).
-  await generateDueRecurring(ctx.space.id);
-
-  const [{ transfers }, recent, categories] = await Promise.all([
-    getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
-    repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
-    repo.listCategories(ctx.space.id),
-  ]);
+  // Gera ocorrências de recorrentes em atraso (idempotente, tolerante a
+  // falhas). ANTES das leituras, de propósito: as despesas geradas têm de
+  // aparecer nas listas deste mesmo render — mas as leituras que não dependem
+  // dela (importações, rendimentos, lembretes) arrancam em paralelo.
+  const [[{ transfers }, recent, categories], batches, income, todosLembretes] =
+    await Promise.all([
+      (async () => {
+        await generateDueRecurring(ctx.space.id);
+        return Promise.all([
+          getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
+          repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
+          repo.listCategories(ctx.space.id),
+        ]);
+      })(),
+      repo.listImportBatches(ctx.space.id).catch(() => []),
+      repo.listIncome(ctx.space.id).catch(() => []),
+      getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
+    ]);
 
   const pending = recent.filter((e) => e.status === "pending");
   const pendingApprovals = recent.filter((e) => e.approvalStatus === "pending");
@@ -53,14 +63,14 @@ export default async function DashboardPage() {
     : buildOnboarding({
         expenseCount: recent.filter((e) => !e.deletedAt).length,
         memberCount: ctx.members.length,
-        importCount: (await repo.listImportBatches(ctx.space.id).catch(() => [])).length,
-        incomeCount: (await repo.listIncome(ctx.space.id).catch(() => [])).length,
+        importCount: batches.length,
+        incomeCount: income.length,
       });
 
   // Lembretes de importação: o aviso visual de que há extratos por trazer.
-  const dueImports = pendingReminders(
-    await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
-  ).filter((r) => r.status.state !== "never");
+  const dueImports = pendingReminders(todosLembretes).filter(
+    (r) => r.status.state !== "never",
+  );
 
   /**
    * O streak: dias seguidos com registo FEITO pela própria pessoa (dia do

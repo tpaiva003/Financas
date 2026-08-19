@@ -138,7 +138,11 @@ export const getSpaceContext = memoPorPedido(async function getSpaceContext(): P
   // marca ficar para a visita seguinte.
   const agora = new Date().toISOString();
   if (space && precisaDeMarcarAtividade(space.lastActivityAt, agora)) {
-    await repo.touchSpaceActivity(space.id, agora).catch(() => {});
+    // Sem await, de propósito: o resultado não é usado para nada e isto corre
+    // em todas as páginas — uma escrita no caminho crítico só para marcar
+    // atividade era latência paga por todos. Se falhar, fica para a visita
+    // seguinte, que era já o contrato.
+    void repo.touchSpaceActivity(space.id, agora).catch(() => {});
     space.lastActivityAt = agora;
   }
 

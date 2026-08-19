@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
+import { lerAtivos, lerMovimentos, lerSplits } from "@/lib/data/leituras";
 import type { Asset } from "@/lib/data";
 import {
   ASSET_KIND_LABELS,
@@ -69,8 +70,8 @@ import { AssetListSort } from "@/components/AssetListSort";
 import { SuggestMissingSymbols } from "@/components/SuggestMissingSymbols";
 import { AtivosDuplicados } from "@/components/AtivosDuplicados";
 import { DatasAProximar } from "@/components/DatasAProximar";
-import { tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
-import { creditContractExtractAvailable } from "@/lib/services/credit-contract-service";
+import { tickerSuggestAvailable } from "@/lib/services/ia-disponivel";
+import { creditContractExtractAvailable } from "@/lib/services/ia-disponivel";
 import { estimarValoresDeImoveis } from "@/lib/services/imovel-service";
 import {
   captureNetWorthSnapshot,
@@ -155,9 +156,13 @@ export async function PatrimonioContent({
    * apagar as outras do ecrã.
    */
   const [stored, trades, splits, anexosTodos, expenses] = await Promise.all([
-    repo.listAssets(ctx.space.id).catch(() => [] as Asset[]),
-    repo.listAssetTrades(ctx.space.id).catch(() => []),
-    repo.listAssetSplits(ctx.space.id).catch(() => []),
+    // Leituras memoizadas por pedido: a comparação com os índices, atrás do
+    // Suspense, volta a pedir estas três — e recebe estas respostas em vez de
+    // pagar três leituras completas outra vez. Correm DEPOIS do
+    // refreshStalePrices lá em cima, por isso trazem os preços já escritos.
+    lerAtivos(ctx.space.id).catch(() => [] as Asset[]),
+    lerMovimentos(ctx.space.id).catch(() => []),
+    lerSplits(ctx.space.id).catch(() => []),
     /**
      * Os documentos de todos os bens, numa leitura só.
      *

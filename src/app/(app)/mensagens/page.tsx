@@ -26,7 +26,11 @@ export default async function MensagensPage({
 
   const showArchived = searchParams.arquivadas === "1";
   const showPedidos = searchParams.pedidos === "1";
-  const all = await getRepository().listContactMessages();
+  // As duas listas juntas: mensagens e pedidos não dependem um do outro.
+  const [all, pedidos] = await Promise.all([
+    getRepository().listContactMessages(),
+    getRepository().listTicketsTodos().catch(() => null),
+  ]);
   const active = all.filter((m) => !m.archivedAt);
   const archived = all.filter((m) => m.archivedAt);
   const unread = active.filter((m) => !m.readAt).length;
@@ -42,7 +46,6 @@ export default async function MensagensPage({
    * Uma leitura falhada vira `null` e nunca lista vazia — a migração dos
    * pedidos pode não ter corrido, e "não há pedidos" seria mentira.
    */
-  const pedidos = await getRepository().listTicketsTodos().catch(() => null);
   const pedidosAbertos = (pedidos ?? []).filter((p) => ticketAberto(p.status));
 
   return (

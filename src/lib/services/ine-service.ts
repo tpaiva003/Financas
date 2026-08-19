@@ -112,6 +112,11 @@ export async function getInePriceTable(
     const resposta = await fetch(url, {
       signal: controller.signal,
       headers: { Accept: "application/json" },
+      // A Data Cache da Vercel é partilhada entre instâncias e sobrevive ao
+      // arranque a frio — a cache de módulo acima morre com ele. Sem isto,
+      // numa rota force-dynamic o fetch herda revalidate 0 e cada instância
+      // nova pagava o INE outra vez, com o utilizador à espera.
+      next: { revalidate: 43_200 },
     }).finally(() => clearTimeout(timer));
 
     if (!resposta.ok) {

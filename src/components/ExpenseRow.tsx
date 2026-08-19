@@ -59,6 +59,9 @@ export function ExpenseRow({
     <li>
       <Link
         href={`/despesas/${expense.id}/editar`}
+        // Sem prefetch: uma lista de 300 despesas disparava 300 renders de
+        // fundo do formulário de edição.
+        prefetch={false}
         className="row group hover:border-hair"
       >
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-hair bg-panel2/50 text-base">

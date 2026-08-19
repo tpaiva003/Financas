@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getSpaceContext } from "@/lib/space";
 import { getRepository } from "@/lib/data";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
-import { reciboExtractAvailable } from "@/lib/services/recibo-service";
+import { reciboExtractAvailable } from "@/lib/services/ia-disponivel";
 
 export const metadata = { title: "Nova despesa · Rachar" };
 export const dynamic = "force-dynamic";

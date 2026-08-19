@@ -13,7 +13,7 @@ import { PageTransition } from "@/components/PageTransition";
 import { ScrollState } from "@/components/ScrollState";
 import { ChatDock } from "@/components/ChatDock";
 import { AvisoCongelado } from "@/components/AvisoCongelado";
-import { conversaAvailable } from "@/lib/services/conversa-service";
+import { conversaAvailable } from "@/lib/services/ia-disponivel";
 
 /**
  * Nada daqui para dentro entra num motor de busca. O middleware já manda um
@@ -31,8 +31,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const admin = isAdmin(user.id);
   const isSubmitter = ctx.viewerRole === "submitter";
   const repo = getRepository();
-  const unreadMessages = admin ? await repo.countUnreadContactMessages() : 0;
-  const pendingApprovals = isSubmitter ? 0 : await repo.countPendingApprovals(ctx.space.id);
+  const [unreadMessages, pendingApprovals] = await Promise.all([
+    admin ? repo.countUnreadContactMessages() : 0,
+    isSubmitter ? 0 : repo.countPendingApprovals(ctx.space.id),
+  ]);
 
   return (
     <div data-app className="min-h-[100svh]">

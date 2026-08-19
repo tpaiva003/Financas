@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
-import { getRepository } from "@/lib/data";
+import { lerAtivos, lerMovimentos, lerSplits } from "@/lib/data/leituras";
 import {
   analisarPatrimonio,
   aplicarSplits,
@@ -29,12 +29,21 @@ export async function AnalisePatrimonioContent() {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
-  const repo = getRepository();
   const hoje = new Date().toISOString().slice(0, 10);
-  const historico = await getNetWorthHistoryCompleto(ctx.space.id, hoje).catch(() => null);
-  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
-  const movimentos = await repo.listAssetTrades(ctx.space.id).catch(() => []);
-  const splits = await repo.listAssetSplits(ctx.space.id).catch(() => []);
+  // As três leituras vão juntas (eram quatro em fila indiana) e passam-se à
+  // reconstrução como `jaLidos` — sem isto, o histórico voltava a lê-las todas
+  // por dentro. E vêm pelas leituras memoizadas, partilhadas com o resto do
+  // render.
+  const [bens, movimentos, splits] = await Promise.all([
+    lerAtivos(ctx.space.id).catch(() => []),
+    lerMovimentos(ctx.space.id).catch(() => []),
+    lerSplits(ctx.space.id).catch(() => []),
+  ]);
+  const historico = await getNetWorthHistoryCompleto(ctx.space.id, hoje, {
+    stored: bens,
+    trades: movimentos,
+    splits,
+  }).catch(() => null);
 
   // Os desdobramentos não mexem em dinheiro nenhum, mas aplicam-se à mesma:
   // esta página tem de contar a mesma história que as outras.
