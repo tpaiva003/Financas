@@ -51,7 +51,7 @@ function Periodo({
       : `${p.indexante ? INDEXANTES[p.indexante] : "indexante por dizer"} + ${String(p.spreadPct ?? "").replace(".", ",")}%`;
   return (
     <li className="text-[11px] leading-snug text-fg-faint">
-      <span className="text-fg-muted">{p.startsOn}</span> — {PERIODO_TIPO_LABELS[p.kind]}, {taxa}
+      <span className="text-fg-muted">{p.startsOn}</span> · {PERIODO_TIPO_LABELS[p.kind]}, {taxa}
     </li>
   );
 }
@@ -68,7 +68,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
 
       <p className="mt-2 text-xs text-fg-faint">
         O PDF do contrato de crédito, para não escrever à mão o montante, o prazo
-        e os períodos de taxa. O ficheiro é lido e deitado fora — não fica
+        e os períodos de taxa. O ficheiro é lido e deitado fora, não fica
         guardado. Nada é gravado: os campos ficam preenchidos e por confirmar.
       </p>
 
@@ -115,9 +115,9 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
               }`}
             >
               {r.confirmacao.bate ? "Confere: " : "Não confere: "}
-              o contrato diz {formatCents(r.confirmacao.contratoCents)} de prestação e, com o
+              o contrato diz <span className="dinheiro">{formatCents(r.confirmacao.contratoCents)}</span> de prestação e, com o
               montante, a taxa e o prazo que li, as contas dão{" "}
-              {formatCents(r.confirmacao.calculadaCents)}.
+              <span className="dinheiro">{formatCents(r.confirmacao.calculadaCents)}</span>.
             </p>
           ) : null}
 
@@ -125,7 +125,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
             <div>
               <dt className="text-fg-faint">Montante emprestado</dt>
               <dd className="text-fg">
-                {r.capitalCents === null ? "por apurar" : formatCents(r.capitalCents)}
+                {r.capitalCents === null ? "por apurar" : <span className="dinheiro">{formatCents(r.capitalCents)}</span>}
               </dd>
             </div>
             <div>
@@ -139,7 +139,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
             <div>
               <dt className="text-fg-faint">Prestação no contrato</dt>
               <dd className="text-fg">
-                {r.statedPaymentCents === null ? "não vinha" : formatCents(r.statedPaymentCents)}
+                {r.statedPaymentCents === null ? "não vinha" : <span className="dinheiro">{formatCents(r.statedPaymentCents)}</span>}
               </dd>
             </div>
           </dl>

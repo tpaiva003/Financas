@@ -105,7 +105,7 @@ export function AnaliseSetores({
             {carteira.porClassificar === 1
               ? "Um investimento ainda não tem setor"
               : `${carteira.porClassificar} investimentos ainda não têm setor`}{" "}
-            — são {String(carteira.porClassificarPct).replace(".", ",")}% do valor,
+            ({String(carteira.porClassificarPct).replace(".", ",")}% do valor),
             e enquanto assim for as percentagens acima e abaixo estão incompletas.
           </p>
         ) : (
@@ -128,7 +128,7 @@ export function AnaliseSetores({
                     </span>
                   </span>
                   <span className="font-mono tnum text-xs text-fg-muted">
-                    {formatCents(g.valorCents)}
+                    <span className="dinheiro">{formatCents(g.valorCents)}</span>
                     <span className="ml-2 text-fg-faint">
                       {String(g.pesoPct).replace(".", ",")}%
                     </span>
@@ -158,8 +158,8 @@ export function AnaliseSetores({
                     Do dinheiro que entrou, este setor levou{" "}
                     {String(g.pesoDoReforcoPct).replace(".", ",")}%
                     {g.pesoDoReforcoPct < g.pesoPct
-                      ? " — pesa mais hoje do que o que se decidiu pôr nele."
-                      : " — pesa menos hoje do que o que se decidiu pôr nele."}
+                      ? ": pesa mais hoje do que o que se decidiu pôr nele."
+                      : ": pesa menos hoje do que o que se decidiu pôr nele."}
                   </p>
                 ) : null}
               </li>
@@ -200,7 +200,7 @@ export function AnaliseSetores({
                       <span className="ml-2 text-[11px] text-fg-faint">{e.setorPorExtenso}</span>
                     </td>
                     <td className="py-1.5 pl-3 text-right font-mono tnum text-xs text-fg-muted">
-                      {formatCents(e.reforcoCents)}
+                      <span className="dinheiro">{formatCents(e.reforcoCents)}</span>
                       {e.pesoDoReforcoPct !== null ? (
                         <span className="ml-1.5 text-fg-faint">
                           {String(e.pesoDoReforcoPct).replace(".", ",")}%
@@ -208,7 +208,7 @@ export function AnaliseSetores({
                       ) : null}
                     </td>
                     <td className="py-1.5 pl-3 text-right font-mono tnum text-xs text-fg">
-                      {formatCents(e.valorCents)}
+                      <span className="dinheiro">{formatCents(e.valorCents)}</span>
                     </td>
                     <td
                       className={`py-1.5 pl-3 text-right font-mono tnum text-xs ${
@@ -220,7 +220,7 @@ export function AnaliseSetores({
                       }`}
                     >
                       {e.ganhoCents === null
-                        ? "—"
+                        ? "-"
                         : `${e.ganhoCents >= 0 ? "+" : ""}${String(e.ganhoPct).replace(".", ",")}%`}
                     </td>
                   </tr>
@@ -236,7 +236,7 @@ export function AnaliseSetores({
             &ldquo;Entrou&rdquo; é todo o dinheiro que alguma vez foi para lá,
             menos o que saiu em vendas. O ganho é sobre o custo do que ainda
             tens, por isso os dois não têm de bater um com o outro. Um traço no
-            ganho é uma posição sem custo registado — não é zero.
+            ganho é uma posição sem custo registado, não é zero.
           </p>
         </section>
       ) : null}

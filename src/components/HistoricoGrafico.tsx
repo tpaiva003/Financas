@@ -200,7 +200,7 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
             <span className="font-mono tnum text-fg">
               {formatar(primeiro, metrica.unidade)} → {formatar(ultimo, metrica.unidade)}
             </span>{" "}
-            <span className="text-fg-faint">— passa o rato pelo gráfico</span>
+            <span className="text-fg-faint">(passa o rato pelo gráfico)</span>
           </>
         )}
       </p>
@@ -261,7 +261,7 @@ export function HistoricoGrafico({ historico }: { historico: AnoFundamental[] })
       </div>
 
       <p className="text-xs leading-snug text-fg-faint">
-        {metrica.nota} O eixo não começa em zero — foi cortado para se ver o
+        {metrica.nota} O eixo não começa em zero: foi cortado para se ver o
         movimento, e por isso os valores vão escritos.
       </p>
     </div>

@@ -104,7 +104,7 @@ export function AssetAttachments({
         <p className="eyebrow mb-1">Documentos</p>
         <p role="alert" className="text-xs leading-snug text-fg-muted">
           Não consegui ler os documentos deste registo. Falta correr a migração
-          que cria a tabela dos anexos. Não é que não haja nenhum — é que ainda
+          que cria a tabela dos anexos. Não é que não haja nenhum: é que ainda
           não sei; por isso também não te deixo juntar mais, para não perderes
           um ficheiro num sítio que não existe.
         </p>
@@ -117,7 +117,7 @@ export function AssetAttachments({
       <p className="eyebrow mb-1">Documentos</p>
       <p className="mb-3 text-xs leading-snug text-fg-faint">
         A escritura, a caderneta, o contrato, as notas de liquidação. Ficam
-        guardados em privado e só se abrem a partir daqui — nunca por um endereço
+        guardados em privado e só se abrem a partir daqui: nunca por um endereço
         que se possa passar a alguém. Até {tamanho(ANEXO_MAX_BYTES)} por ficheiro,
         em PDF ou imagem.
       </p>

@@ -89,7 +89,7 @@ export default async function DashboardPage() {
 
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+    iso ? new Date(iso).toLocaleDateString("pt-PT") : "-";
   // "Registaste" = foste tu a meter os dados na app (independentemente de quem
   // pagou). É isto que responde a "quando é que atualizei isto pela última vez",
   // por isso o que se mostra é o DIA DO REGISTO, não a data da despesa.
@@ -137,7 +137,7 @@ export default async function DashboardPage() {
               <p className="text-xs text-fg-muted">
                 {streak.registadoHoje
                   ? "Hoje já está. As contas em dia são isto."
-                  : "Ainda não registaste hoje — é hoje que ele se mantém."}
+                  : "Ainda não registaste hoje: é hoje que ele se mantém."}
               </p>
             </div>
           </div>
@@ -205,7 +205,7 @@ export default async function DashboardPage() {
         <div className="card p-4">
           <p className="eyebrow">Último registo teu</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "—"}
+            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "-"}
           </p>
           {myRegistered ? (
             <>
@@ -222,7 +222,7 @@ export default async function DashboardPage() {
         <div className="card p-4">
           <p className="eyebrow">Última que pagaste</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
+            {myPaid ? fmtDate(myPaid.transactionDate) : "-"}
           </p>
           {myPaid ? (
             <>
@@ -297,7 +297,7 @@ function BalanceHero({
       <Link href="/saldo" className="block pt-4">
         <p className="eyebrow">Saldo atual</p>
         <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-          {formatCents(t.amountCents)}
+          <span className="dinheiro">{formatCents(t.amountCents)}</span>
         </p>
         <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-fg-muted">
           <span className="font-medium text-fg">{nameOf(t.fromUserId)}</span>
@@ -314,7 +314,7 @@ function BalanceHero({
     <Link href="/saldo" className="block pt-4">
       <p className="eyebrow">Por acertar</p>
       <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-        {formatCents(totalToSettle)}
+        <span className="dinheiro">{formatCents(totalToSettle)}</span>
       </p>
       <p className="mt-4 text-[15px] text-fg-muted">
         {transfers.length} pagamento(s) sugerido(s) para zerar o saldo.

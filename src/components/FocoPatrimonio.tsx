@@ -49,7 +49,7 @@ export function FocoPatrimonio({
                   valor < 0 ? "text-debt" : "text-fg-muted"
                 }`}
               >
-                {formatCents(valor)}
+                <span className="dinheiro">{formatCents(valor)}</span>
               </p>
             </Link>
           );

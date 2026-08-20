@@ -1,3 +1,4 @@
+import type * as React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
@@ -109,12 +110,14 @@ export async function AnalisePatrimonioContent() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Cartao
               titulo="Melhor mês"
+              dinheiro
               valor={analise.melhorMes ? formatCents(analise.melhorMes.variacaoCents!) : null}
               nota={analise.melhorMes ? mes(analise.melhorMes.mes) : ""}
               positivo
             />
             <Cartao
               titulo="Pior mês"
+              dinheiro
               valor={analise.piorMes ? formatCents(analise.piorMes.variacaoCents!) : null}
               nota={analise.piorMes ? mes(analise.piorMes.mes) : ""}
               positivo={false}
@@ -128,12 +131,16 @@ export async function AnalisePatrimonioContent() {
               }
               nota={
                 analise.mesComMaisCompras
-                  ? `${mes(analise.mesComMaisCompras.mes)} · ${formatCents(analise.mesComMaisCompras.reforcoCents)}`
+                  ? [
+                      `${mes(analise.mesComMaisCompras.mes)} · `,
+                      <span key="v" className="dinheiro">{formatCents(analise.mesComMaisCompras.reforcoCents)}</span>,
+                    ]
                   : "Ainda não há compras registadas."
               }
             />
             <Cartao
               titulo="Média por mês"
+              dinheiro
               valor={analise.mediaMensalCents !== null ? formatCents(analise.mediaMensalCents) : null}
               nota={`Sobre ${analise.mesesMedidos} ${analise.mesesMedidos === 1 ? "mês medido" : "meses medidos"}.`}
               positivo={(analise.mediaMensalCents ?? 0) >= 0}
@@ -148,7 +155,7 @@ export async function AnalisePatrimonioContent() {
             <p className="eyebrow mb-1">De onde veio o crescimento</p>
             <p className="mb-3 text-xs leading-snug text-fg-faint">
               O que entrou é dinheiro teu. O resto é o que o património fez
-              sozinho — e inclui tudo, não só os investimentos: uma casa a
+              sozinho, e inclui tudo, não só os investimentos: uma casa a
               valorizar e um crédito a amortizar entram aqui na mesma conta. É um
               saldo, não uma rentabilidade.
             </p>
@@ -156,7 +163,7 @@ export async function AnalisePatrimonioContent() {
               <div>
                 <p className="text-xs text-fg-muted">Dinheiro que puseste</p>
                 <p className="mt-0.5 font-mono text-lg tnum text-fg">
-                  {formatCents(analise.totalReforcosCents)}
+                  <span className="dinheiro">{formatCents(analise.totalReforcosCents)}</span>
                 </p>
               </div>
               <div>
@@ -167,8 +174,11 @@ export async function AnalisePatrimonioContent() {
                   }`}
                 >
                   {analise.totalSemReforcosCents === null
-                    ? "—"
-                    : `${analise.totalSemReforcosCents >= 0 ? "+" : ""}${formatCents(analise.totalSemReforcosCents)}`}
+                    ? "-"
+                    : [
+                        analise.totalSemReforcosCents >= 0 ? "+" : "",
+                        <span key="v" className="dinheiro">{formatCents(analise.totalSemReforcosCents)}</span>,
+                      ]}
                 </p>
               </div>
             </div>
@@ -182,7 +192,7 @@ export async function AnalisePatrimonioContent() {
                   <span className="min-w-0">
                     <span className="block text-sm text-fg">{mes(m.mes)}</span>
                     <span className="mt-0.5 block font-mono text-[11px] text-fg-faint">
-                      {formatCents(m.netCents)}
+                      <span className="dinheiro">{formatCents(m.netCents)}</span>
                       {m.compras > 0
                         ? ` · ${m.compras} ${m.compras === 1 ? "compra" : "compras"}`
                         : ""}
@@ -197,11 +207,11 @@ export async function AnalisePatrimonioContent() {
                           className={`block font-mono text-sm tnum ${m.variacaoCents >= 0 ? "text-credit" : "text-debt"}`}
                         >
                           {m.variacaoCents >= 0 ? "+" : ""}
-                          {formatCents(m.variacaoCents)}
+                          <span className="dinheiro">{formatCents(m.variacaoCents)}</span>
                         </span>
                         {m.reforcoCents !== 0 ? (
                           <span className="block font-mono text-[11px] text-fg-faint">
-                            {formatCents(m.reforcoCents)} de reforço
+                            <span className="dinheiro">{formatCents(m.reforcoCents)}</span> de reforço
                           </span>
                         ) : null}
                       </>
@@ -230,11 +240,14 @@ function Cartao({
   valor,
   nota,
   positivo,
+  /** O valor é um montante em euros? Se sim, o modo privacidade tapa-o. */
+  dinheiro,
 }: {
   titulo: string;
-  valor: string | null;
-  nota: string;
+  valor: React.ReactNode;
+  nota: React.ReactNode;
   positivo?: boolean;
+  dinheiro?: boolean;
 }) {
   return (
     <div className="card p-4">
@@ -250,7 +263,7 @@ function Cartao({
                 : "text-debt"
         }`}
       >
-        {valor ?? "—"}
+        {valor === null ? "-" : dinheiro ? <span className="dinheiro">{valor}</span> : valor}
       </p>
       <p className="mt-1 text-xs leading-snug text-fg-faint">{nota}</p>
     </div>

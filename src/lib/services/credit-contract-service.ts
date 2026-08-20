@@ -83,7 +83,7 @@ const Resposta = z.object({
     .number()
     .nullable()
     .describe(
-      "A primeira prestação mensal em euros, tal como está escrita. É com ela que o programa confere o resto — copia-a mesmo que pareça não bater certo.",
+      "A primeira prestação mensal em euros, tal como está escrita. É com ela que o programa confere o resto: copia-a mesmo que pareça não bater certo.",
     ),
   periodos: z.array(Periodo).describe("Por ordem no tempo. Vazio se não conseguires apurar nenhum."),
   encontrado: z
@@ -96,13 +96,13 @@ const Resposta = z.object({
 
 const INSTRUCOES = `Recebes o texto de um contrato de crédito à habitação português e copias de lá os dados do empréstimo.
 
-Copias o que está escrito. Não calculas nada: não somes prazos, não deduzas a data do último pagamento a partir do início, não converte anos em meses se o contrato já disser meses, e não estimes uma prestação. Um programa faz essas contas a seguir, e compara-as com o que copiaste — é assim que um erro de leitura é apanhado. Se calculares em vez de copiares, a comparação deixa de servir para nada.
+Copias o que está escrito. Não calculas nada: não somes prazos, não deduzas a data do último pagamento a partir do início, não converte anos em meses se o contrato já disser meses, e não estimes uma prestação. Um programa faz essas contas a seguir, e compara-as com o que copiaste: é assim que um erro de leitura é apanhado. Se calculares em vez de copiares, a comparação deixa de servir para nada.
 
 Quando um dado não estiver no documento, devolves null. Nunca preenchas por parecer provável: um campo vazio pergunta-se a quem carregou o ficheiro, um campo inventado fica lá trinta anos.
 
 O que costuma aparecer:
 - O montante vem como "capital mutuado", "montante do empréstimo" ou "quantia mutuada". Não confundas com o valor de avaliação do imóvel, que costuma vir logo ao lado e é maior.
-- O prazo vem em meses ou em anos ("pelo prazo de 360 meses", "trinta anos"). Se vier em anos, devolve os anos vezes doze — isso é conversão de unidades, não é uma conta.
+- O prazo vem em meses ou em anos ("pelo prazo de 360 meses", "trinta anos"). Se vier em anos, devolve os anos vezes doze: isso é conversão de unidades, não é uma conta.
 - As taxas vêm por períodos: "durante os primeiros 24 meses, à taxa fixa de 3,30%", "findo esse prazo, à Euribor a 6 meses acrescida de um spread de 0,90%". Cada um desses é um período.
 - Num crédito só de taxa variável há um único período, a começar no mês 0.
 - O spread também aparece como "margem", "acrescida de" ou "bonificação".
@@ -113,7 +113,7 @@ Coisas que enganam:
 - A TAEG não é a TAN. A TAEG inclui seguros e comissões e é sempre maior. O que se pede é a TAN.
 - Uma prestação com seguros incluídos é maior do que a do crédito. Copia a que estiver identificada como prestação do empréstimo; se só houver uma, copia essa.
 - Há contratos com carência de capital no princípio. Se houver, di-lo nas notas.
-- Se o documento não for um contrato de crédito — for uma simulação, uma caderneta predial, um extrato — põe "encontrado" a falso e explica nas notas.`;
+- Se o documento não for um contrato de crédito: for uma simulação, uma caderneta predial, um extrato: põe "encontrado" a falso e explica nas notas.`;
 
 export interface CreditContractResult {
   revisto: ContratoRevisto | null;

@@ -205,7 +205,7 @@ export function CreditPeriodsField({
         </button>
         <p className="mt-1.5 text-xs text-fg-faint">
           Para um crédito à habitação fixo nos primeiros anos e variável depois.
-          Sem isto, a prestação acima vale até ao fim — o que num crédito misto
+          Sem isto, a prestação acima vale até ao fim: o que num crédito misto
           deixa de ser verdade no dia em que o período fixo acaba.
         </p>
       </div>
@@ -382,7 +382,7 @@ export function CreditPeriodsField({
           <p className="mb-2.5 text-xs text-fg-faint">
             A Euribor daqui a uns anos ninguém sabe. Com o valor de hoje sai um
             cenário, e o plano diz que é um cenário e a que valor foi feito. O
-            botão vai buscar a média do mês ao Banco Central Europeu — que é a
+            botão vai buscar a média do mês ao Banco Central Europeu, que é a
             média que os contratos portugueses usam, e não o valor de um dia.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -430,7 +430,7 @@ export function CreditPeriodsField({
         />
         <p className="mt-1 text-xs text-fg-faint">
           A data do último pagamento. É sobre os meses que faltam até aqui que a
-          prestação é recalculada em cada mudança de taxa — que é o que faz o
+          prestação é recalculada em cada mudança de taxa, que é o que faz o
           degrau na prestação, e sem ela não há plano nenhum.
         </p>
       </div>
@@ -512,12 +512,12 @@ function CapitalPeloContrato({
     <div className="mt-4 rounded-xl border border-hair bg-panel2/40 p-3">
       <p className="label mb-1">Pelo contrato, faltariam</p>
       <p className="font-display text-2xl font-semibold tracking-tight tnum">
-        {formatCents(balanceCents)}
+        <span className="dinheiro">{formatCents(balanceCents)}</span>
       </p>
       <p className="mt-1 text-xs leading-snug text-fg-muted">
         Ao fim de {mesesPagos} {mesesPagos === 1 ? "prestação" : "prestações"}, com{" "}
-        {formatCents(jurosPagosCents)} de juros já pagos. A prestação em vigor
-        daria {formatCents(prestacaoCents)}.
+        <span className="dinheiro">{formatCents(jurosPagosCents)}</span> de juros já pagos. A prestação em vigor
+        daria <span className="dinheiro">{formatCents(prestacaoCents)}</span>.
       </p>
       <p className="mt-1.5 text-xs leading-snug text-fg-faint">
         É uma simulação: não sabe de amortizações antecipadas, carências nem

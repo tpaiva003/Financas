@@ -150,6 +150,42 @@
   }
 
   /*
+   * Modo privacidade: os montantes em euros ficam tapados por três pontos.
+   *
+   * **Pontos e não desfoque.** Um valor desfocado ainda deixa ler a ordem de
+   * grandeza — quantos dígitos tem, se é positivo ou negativo — e num ecrã
+   * gravado isso chega para se perceber de quanto se fala. Os pontos não dizem
+   * nada, e lêem-se como uma decisão, não como uma avaria.
+   *
+   * A caixa é a do valor original (o texto fica transparente, não desaparece):
+   * assim nada salta de sítio ao ligar e desligar, que é o que faz isto poder
+   * ser usado a meio de uma gravação.
+   */
+  html[data-privado="1"] .dinheiro {
+    position: relative;
+    color: transparent;
+    /* Um valor tapado não se seleciona nem se copia por engano. */
+    user-select: none;
+    /* Larguras mínimas para o "•••" não ficar apertado num valor curto. */
+    min-width: 3.5ch;
+    display: inline-block;
+  }
+
+  html[data-privado="1"] .dinheiro::after {
+    content: "•••";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    /* `rgb(...)` e não `var(...)` à seca: as variáveis desta folha guardam
+       canais ("163 162 156"), não cores. Sem o `rgb`, a cor era inválida, os
+       pontos herdavam o `transparent` do pai e o valor ficava só um buraco —
+       que se lê como avaria e não como uma decisão. */
+    color: rgb(var(--c-fg-muted));
+    letter-spacing: 0.1em;
+  }
+
+  /*
    * Fichas da landing: superfícies elevadas e lavagens de fundo.
    *
    * A landing deixou de separar blocos com linhas. O contorno de um cartão

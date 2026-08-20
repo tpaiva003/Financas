@@ -110,7 +110,7 @@ export default async function Page({
           <strong className="font-medium text-fg">
             {new Date(`${guardada.valuedAt}T00:00:00Z`).toLocaleDateString("pt-PT")}
           </strong>
-          . Muda o que mudou e guarda outra vez — o estudo antigo fica lá, com a
+          . Muda o que mudou e guarda outra vez: o estudo antigo fica lá, com a
           data dele.
         </p>
       ) : null}

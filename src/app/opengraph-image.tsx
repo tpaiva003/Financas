@@ -9,7 +9,7 @@ import { ImageResponse } from "next/og";
  * distribuição é "manda o link à pessoa com quem partilhas casa" vive disto.
  */
 export const runtime = "edge";
-export const alt = "Rachar — contas partilhadas e património, à moda do Porto";
+export const alt = "Rachar: contas partilhadas e património, à moda do Porto";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

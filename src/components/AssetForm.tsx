@@ -267,7 +267,7 @@ export function AssetForm({
             {isDebt ? (
               <p className="mt-1 text-xs text-fg-faint">
                 Se não souberes de cabeça, preenche o contrato aqui ao lado e em
-                baixo — a app calcula-o.
+                baixo: a app calcula-o.
               </p>
             ) : null}
           </div>

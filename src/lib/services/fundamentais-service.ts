@@ -214,7 +214,7 @@ export async function buscarFundamentais(
           simbolo: null,
           dados: null,
           problem:
-            "O Yahoo Finance pediu uma sessão para devolver as contas e não ma deu. As cotações continuam a funcionar — isto afeta só os dados financeiros. Escreve os campos à mão por agora.",
+            "O Yahoo Finance pediu uma sessão para devolver as contas e não ma deu. As cotações continuam a funcionar: isto afeta só os dados financeiros. Escreve os campos à mão por agora.",
         };
       }
       r = await tentar(c, sessao, timeoutMs);

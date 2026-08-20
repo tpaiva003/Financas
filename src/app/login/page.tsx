@@ -29,7 +29,7 @@ export default function LoginPage({
               <span className="text-fg-muted">está cheio.</span>
             </h1>
             <p className="mt-5 max-w-sm animate-fade-up text-[15px] leading-relaxed text-fg-muted">
-              Abrimos poucas contas por dia, de propósito — é o que nos deixa
+              Abrimos poucas contas por dia, de propósito: é o que nos deixa
               cuidar bem de cada uma. Deixa o teu email e avisamos-te quando for
               a tua vez.
             </p>

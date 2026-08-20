@@ -97,7 +97,7 @@ export function NetWorthChart({
           <p className="eyebrow mb-2">Evolução do património</p>
           <p role="alert" className="text-sm text-debt">
             Não consegui guardar a fotografia de hoje. Enquanto isto durar não há
-            histórico nenhum a acumular — se a migração `0027` não tiver sido
+            histórico nenhum a acumular: se a migração `0027` não tiver sido
             corrida, a tabela ainda não existe.
           </p>
         </div>
@@ -112,10 +112,14 @@ export function NetWorthChart({
             ? captura === "sem-bens"
               ? "Ainda não há bens registados, por isso não há o que fotografar."
               : "A fotografia de hoje ficou guardada. É a primeira."
-            : `Está guardada a fotografia de ${points[0]!.label}, com ${formatCents(points[0]!.netCents)}.`}
+            : [
+                `Está guardada a fotografia de ${points[0]!.label}, com `,
+                <span key="v" className="dinheiro">{formatCents(points[0]!.netCents)}</span>,
+                ".",
+              ]}
         </p>
         <p className="mt-2 text-xs text-fg-faint">
-          O património de antes não se reconstrói — cada bem só sabe o que vale
+          O património de antes não se reconstrói: cada bem só sabe o que vale
           hoje, ao contrário das despesas, que são movimentos datados. Guarda-se
           uma por dia a partir de agora, e o gráfico aparece assim que houver
           duas.
@@ -229,7 +233,7 @@ export function NetWorthChart({
         {cents !== null ? (
           <p className={`font-mono text-xs tnum ${subiu ? "text-credit" : "text-debt"}`}>
             {subiu ? "+" : ""}
-            {formatCents(cents)}
+            <span className="dinheiro">{formatCents(cents)}</span>
             {/* Só há percentagem quando se parte de um património positivo: de
                 -50 mil para -10 mil a divisão dá o sinal ao contrário do que
                 aconteceu. Sem ela, mostra-se a variação em euros e mais nada. */}
@@ -283,7 +287,7 @@ export function NetWorthChart({
             </span>
           ))}
           <span>
-            partindo do mesmo valor, e sem os teus reforços — é contexto, não é
+            partindo do mesmo valor, e sem os teus reforços: é contexto, não é
             comparação.
           </span>
         </p>
@@ -300,16 +304,16 @@ export function NetWorthChart({
             <span className="font-mono uppercase tracking-[0.04em] text-fg-faint">
               {p.label}
             </span>
-            <span className="font-mono tnum text-fg">{formatCents(p.netCents)}</span>
+            <span className="font-mono tnum text-fg"><span className="dinheiro">{formatCents(p.netCents)}</span></span>
             {delta !== null ? (
               <span className={`font-mono tnum ${delta >= 0 ? "text-credit" : "text-debt"}`}>
                 {delta >= 0 ? "+" : ""}
-                {formatCents(delta)} no mês
+                <span className="dinheiro">{formatCents(delta)}</span> no mês
               </span>
             ) : null}
             {p.estimado ? <span className="text-fg-faint">reconstruído</span> : null}
             {sobre === null ? (
-              <span className="text-fg-faint">— passa o rato pelo gráfico</span>
+              <span className="text-fg-faint">(passa o rato pelo gráfico)</span>
             ) : null}
           </p>
         );
@@ -467,12 +471,12 @@ export function NetWorthChart({
           A parte a tracejado é <span className="text-fg-muted">reconstruída</span>, não
           medida: os investimentos saem dos teus movimentos e das cotações, o
           crédito da própria amortização, e os imóveis com escritura datada
-          seguem o índice do concelho. As contas entram ao valor de hoje — um
+          seguem o índice do concelho. As contas entram ao valor de hoje: um
           saldo não guarda passado. Daí para a frente é o que foi mesmo
           registado.{" "}
           {series.medido
             ? `Por isso a variação em cima conta a partir de ${series.medido.dePeriodo}, que é a primeira fotografia a sério: comparar hoje com a reconstrução mediria sobretudo a distância entre ela e a realidade.`
-            : "Ainda não há duas fotografias a sério para comparar, e por isso não se mostra variação nenhuma — a que sairia daqui seria contra a reconstrução."}
+            : "Ainda não há duas fotografias a sério para comparar, e por isso não se mostra variação nenhuma: a que sairia daqui seria contra a reconstrução."}
         </p>
       ) : null}
 

@@ -142,7 +142,7 @@ export function PropertyPriceField({
       }
       setCandidatos(r.candidatos ?? []);
       if ((r.candidatos ?? []).length > 0) {
-        setAviso("Há mais do que um sítio com esse nome. Escolhe qual — os preços são diferentes.");
+        setAviso("Há mais do que um sítio com esse nome. Escolhe qual: os preços são diferentes.");
       }
     });
   }
@@ -154,7 +154,7 @@ export function PropertyPriceField({
         Com a área e o sítio, o preço mediano por m² que o INE publica diz
         quanto valeria à mediana da zona. É uma referência, não uma avaliação: a
         mediana não sabe como é esta casa. O valor lá em cima não se mexe
-        sozinho. Escreve o concelho — ou a freguesia e o concelho, como numa
+        sozinho. Escreve o concelho, ou a freguesia e o concelho, como numa
         morada: &quot;Paranhos, Porto&quot;.
       </p>
 
@@ -172,7 +172,7 @@ export function PropertyPriceField({
           />
           <p className="mt-1 text-xs text-fg-faint">
             O da escritura. É o único número que se sabe de certeza sobre esta
-            casa — o valor de hoje estima-se a partir dele.
+            casa: o valor de hoje estima-se a partir dele.
           </p>
         </div>
         <div>
@@ -246,8 +246,8 @@ export function PropertyPriceField({
               >
                 {c.geodsg}
                 {c.dentroDe ? <span className="text-fg-faint"> · em {c.dentroDe}</span> : null}
-                {" — "}
-                {formatCents(c.pricePerM2Cents)}/m²
+                {" · "}
+                <span className="dinheiro">{formatCents(c.pricePerM2Cents)}</span>/m²
               </button>
             </li>
           ))}
@@ -280,7 +280,7 @@ export function PropertyPriceField({
             {estimativa === null ? (
               <span className="text-fg-faint">falta a área ou o preço</span>
             ) : (
-              formatCents(estimativa)
+              <span className="dinheiro">{formatCents(estimativa)}</span>
             )}
           </p>
           {fonte ? <p className="mt-0.5 text-xs text-fg-faint">{fonte}</p> : null}
@@ -300,14 +300,14 @@ export function PropertyPriceField({
         {pelosIndices ? (
           <>
             <p className="font-mono text-base tnum text-fg">
-              {formatCents(pelosIndices.valueCents)}
+              <span className="dinheiro">{formatCents(pelosIndices.valueCents)}</span>
             </p>
             <p className="mt-1 text-[11px] leading-snug text-fg-faint">
-              {formatCents(pelosIndices.custoCents)} de custo, e a zona subiu{" "}
+              <span className="dinheiro">{formatCents(pelosIndices.custoCents)}</span> de custo, e a zona subiu{" "}
               {Math.round((pelosIndices.fator - 1) * 100)}% de{" "}
               {pelosIndices.periodoCompra} para {pelosIndices.periodoHoje} (
-              {formatCents(pelosIndices.indiceCompraCents)}/m² para{" "}
-              {formatCents(pelosIndices.indiceHojeCents)}/m²).
+              <span className="dinheiro">{formatCents(pelosIndices.indiceCompraCents)}</span>/m² para{" "}
+              <span className="dinheiro">{formatCents(pelosIndices.indiceHojeCents)}</span>/m²).
             </p>
           </>
         ) : (

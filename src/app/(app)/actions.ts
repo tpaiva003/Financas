@@ -3546,7 +3546,7 @@ export async function descobrirMarcasAction(
     ok: true,
     message:
       faltam > 0
-        ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível — esses ficam com as iniciais.`
+        ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível: esses ficam com as iniciais.`
         : `${gravadas} com logo.`,
   };
 }
@@ -3610,7 +3610,7 @@ export async function descobrirMarcasFunilAction(
     ok: true,
     message:
       faltam > 0
-        ? `${gravadas} de ${linhas.length} com logo. ${faltam} sem marca reconhecível — essas ficam com as iniciais.`
+        ? `${gravadas} de ${linhas.length} com logo. ${faltam} sem marca reconhecível: essas ficam com as iniciais.`
         : `${gravadas} com logo.`,
   };
 }
@@ -3657,8 +3657,8 @@ export async function descobrirSetoresAction(
   if (r.porFazer > 0) {
     partes.push(
       r.faltouTempo
-        ? `faltam ${r.porFazer}, que não coube no tempo desta passagem — carrega outra vez`
-        : `faltam ${r.porFazer} para a próxima passagem — carrega outra vez`,
+        ? `faltam ${r.porFazer}, que não coube no tempo desta passagem: carrega outra vez`
+        : `faltam ${r.porFazer} para a próxima passagem: carrega outra vez`,
     );
   }
 
@@ -3703,7 +3703,7 @@ export async function buscarFundamentaisAction(
     simbolo: r.simbolo,
     dados: r.dados,
     message: r.dados.emFalta.length
-      ? `Preenchi o que veio. Faltou ${r.dados.emFalta.join(", ")} — escreve à mão.`
+      ? `Preenchi o que veio. Faltou ${r.dados.emFalta.join(", ")}: escreve à mão.`
       : "Preenchido com os dados do Yahoo Finance. Confere antes de decidir.",
   };
 }
@@ -3909,7 +3909,7 @@ export async function guardarAvaliacaoAction(
   revalidatePath("/patrimonio/avaliacoes");
   return {
     ok: true,
-    message: `Estudo guardado em "${ETAPA_LABEL[etapa]}". Fica com os pressupostos de hoje — reavaliar cria um novo.`,
+    message: `Estudo guardado em "${ETAPA_LABEL[etapa]}". Fica com os pressupostos de hoje: reavaliar cria um novo.`,
   };
 }
 
@@ -4142,7 +4142,7 @@ export async function fundirAtivosAction(
   }
   if (repetidos > 0) {
     partes.push(
-      `Atenção: ficaram ${repetidos} ${repetidos === 1 ? "movimento igual a outro" : "movimentos iguais a outros"} no mesmo dia. Não apago nenhum — confere se são mesmo repetidos ou duas compras a sério.`,
+      `Atenção: ficaram ${repetidos} ${repetidos === 1 ? "movimento igual a outro" : "movimentos iguais a outros"} no mesmo dia. Não apago nenhum: confere se são mesmo repetidos ou duas compras a sério.`,
     );
   }
   return { ok: true, message: partes.join(" ") };
@@ -4320,7 +4320,7 @@ export async function resumirAnexosAction(
     ok: true,
     message:
       ignorados > 0
-        ? `Resumi ${r.usados} de ${anexos.length} anexos. ${ignorados === 1 ? "Um ficou" : `${ignorados} ficaram`} de fora por não ter texto que se lesse — digitalizações e imagens não têm.`
+        ? `Resumi ${r.usados} de ${anexos.length} anexos. ${ignorados === 1 ? "Um ficou" : `${ignorados} ficaram`} de fora por não ter texto que se lesse: digitalizações e imagens não têm.`
         : `Resumi ${r.usados} ${r.usados === 1 ? "anexo" : "anexos"}.`,
   };
 }
@@ -4351,7 +4351,7 @@ export async function atualizarDatasAction(
   }
   if (r.gravados === 0) {
     return {
-      error: `Não consegui obter datas para nenhum dos ${r.consultados}. A fonte pode estar a recusar — as cotações não são afetadas.`,
+      error: `Não consegui obter datas para nenhum dos ${r.consultados}. A fonte pode estar a recusar: as cotações não são afetadas.`,
     };
   }
   // Diz sempre o que ficou de fora: um resultado que só conta os acertos lê-se
@@ -4360,7 +4360,7 @@ export async function atualizarDatasAction(
     ok: true,
     message:
       r.falhados > 0
-        ? `${r.gravados} de ${r.consultados} com datas novas. ${r.falhados} não deram — a fonte não os conhece ou recusou.`
+        ? `${r.gravados} de ${r.consultados} com datas novas. ${r.falhados} não deram: a fonte não os conhece ou recusou.`
         : `${r.gravados} ${r.gravados === 1 ? "investimento" : "investimentos"} com datas em dia.`,
   };
 }

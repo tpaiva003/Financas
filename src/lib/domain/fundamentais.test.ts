@@ -175,7 +175,7 @@ describe("parseFundamentais", () => {
   });
 });
 
-describe("parseFundamentais — o que se recusa a calcular", () => {
+describe("parseFundamentais: o que se recusa a calcular", () => {
   /**
    * Com capital próprio negativo, `lucro / capital` sai positivo e enorme, e
    * lê-se exactamente ao contrário do que significa. Uma empresa endividada até
@@ -248,7 +248,7 @@ describe("parseFundamentais — o que se recusa a calcular", () => {
  * Os trimestres. Quatro pontos anuais escondem uma margem que virou há dois
  * trimestres, e é para isso que esta série existe.
  */
-describe("parseFundamentais — a série trimestral", () => {
+describe("parseFundamentais: a série trimestral", () => {
   const trimestres = (meses: number[]) =>
     meses.map((m, i) => ({
       endDate: dia(2025, m, 30),
@@ -341,14 +341,14 @@ describe("MODULOS_FUNDAMENTAIS", () => {
   });
 });
 
-describe("parseFundamentais — o perfil da empresa", () => {
+describe("parseFundamentais: o perfil da empresa", () => {
   const comPerfil = (perfil: unknown) =>
     parseFundamentais(JSON.stringify({ quoteSummary: { result: [{ assetProfile: perfil }] } }));
 
   it("lê o setor e a indústria", () => {
-    const f = comPerfil({ sector: "Technology", industry: "Software—Infrastructure" });
+    const f = comPerfil({ sector: "Technology", industry: "Software: Infrastructure" });
     expect(f.setor).toBe("Technology");
-    expect(f.industria).toBe("Software—Infrastructure");
+    expect(f.industria).toBe("Software: Infrastructure");
   });
 
   /**

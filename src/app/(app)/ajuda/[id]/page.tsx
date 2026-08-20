@@ -77,7 +77,7 @@ export default async function PedidoPage({ params }: { params: { id: string } })
 
       {pedido.status === "fechado" ? (
         <p className="card p-5 text-sm text-fg-muted">
-          Este pedido foi encerrado. Se o assunto voltou, abre um novo — assim
+          Este pedido foi encerrado. Se o assunto voltou, abre um novo: assim
           fica com a história limpa em vez de continuar um fio antigo.
         </p>
       ) : (

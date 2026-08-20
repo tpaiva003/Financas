@@ -69,7 +69,7 @@ export async function buscarEuribor(indexante: Indexante): Promise<EuriborResult
     // lê-se como a de agora, e é com ela que se calcula uma prestação.
     nota:
       atraso >= 2
-        ? `Média de ${periodoPorExtenso(ultimo.periodo)} — é a mais recente que o BCE publicou, mas já tem ${atraso} meses.`
+        ? `Média de ${periodoPorExtenso(ultimo.periodo)}: é a mais recente que o BCE publicou, mas já tem ${atraso} meses.`
         : `Média de ${periodoPorExtenso(ultimo.periodo)}, publicada pelo BCE.`,
     problem: null,
   };

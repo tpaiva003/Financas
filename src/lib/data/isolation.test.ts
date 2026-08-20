@@ -30,7 +30,7 @@ let viewerId: string;
 beforeEach(async () => {
   const despesas = await repo.listExpenses({ spaceId: MEU, viewerId: "" });
   const partilhada = despesas.find((e) => e.kind === "shared" && !e.deletedAt);
-  if (!partilhada) throw new Error("seed sem despesa partilhada — teste inútil");
+  if (!partilhada) throw new Error("seed sem despesa partilhada: teste inútil");
   despesaId = partilhada.id;
   viewerId = partilhada.payerId;
 });
@@ -320,7 +320,7 @@ describe("a atividade de um participante conta-se dentro do ambiente", () => {
     const r = new MockRepository();
     const despesas = await r.listExpenses({ spaceId: MEU, viewerId: "" });
     const partilhada = despesas.find((e) => e.kind === "shared" && !e.deletedAt);
-    if (!partilhada) throw new Error("seed sem despesa partilhada — teste inútil");
+    if (!partilhada) throw new Error("seed sem despesa partilhada: teste inútil");
 
     // No ambiente certo há atividade.
     expect(await r.countMemberActivity(partilhada.payerId, MEU)).toBeGreaterThan(0);

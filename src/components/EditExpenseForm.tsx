@@ -172,8 +172,8 @@ export function EditExpenseForm({
               {splitType === "PERCENT" && a && b ? (
                 <div className="mt-4">
                   <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                    <span>{a.name}: {percentA}%{amountCents ? ` · ${formatCents(shareA)}` : ""}</span>
-                    <span>{b.name}: {100 - percentA}%{amountCents ? ` · ${formatCents(shareB)}` : ""}</span>
+                    <span>{a.name}: {percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareA)}</span></> : ""}</span>
+                    <span>{b.name}: {100 - percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareB)}</span></> : ""}</span>
                   </div>
                   <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                   <input type="hidden" name="percentA" value={percentA} />

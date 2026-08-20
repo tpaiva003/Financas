@@ -127,7 +127,7 @@ export function ChatDock() {
             <div className="min-w-0">
               <p className="eyebrow">Pergunta o que quiseres</p>
               <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
-                Vê as tuas contas todas — despesas, saldos, património, dívidas,
+                Vê as tuas contas todas: despesas, saldos, património, dívidas,
                 em todos os ambientes a que tens acesso. Os números são os que a
                 app calculou; aqui só se explicam. A conversa não fica guardada.
               </p>

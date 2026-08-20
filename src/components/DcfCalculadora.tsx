@@ -223,7 +223,7 @@ export function DcfCalculadora({
             <p className="input mt-auto flex items-center font-mono text-sm text-fg-muted">
               {divida.trim() || caixa.trim()
                 ? (dividaLiquidaCents / 100 / 1_000_000_000).toFixed(3).replace(".", ",")
-                : "—"}
+                : "-"}
             </p>
           </div>
         </div>
@@ -239,7 +239,7 @@ export function DcfCalculadora({
             Esta empresa relata as contas em{" "}
             <strong className="font-medium text-fg">{contas.moedaRelato}</strong> e cota em{" "}
             <strong className="font-medium text-fg">{contas.moedaCotacao}</strong>. O valor por
-            ação vai sair na moeda das contas e o preço está na da bolsa — a conta corre sem
+            ação vai sair na moeda das contas e o preço está na da bolsa: a conta corre sem
             erro nenhum e o veredicto fica errado pela diferença cambial. Converte um dos dois
             antes de decidir.
           </p>
@@ -329,7 +329,7 @@ export function DcfCalculadora({
                 </span>
               </>
             )}
-            . O passado não é o futuro — muda-as se souberes melhor.
+            . O passado não é o futuro: muda-as se souberes melhor.
             {contas.estimativas.crescimento5aPct !== null ? (
               <>
                 {" "}
@@ -387,15 +387,16 @@ export function DcfCalculadora({
                   </tr>
                 </thead>
                 <tbody className="font-mono tnum">
-                  <Linha titulo="Valor intrínseco" valores={ok.cenarios.map((c) => formatCents(c.valorPorAcaoCents))} />
+                  <Linha titulo="Valor intrínseco" dinheiro valores={ok.cenarios.map((c) => formatCents(c.valorPorAcaoCents))} />
                   <Linha
                     titulo={`Com margem de ${ok.margemPct}%`}
+                    dinheiro
                     valores={ok.cenarios.map((c) => formatCents(c.comMargemCents))}
                     destaque
                   />
                   <Linha
                     titulo="Face ao preço"
-                    valores={ok.cenarios.map((c) => (c.upsidePct === null ? "—" : `${c.upsidePct > 0 ? "+" : ""}${c.upsidePct}%`))}
+                    valores={ok.cenarios.map((c) => (c.upsidePct === null ? "-" : `${c.upsidePct > 0 ? "+" : ""}${c.upsidePct}%`))}
                     cores={ok.cenarios.map((c) => (c.upsidePct === null ? null : c.upsidePct >= 0))}
                   />
                 </tbody>
@@ -406,7 +407,7 @@ export function DcfCalculadora({
           <section className="card p-5">
             <p className="eyebrow mb-1">Preço ponderado</p>
             <p className="font-display text-3xl font-semibold tracking-tight tnum">
-              {formatCents(ok.precoPonderadoCents)}
+              <span className="dinheiro">{formatCents(ok.precoPonderadoCents)}</span>
             </p>
             {ok.upsidePonderadoPct !== null ? (
               <p className="mt-1 text-sm">
@@ -415,7 +416,7 @@ export function DcfCalculadora({
                   {ok.upsidePonderadoPct}%
                 </span>{" "}
                 <span className="text-fg-muted">
-                  face aos {formatCents(Math.round(num(preco) * 100))} de mercado.
+                  face aos <span className="dinheiro">{formatCents(Math.round(num(preco) * 100))}</span> de mercado.
                 </span>
               </p>
             ) : null}
@@ -458,21 +459,21 @@ export function DcfCalculadora({
                         <tr key={a.ano}>
                           <td className="py-0.5 text-left">{a.ano}</td>
                           <td className="py-0.5 text-right">{String(a.crescimentoPct).replace(".", ",")}%</td>
-                          <td className="py-0.5 text-right">{formatCents(a.fcfCents)}</td>
-                          <td className="py-0.5 text-right text-fg">{formatCents(a.presenteCents)}</td>
+                          <td className="py-0.5 text-right"><span className="dinheiro">{formatCents(a.fcfCents)}</span></td>
+                          <td className="py-0.5 text-right text-fg"><span className="dinheiro">{formatCents(a.presenteCents)}</span></td>
                         </tr>
                       ))}
                       <tr className="border-t border-hair2">
                         <td className="py-1 text-left" colSpan={3}>
                           Valor terminal
                         </td>
-                        <td className="py-1 text-right text-fg">{formatCents(c.resultado.terminalCents)}</td>
+                        <td className="py-1 text-right text-fg"><span className="dinheiro">{formatCents(c.resultado.terminalCents)}</span></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <p className="mt-3 text-xs leading-snug text-fg-faint">
-                  {c.resultado.pesoDoTerminalPct}% do valor vem do valor terminal —
+                  {c.resultado.pesoDoTerminalPct}% do valor vem do valor terminal:
                   do que acontece <strong className="font-medium text-fg-muted">depois</strong> destes
                   anos.
                   {c.resultado.pesoDoTerminalPct >= 75
@@ -553,8 +554,8 @@ export function DcfCalculadora({
  */
 function Historial({ contas }: { contas: Fundamentais }) {
   const h = contas.historico;
-  const p = (v: number | null) => (v === null ? "—" : `${String(v).replace(".", ",")}%`);
-  const r = (v: number | null) => (v === null ? "—" : String(v).replace(".", ","));
+  const p = (v: number | null) => (v === null ? "-" : `${String(v).replace(".", ",")}%`);
+  const r = (v: number | null) => (v === null ? "-" : String(v).replace(".", ","));
 
   const linhas: { titulo: string; valores: string[]; media: string; forte?: boolean }[] = [
     {
@@ -563,7 +564,7 @@ function Historial({ contas }: { contas: Fundamentais }) {
       media: p(contas.medias.rocePct),
       forte: true,
     },
-    { titulo: "Margem bruta", valores: h.map((a) => p(a.margemBrutaPct)), media: "—" },
+    { titulo: "Margem bruta", valores: h.map((a) => p(a.margemBrutaPct)), media: "-" },
     {
       titulo: "Margem operacional",
       valores: h.map((a) => p(a.margemOperacionalPct)),
@@ -574,18 +575,18 @@ function Historial({ contas }: { contas: Fundamentais }) {
       valores: h.map((a) => p(a.margemLiquidaPct)),
       media: p(contas.medias.margemLiquidaPct),
     },
-    { titulo: "ROE", valores: h.map((a) => p(a.roePct)), media: "—" },
+    { titulo: "ROE", valores: h.map((a) => p(a.roePct)), media: "-" },
     {
       titulo: "Dívida / capital próprio",
       valores: h.map((a) => p(a.dividaSobreCapitalPct)),
-      media: "—",
+      media: "-",
     },
-    { titulo: "Liquidez corrente", valores: h.map((a) => r(a.liquidezCorrente)), media: "—" },
-    { titulo: "Receita (mM)", valores: h.map((a) => r(a.receitaBilioes)), media: "—" },
+    { titulo: "Liquidez corrente", valores: h.map((a) => r(a.liquidezCorrente)), media: "-" },
+    { titulo: "Receita (mM)", valores: h.map((a) => r(a.receitaBilioes)), media: "-" },
     {
       titulo: "Fluxo livre (mM)",
       valores: h.map((a) => r(a.fcfBilioes)),
-      media: "—",
+      media: "-",
       forte: true,
     },
     {
@@ -649,8 +650,8 @@ function Historial({ contas }: { contas: Fundamentais }) {
 
       {contas.emFalta.length > 0 ? (
         <p className="mt-3 text-xs leading-snug text-fg-faint">
-          A fonte não trouxe {contas.emFalta.join(", ")}. Onde está &ldquo;—&rdquo; não há
-          dado — não é zero.
+          A fonte não trouxe {contas.emFalta.join(", ")}. Onde está &ldquo;: &rdquo; não há
+          dado, não é zero.
         </p>
       ) : null}
 
@@ -702,11 +703,14 @@ function Linha({
   valores,
   destaque,
   cores,
+  /** Os valores são montantes em euros? Se sim, o modo privacidade tapa-os. */
+  dinheiro,
 }: {
   titulo: string;
   valores: string[];
   destaque?: boolean;
   cores?: (boolean | null)[];
+  dinheiro?: boolean;
 }) {
   return (
     <tr>
@@ -722,7 +726,7 @@ function Linha({
               cor === undefined || cor === null ? (destaque ? "text-fg" : "text-fg-muted") : cor ? "text-credit" : "text-debt"
             }`}
           >
-            {v}
+            {dinheiro ? <span className="dinheiro">{v}</span> : v}
           </td>
         );
       })}

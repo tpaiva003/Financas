@@ -77,7 +77,7 @@ export function DatasAProximar({
     <section className="rounded-xl border border-hair bg-panel2/40 p-4">
       <p className="text-sm font-medium text-fg">A caminho</p>
       <p className="mt-1 text-xs leading-snug text-fg-faint">
-        Datas das empresas que tens em carteira. Só as próximas — um aviso que
+        Datas das empresas que tens em carteira. Só as próximas: um aviso que
         aparece sempre deixa de ser um aviso.
       </p>
 

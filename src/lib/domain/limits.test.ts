@@ -186,7 +186,7 @@ describe("checkAnexo", () => {
     expect(r.allowed).toBe(true);
   });
 
-  it("nenhum plano passa dos dez por bem — é guarda-corpos, não comércio", () => {
+  it("nenhum plano passa dos dez por bem: é guarda-corpos, não comércio", () => {
     expect(checkAnexo({ ...base, plan: "full", porBem: 10 }).allowed).toBe(false);
   });
 });

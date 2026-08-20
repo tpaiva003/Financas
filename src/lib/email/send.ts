@@ -143,7 +143,7 @@ export async function sendRetentionWarning(
     heading: "Basta entrares para ficar tudo como estava",
     paragraphs: [
       `O ambiente <strong style="color:#f3f2ee">${spaceName}</strong> está há muito tempo sem ser aberto. ${quando === "hoje" ? "Hoje" : `A partir de ${quando}`} passa a só de leitura.`,
-      "<strong style=\"color:#f3f2ee\">Não se apaga nada.</strong> Fica tudo onde está — só deixa de se poder acrescentar ou alterar enquanto estiver assim.",
+      "<strong style=\"color:#f3f2ee\">Não se apaga nada.</strong> Fica tudo onde está: só deixa de se poder acrescentar ou alterar enquanto estiver assim.",
       "Entrar chega para o reativar. Não é preciso pedir nada a ninguém.",
     ],
     action: { label: "Entrar na Rachar", url },

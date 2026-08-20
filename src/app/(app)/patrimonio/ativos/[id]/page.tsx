@@ -163,13 +163,13 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           <ul className="space-y-1 text-xs leading-snug">
             {implausiveis.map((m) => (
               <li key={m.tradeId}>
-                <span className="font-mono text-fg">{fmtDate(m.date)}</span> — {m.porque}
+                <span className="font-mono text-fg">{fmtDate(m.date)}</span>: {m.porque}
               </li>
             ))}
           </ul>
           <p className="text-xs text-fg-faint">
             Enquanto estiver assim, o investido, o ganho e a rentabilidade deste
-            investimento estão errados — e arrastam o património todo com eles.
+            investimento estão errados, e arrastam o património todo com eles.
             Corrige no Editar do movimento, aqui em baixo.
           </p>
         </div>
@@ -212,7 +212,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
               <li key={sp.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="text-fg-muted">
                   <span className="font-mono text-fg">{ratioPorExtenso(sp.ratio)}</span> em{" "}
-                  {fmtDate(sp.date)} — as unidades compradas antes desta data contam
+                  {fmtDate(sp.date)}: as unidades compradas antes desta data contam
                   multiplicadas.
                 </span>
                 <form action={apagarSplitAction}>
@@ -243,15 +243,20 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       <section className="card p-6">
         <p className="eyebrow">Vale hoje</p>
         <p className="mt-2 font-display text-4xl font-semibold tracking-tightest tnum">
-          {formatCents(ret ? ret.currentValueCents : Math.round(quantity * (asset.unitPriceCents ?? asset.unitCostCents ?? 0)))}
+          <span className="dinheiro">{formatCents(ret ? ret.currentValueCents : Math.round(quantity * (asset.unitPriceCents ?? asset.unitCostCents ?? 0)))}</span>
         </p>
         <p className="mt-2 text-sm text-fg-muted">
           {quantity} unidades
           {position.unitCostCents !== null || asset.unitCostCents
-            ? `, a um custo médio de ${formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}`
+            ? [
+                ", a um custo médio de ",
+                <span key="c" className="dinheiro">
+                  {formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}
+                </span>,
+              ]
             : ""}
           {asset.unitPriceCents
-            ? `, a ${formatCents(asset.unitPriceCents)}`
+            ? [", a ", <span key="p" className="dinheiro">{formatCents(asset.unitPriceCents)}</span>]
             : ". Sem cotação, conta pelo que custou"}
           .
         </p>
@@ -349,7 +354,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
         {!asset.symbol ? (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-fg-faint">
-              Sem símbolo de bolsa, o preço é sempre escrito à mão — e não há
+              Sem símbolo de bolsa, o preço é sempre escrito à mão, e não há
               cotação, nem ganho, nem rentabilidade.
             </p>
             {tickerSuggestAvailable() ? <SuggestSymbolButton assetId={asset.id} /> : null}
@@ -385,7 +390,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             <div>
               <p className="text-xs text-fg-muted">Investido</p>
               <p className="mt-0.5 font-mono text-lg tnum text-fg">
-                {formatCents(position.investedCents)}
+                <span className="dinheiro">{formatCents(position.investedCents)}</span>
               </p>
             </div>
             <div>
@@ -400,7 +405,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
                 ) : (
                   <>
                     {ret.totalGainCents >= 0 ? "+" : ""}
-                    {formatCents(ret.totalGainCents)}
+                    <span className="dinheiro">{formatCents(ret.totalGainCents)}</span>
                     {ret.simpleReturnPct !== null
                       ? ` (${ret.simpleReturnPct >= 0 ? "+" : ""}${Math.round(ret.simpleReturnPct)}%)`
                       : ""}
@@ -458,9 +463,9 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
               <div>
                 <p className="text-xs text-fg-muted">Já realizado</p>
                 <p className="mt-0.5 font-mono text-lg tnum text-fg">
-                  {formatCents(position.realizedGainCents)}
+                  <span className="dinheiro">{formatCents(position.realizedGainCents)}</span>
                   {position.dividendsCents > 0
-                    ? ` (${formatCents(position.dividendsCents)} de dividendos)`
+                    ? [" (", <span key="d" className="dinheiro">{formatCents(position.dividendsCents)}</span>, " de dividendos)"]
                     : ""}
                 </p>
               </div>
@@ -481,7 +486,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             <p className="text-[11px] leading-snug text-fg-faint">
               O número por baixo de cada linha é o que essa entrada valeu a pena
               até hoje, ao preço de agora. Não é mais-valia realizada nem serve
-              para o IRS — a posição aqui é a custo médio, e em Portugal a regra
+              para o IRS: a posição aqui é a custo médio, e em Portugal a regra
               fiscal é FIFO.
             </p>
           ) : null}

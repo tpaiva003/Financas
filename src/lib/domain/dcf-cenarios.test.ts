@@ -24,7 +24,7 @@ function ok(r: ReturnType<typeof avaliarCenarios>) {
   return r.ok;
 }
 
-describe("avaliarCenarios — contra a folha de cálculo", () => {
+describe("avaliarCenarios: contra a folha de cálculo", () => {
   const r = () =>
     ok(avaliarCenarios({ base: BASE, cenarios: CENARIOS_POR_OMISSAO, margemPct: 30 }));
 
@@ -68,7 +68,7 @@ describe("avaliarCenarios — contra a folha de cálculo", () => {
   });
 });
 
-describe("avaliarCenarios — as recusas", () => {
+describe("avaliarCenarios: as recusas", () => {
   /**
    * A recusa que mais importa. Com 25/50/20 a média sai 5% abaixo da
    * verdadeira e nada no ecrã denuncia que faltavam cinco pontos.

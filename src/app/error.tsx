@@ -31,7 +31,7 @@ export default function AppError({
     <main className="mx-auto flex min-h-[60vh] max-w-lg flex-col justify-center px-5 py-16">
       <h1 className="text-2xl font-semibold tracking-tight">Alguma coisa correu mal</h1>
       <p className="mt-3 text-sm text-fg-muted">
-        Não conseguimos desenhar esta página. Os teus dados estão como estavam —
+        Não conseguimos desenhar esta página. Os teus dados estão como estavam:
         nada foi gravado nem apagado por causa disto.
       </p>
 

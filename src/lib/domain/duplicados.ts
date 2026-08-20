@@ -112,5 +112,5 @@ export function duplicadosPorExtenso(grupos: readonly GrupoDuplicado[]): string 
   const aMais = registos - grupos.length;
   return grupos.length === 1
     ? `Há ${registos} registos do mesmo investimento.`
-    : `Há ${grupos.length} investimentos com registos repetidos — ${aMais} a mais.`;
+    : `Há ${grupos.length} investimentos com registos repetidos: ${aMais} a mais.`;
 }

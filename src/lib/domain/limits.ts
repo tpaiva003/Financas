@@ -108,7 +108,7 @@ export function checkLimit(kind: LimitKind, current: number, plan: SpacePlan): L
       message:
         kind === "members"
           ? `Um ambiente gratuito vai até ${limit} pessoas. O que já lá está mantém-se.`
-          : `Chegaste às ${limit} ${nome.plural} de um ambiente gratuito. Nada se perde — só não dá para acrescentar mais.`,
+          : `Chegaste às ${limit} ${nome.plural} de um ambiente gratuito. Nada se perde: só não dá para acrescentar mais.`,
     };
   }
 
@@ -167,7 +167,7 @@ export function decideSignup(hojeCount: number): SignupDecision {
   return {
     allowed: false,
     message:
-      "Por hoje já não há vagas — abrimos poucas contas por dia, de propósito. Deixa o teu email e avisamos-te quando for a tua vez.",
+      "Por hoje já não há vagas: abrimos poucas contas por dia, de propósito. Deixa o teu email e avisamos-te quando for a tua vez.",
   };
 }
 

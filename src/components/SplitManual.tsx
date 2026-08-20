@@ -38,7 +38,7 @@ export function SplitManual({ assetId }: { assetId: string }) {
       </summary>
 
       <p className="mt-3 text-xs leading-snug text-fg-faint">
-        Serve para quando a corretora não exportou as duas pernas da operação —
+        Serve para quando a corretora não exportou as duas pernas da operação:
         acontece, e o sinal é a posição aparecer a zero ou com menos unidades do
         que devia. As unidades compradas <strong className="font-medium text-fg">antes</strong> da
         data passam a contar multiplicadas pelo fator. O dinheiro investido não

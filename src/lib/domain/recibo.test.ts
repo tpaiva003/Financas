@@ -47,7 +47,7 @@ describe("reviewRecibo", () => {
     expect(r.problema).toMatch(/taxa de câmbio/);
   });
 
-  it("uma data no futuro não entra — fica aviso e a data vazia", () => {
+  it("uma data no futuro não entra: fica aviso e a data vazia", () => {
     const r = reviewRecibo(lida({ data: "2027-01-01" }), HOJE);
     expect(r.proposta?.date).toBeNull();
     expect(r.proposta?.avisos.join(" ")).toMatch(/futuro/);

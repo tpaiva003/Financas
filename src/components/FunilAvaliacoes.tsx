@@ -49,7 +49,7 @@ export function FunilAvaliacoes({
     return (
       <p className="card p-5 text-sm leading-relaxed text-fg-muted">
         Ainda não há nada no funil. Aponta uma empresa que te tenha chamado a
-        atenção — não precisas de saber nada dela ainda — ou faz uma avaliação e
+        atenção, não precisas de saber nada dela ainda, ou faz uma avaliação e
         guarda-a. É isto que transforma um número numa decisão que se pode rever
         daqui a seis meses.
       </p>
@@ -134,7 +134,7 @@ function Cartao({
         {a.temEstudo && a.precoPonderadoCents !== null ? (
           <p className="shrink-0 text-right">
             <span className="font-mono tnum text-lg text-fg">
-              {formatCents(a.precoPonderadoCents)}
+              <span className="dinheiro">{formatCents(a.precoPonderadoCents)}</span>
             </span>
             <span className="block text-[11px] text-fg-faint">preço a que compras</span>
           </p>
@@ -144,7 +144,7 @@ function Cartao({
       {a.temEstudo ? (
         a.precoNaAlturaCents !== null ? (
           <p className="text-xs leading-snug text-fg-muted">
-            Estava a <span className="font-mono tnum">{formatCents(a.precoNaAlturaCents)}</span>{" "}
+            Estava a <span className="font-mono tnum"><span className="dinheiro">{formatCents(a.precoNaAlturaCents)}</span></span>{" "}
             quando o estudaste.
             {falta !== null ? (
               <>
@@ -166,7 +166,7 @@ function Cartao({
           <a href={linkParaAvaliar(a)} className="text-fg underline underline-offset-2">
             Avaliar agora
           </a>{" "}
-          — abre a calculadora com o nome e o símbolo já lá.
+          abre a calculadora com o nome e o símbolo já lá dentro.
         </p>
       )}
 
@@ -175,7 +175,7 @@ function Cartao({
       ) : a.envelhecida ? (
         <p className="text-xs text-fg-faint">
           O estudo tem {Math.round(a.idadeDias / 30)} meses. Já passaram duas
-          apresentações de resultados — vale a pena refazer antes de decidir com ele.
+          apresentações de resultados: vale a pena refazer antes de decidir com ele.
         </p>
       ) : null}
 

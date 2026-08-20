@@ -74,7 +74,7 @@ export function porqueNaoGravou(e: unknown, oQue = "isto"): string {
   const coluna = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/i);
   const nome = coluna?.[1] ?? coluna?.[2] ?? null;
   if (nome) {
-    return `A base de dados ainda não tem a coluna "${nome}". Falta correr a migração que a cria — até lá, não gravo para não perder o que escreveste.`;
+    return `A base de dados ainda não tem a coluna "${nome}". Falta correr a migração que a cria, até lá, não gravo para não perder o que escreveste.`;
   }
   if (/relation .* does not exist/i.test(msg)) {
     return "A base de dados ainda não tem esta tabela. Falta correr as migrações.";

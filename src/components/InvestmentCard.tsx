@@ -173,18 +173,18 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Vale hoje</p>
-          <p className="font-mono text-sm tnum text-fg">{formatCents(data.currentValueCents)}</p>
+          <p className="font-mono text-sm tnum text-fg"><span className="dinheiro">{formatCents(data.currentValueCents)}</span></p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Custo médio</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitCostCents === null ? "—" : formatCents(data.unitCostCents)}
+            {data.unitCostCents === null ? "-" : <span className="dinheiro">{formatCents(data.unitCostCents)}</span>}
           </p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Preço atual</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitPriceCents === null ? "—" : formatCents(data.unitPriceCents)}
+            {data.unitPriceCents === null ? "-" : <span className="dinheiro">{formatCents(data.unitPriceCents)}</span>}
           </p>
         </div>
       </div>
@@ -205,7 +205,7 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
         ) : (
           <p className={`font-mono text-base tnum ${ganhoPositivo ? "text-credit" : "text-debt"}`}>
             {ganhoPositivo ? "+" : ""}
-            {formatCents(data.gainCents)}
+            <span className="dinheiro">{formatCents(data.gainCents)}</span>
             {data.gainPct !== null ? (
               <span className="ml-1.5 text-xs">
                 ({ganhoPositivo ? "+" : ""}

@@ -217,7 +217,7 @@ export function AddExpenseForm({
                   <p>
                     Preenchi o valor, a descrição{proposta.date ? ", a data" : ""}
                     {proposta.categoryId ? " e a categoria" : ""} a partir do recibo.
-                    <span className="text-fg"> Confere antes de guardar</span> — nada fica
+                    <span className="text-fg"> Confere antes de guardar:</span> nada fica
                     registado sem carregares em guardar.
                   </p>
                   {proposta.notas ? <p className="mt-1 text-fg-faint">{proposta.notas}</p> : null}
@@ -266,8 +266,8 @@ export function AddExpenseForm({
             {splitType === "PERCENT" && a && b ? (
               <div className="mt-4">
                 <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                  <span>{a.name}: {percentA}%{amountCents ? ` · ${formatCents(shareA)}` : ""}</span>
-                  <span>{b.name}: {100 - percentA}%{amountCents ? ` · ${formatCents(shareB)}` : ""}</span>
+                  <span>{a.name}: {percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareA)}</span></> : ""}</span>
+                  <span>{b.name}: {100 - percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareB)}</span></> : ""}</span>
                 </div>
                 <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                 <input type="hidden" name="percentA" value={percentA} />

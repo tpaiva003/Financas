@@ -111,7 +111,7 @@ export function CompararComSetor({
         Contra o que já estudaste em {setorPorExtenso(contas.setor)}
       </p>
       <p className="mb-3 text-xs leading-snug text-fg-faint">
-        {confiancaPorExtenso(quantas)} Não são médias do setor a sério — essas não
+        {confiancaPorExtenso(quantas)} Não são médias do setor a sério: essas não
         existem em fonte gratuita nenhuma, e inventá-las dava um número com ar de
         facto que ninguém consegue conferir. São os teus estudos.
       </p>

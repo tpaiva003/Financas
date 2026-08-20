@@ -43,7 +43,7 @@ export function NovaAvaliacao({ hoje }: { hoje: string }) {
           <span className="text-xs text-credit">{state.message}</span>
         ) : (
           <span className="text-xs text-fg-faint">
-            Sem estudo nenhum — só o nome, a data e o que te chamou a atenção.
+            Sem estudo nenhum: só o nome, a data e o que te chamou a atenção.
           </span>
         )}
       </div>

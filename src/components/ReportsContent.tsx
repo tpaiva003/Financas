@@ -150,14 +150,14 @@ async function CorpoDoRelatorio({
         <div className="card p-6">
           <p className="eyebrow">Total do ambiente · {report.periodLabel}</p>
           <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum">
-            {formatCents(report.totalCents)}
+            <span className="dinheiro">{formatCents(report.totalCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-muted">{report.count} despesa(s)</p>
         </div>
         <div className="card p-6">
           <p className="eyebrow">A tua parte</p>
           <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum text-credit">
-            {formatCents(report.myShareCents)}
+            <span className="dinheiro">{formatCents(report.myShareCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-muted">
             a tua quota nas partilhadas + as tuas pessoais
@@ -169,13 +169,13 @@ async function CorpoDoRelatorio({
         <div className="card p-5">
           <p className="eyebrow">Partilhadas</p>
           <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
-            {formatCents(report.sharedCents)}
+            <span className="dinheiro">{formatCents(report.sharedCents)}</span>
           </p>
         </div>
         <div className="card p-5">
           <p className="eyebrow">Pessoais (tuas)</p>
           <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
-            {formatCents(report.personalCents)}
+            <span className="dinheiro">{formatCents(report.personalCents)}</span>
           </p>
         </div>
       </div>
@@ -364,7 +364,7 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
         <div className="card p-5">
           <p className="eyebrow">Este mês ({c.currentLabel})</p>
           <p className="mt-2 font-display text-3xl font-semibold tracking-tight tnum">
-            {formatCents(c.currentTotalCents)}
+            <span className="dinheiro">{formatCents(c.currentTotalCents)}</span>
           </p>
           <div className="mt-1 text-sm">
             <DeltaInline
@@ -377,11 +377,11 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
         <div className="card p-5">
           <p className="eyebrow">Referência · {c.baselineLabel}</p>
           <p className="mt-2 font-display text-3xl font-semibold tracking-tight tnum text-fg-muted">
-            {formatCents(c.baselineTotalCents)}
+            <span className="dinheiro">{formatCents(c.baselineTotalCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-faint">
             média móvel de {c.movingAvgMonths} {c.movingAvgMonths === 1 ? "mês" : "meses"}:{" "}
-            <span className="tnum">{formatCents(c.movingAvgCents)}</span>
+            <span className="tnum"><span className="dinheiro">{formatCents(c.movingAvgCents)}</span></span>
           </p>
         </div>
       </div>
@@ -408,7 +408,7 @@ function CategoryDeltaRow({ r }: { r: CategoryDelta }) {
         <span className="truncate text-fg">{r.label}</span>
       </span>
       <span className="flex shrink-0 items-center gap-3">
-        <span className="font-mono tnum text-fg-muted">{formatCents(r.currentCents)}</span>
+        <span className="font-mono tnum text-fg-muted"><span className="dinheiro">{formatCents(r.currentCents)}</span></span>
         <span className="w-[5.5rem] text-right">
           <DeltaBadge deltaCents={r.deltaCents} deltaPct={r.deltaPct} />
         </span>
@@ -452,7 +452,7 @@ function DeltaInline({
   return (
     <span>
       <span className={`font-mono tnum ${cls}`}>
-        {sign}{formatCents(Math.abs(deltaCents))}{pctLabel}
+        {sign}<span className="dinheiro">{formatCents(Math.abs(deltaCents))}</span>{pctLabel}
       </span>{" "}
       <span className="text-fg-faint">{suffix}</span>
     </span>
@@ -479,7 +479,7 @@ function BarList({ slices }: { slices: Slice[] }) {
             <div className="mb-1 flex items-center justify-between gap-3 text-sm">
               <span className="truncate text-fg">{s.label}</span>
               <span className="shrink-0 font-mono tnum text-fg-muted">
-                {formatCents(s.amountCents)}
+                <span className="dinheiro">{formatCents(s.amountCents)}</span>
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">

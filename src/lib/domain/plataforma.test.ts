@@ -25,7 +25,7 @@ describe("menosDias", () => {
   });
 });
 
-describe("buildCrescimento — a série mensal", () => {
+describe("buildCrescimento: a série mensal", () => {
   it("mostra os meses pedidos, do mais antigo para o mais recente", () => {
     const c = buildCrescimento(entrada({ meses: 3 }));
     expect(c.meses.map((m) => m.mes)).toEqual(["2026-06", "2026-07", "2026-08"]);
@@ -83,7 +83,7 @@ describe("buildCrescimento — a série mensal", () => {
   });
 });
 
-describe("buildCrescimento — janelas", () => {
+describe("buildCrescimento: janelas", () => {
   it("conta o que entrou em cada janela", () => {
     const c = buildCrescimento(
       entrada({
@@ -106,7 +106,7 @@ describe("buildCrescimento — janelas", () => {
   });
 });
 
-describe("buildCrescimento — retenção", () => {
+describe("buildCrescimento: retenção", () => {
   it("só conta ambientes que já tiveram tempo de voltar", () => {
     const c = buildCrescimento(
       entrada({
@@ -146,7 +146,7 @@ describe("buildCrescimento — retenção", () => {
   });
 });
 
-describe("buildCrescimento — ativação", () => {
+describe("buildCrescimento: ativação", () => {
   it("conta a primeira semana a partir do nascimento, não do calendário", () => {
     const c = buildCrescimento(
       entrada({
@@ -173,7 +173,7 @@ describe("buildCrescimento — ativação", () => {
   });
 });
 
-describe("buildCrescimento — ambientes sem nada", () => {
+describe("buildCrescimento: ambientes sem nada", () => {
   it("conta os que nunca registaram coisa nenhuma", () => {
     const c = buildCrescimento(
       entrada({
