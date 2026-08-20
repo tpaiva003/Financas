@@ -56,7 +56,12 @@ global.fetch = vi.fn(async (url: unknown) => {
       quoteSummary: {
         result: [
           {
-            price: { longName: "Empresa de Ensaio", regularMarketPrice: { raw: 10 } },
+            price: {
+              longName: "Empresa de Ensaio",
+              regularMarketPrice: { raw: 10 },
+              // O tipo vem no mesmo módulo do preço, e é assim que a fonte o dá.
+              quoteType: "EQUITY",
+            },
             assetProfile: { sector: "Technology", industry: "Software" },
           },
         ],
@@ -155,5 +160,79 @@ describe("atualizarSetores", () => {
 
     expect(segunda.consultados).toBe(0);
     expect(pedidos).toHaveLength(0);
+  });
+  it("grava também o que a fonte diz que aquilo é", async () => {
+    const espaco = await carteiraCom(2);
+    const { getRepository } = await import("@/lib/data");
+    const { atualizarSetores } = await import("./setores-service");
+
+    await atualizarSetores(espaco);
+
+    const bens = await getRepository().listAssets(espaco);
+    expect(bens.every((b) => b.instrumento === "EQUITY")).toBe(true);
+  });
+
+  /**
+   * O caso que o carimbo sozinho não resolve.
+   *
+   * Um bem consultado antes de haver tipo tem `profileAt` escrito e o tipo
+   * vazio. Pelo carimbo passaria por "já se perguntou e a fonte não soube" e
+   * ficava sem tipo para sempre. Pergunta-se-lhe **uma vez** — e a segunda
+   * passagem tem de o deixar em paz, senão a fonte era gasta a ouvir o mesmo a
+   * cada carregar do botão.
+   */
+  it("volta a perguntar uma única vez a quem foi consultado antes de haver tipo", async () => {
+    const espaco = await carteiraCom(1);
+    const { getRepository } = await import("@/lib/data");
+    const { atualizarSetores } = await import("./setores-service");
+    const repo = getRepository();
+
+    const [bem] = await repo.listAssets(espaco);
+    await repo.updateAsset(bem!.id, espaco, {
+      sector: "Technology",
+      profileAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const primeira = await atualizarSetores(espaco);
+    expect(primeira.consultados).toBe(1);
+    expect((await repo.listAssets(espaco))[0]!.instrumento).toBe("EQUITY");
+
+    pedidos.length = 0;
+    const segunda = await atualizarSetores(espaco);
+    expect(segunda.consultados).toBe(0);
+    expect(pedidos).toHaveLength(0);
+  });
+
+  /**
+   * O invariante das entradas manuais, no caso em que ele é mesmo posto à prova.
+   *
+   * Um bem com setor escrito à mão e sem tipo **é** candidato: falta-lhe o tipo,
+   * e é por isso que se lá vai. A ida traz também um setor, e escrevê-lo era
+   * apagar por cima do que alguém tinha corrigido — precisamente o setor que a
+   * fonte não sabia dar.
+   *
+   * Um teste com o tipo já preenchido não valia nada aqui: esse bem nem sequer
+   * chega a ser consultado, e passaria dos dois lados.
+   */
+  it("vai buscar o tipo sem reescrever o setor que alguém corrigiu", async () => {
+    const espaco = await carteiraCom(1);
+    const { getRepository } = await import("@/lib/data");
+    const { atualizarSetores } = await import("./setores-service");
+    const repo = getRepository();
+
+    const [bem] = await repo.listAssets(espaco);
+    await repo.updateAsset(bem!.id, espaco, {
+      // A fonte responde "Technology" a este símbolo. Isto é a correção de quem
+      // sabe melhor.
+      sector: "Energy",
+      profileAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const r = await atualizarSetores(espaco);
+
+    expect(r.consultados).toBe(1);
+    const depois = (await repo.listAssets(espaco))[0]!;
+    expect(depois.instrumento).toBe("EQUITY");
+    expect(depois.sector).toBe("Energy");
   });
 });

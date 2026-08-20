@@ -3001,3 +3001,47 @@ cortina aplicar-se antes de pintar.
 
 Um segundo teste de leitura de código apanha uma quantidade desenhada sem a
 marca — apanhou as oito que existiam.
+
+### Escolher empresas ou comprar o cabaz: a leitura que faltava
+A análise dizia a que setores a carteira está exposta e não dizia uma coisa mais
+simples: quanto dela é escolha de empresas e quanto é mercado comprado inteiro.
+São duas maneiras de investir com riscos diferentes, estavam misturadas na mesma
+lista, e a pergunta que interessa — "as minhas escolhas estão a bater o que eu
+teria sem escolher nada?" — não tinha resposta em lado nenhum.
+
+**O tipo vem da fonte e já vinha.** O `quoteType` do Yahoo chega no módulo
+`price`, que a app já pedia para saber o preço e a moeda, e estava a ser deitado
+fora. Não custa um pedido novo: custa ler o que já lá está.
+
+**Não se adivinha.** As duas adivinhas óbvias erram as duas: pelo nome falha nos
+fundos que não dizem que o são; pela ausência de setor falha nos ETF setoriais,
+que têm setor. Um investimento mal arrumado num gráfico de exposição é pior do
+que um por arrumar — o segundo aparece como lacuna, o primeiro passa por conta
+feita.
+
+**Duas fatias e não uma por tipo da fonte.** Um ETF e um fundo são a mesma
+decisão: comprar o cabaz e não escolher lá dentro. O que não é nem uma coisa nem
+outra (cripto, moeda) fica com o nome que a fonte lhe dá, em vez de ser arrumado
+à força num dos dois lados.
+
+**O que a comparação vale, dito onde ela está.** É ganho sobre o custo do que
+ainda se tem, dos dois lados, e não conta com o tempo. Sem essa linha, o número
+lia-se como um veredicto sobre saber escolher.
+
+### Um aviso que não se pode fechar ensina a ignorar os avisos
+A análise dizia "86,9% do valor por classificar" com a carteira toda arrumada: o
+que faltava eram fundos, e um fundo não tem setor para dar. O aviso era
+verdadeiro, permanente e sem nenhuma forma de o fechar.
+
+Passam a existir as duas metades que faltavam. Quando o que falta são só fundos,
+o ecrã diz isso em vez de chamar lacuna ao normal. E quando falta mesmo alguma
+coisa — um investimento sem símbolo, um nome que a fonte não conhece — há um
+painel para a classificar à mão, ali, sem sair da página onde a lacuna aparece.
+Uma gravação para a lista toda, e só valores das listas conhecidas entram: o que
+vem de um formulário é texto que alguém pôs lá.
+
+**A consulta automática ganhou uma segunda pergunta, uma só vez.** Quem foi
+consultado antes de existir o tipo tem o carimbo escrito e o tipo vazio, e pelo
+carimbo passaria por "já se perguntou e a fonte não soube" — ficando sem tipo
+para sempre. A data em que o tipo passou a ser lido está escrita no serviço, e é
+ela que faz essa segunda pergunta acontecer uma vez e nunca mais.

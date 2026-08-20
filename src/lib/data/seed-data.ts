@@ -628,6 +628,9 @@ export function seedAssets(): Asset[] {
       unitCostCents: vwce.unitCostCents,
       unitPriceCents: currentPriceEur("vwce.de"),
       purchasedAt: "2025-07-15",
+      // Dois ETF e uma ação: chega para a leitura "escolhas ou cabaz" existir
+      // nos dados de exemplo, que é onde se vê se ela se lê.
+      instrumento: "ETF",
       notes: "Ordem permanente trimestral, de acumulação.",
     },
     {
@@ -640,6 +643,7 @@ export function seedAssets(): Asset[] {
       unitCostCents: vhyd.unitCostCents,
       unitPriceCents: currentPriceEur("vhyd.de"),
       purchasedAt: "2025-08-19",
+      instrumento: "ETF",
       notes: "De distribuição: paga dividendo de três em três meses.",
     },
     {
@@ -652,6 +656,8 @@ export function seedAssets(): Asset[] {
       unitCostCents: aapl.unitCostCents,
       unitPriceCents: currentPriceEur("aapl.us", true),
       purchasedAt: "2025-10-07",
+      instrumento: "EQUITY",
+      sector: "Technology",
       notes: "Comprada em dólares: o valor em euros já leva o câmbio do dia.",
     },
   ];

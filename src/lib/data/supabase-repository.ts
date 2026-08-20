@@ -1652,6 +1652,7 @@ export class SupabaseRepository implements Repository {
     if (patch.marketDatesAt !== undefined) row.market_dates_at = patch.marketDatesAt;
     if (patch.sector !== undefined) row.sector = patch.sector;
     if (patch.industry !== undefined) row.industry = patch.industry;
+    if (patch.instrumento !== undefined) row.instrumento = patch.instrumento;
     if (patch.profileAt !== undefined) row.profile_at = patch.profileAt;
     if (patch.financesAssetId !== undefined) row.finances_asset_id = patch.financesAssetId;
     if (patch.contractedAmountCents !== undefined) {
@@ -2972,6 +2973,7 @@ function rowToAsset(r: any): Asset {
     marketDatesAt: r.market_dates_at ?? null,
     sector: r.sector ?? null,
     industry: r.industry ?? null,
+    instrumento: r.instrumento ?? null,
     profileAt: r.profile_at ?? null,
     sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,

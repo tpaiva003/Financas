@@ -15,16 +15,25 @@
 
 import Link from "next/link";
 import {
+  ESCOLHAS,
+  FUNDOS,
   buildNetWorth,
   carteiraPorSetor,
+  carteiraPorTipo,
   derivePosition,
   empresasPorReforco,
+  escolhasContraFundos,
   formatCents,
   type PosicaoDoSetor,
   type Trade,
 } from "@/lib/domain";
 import type { Asset } from "@/lib/data";
+import { porConsultar } from "@/lib/services/setores-service";
 import { DescobrirSetores } from "@/components/DescobrirSetores";
+import {
+  ClassificarInvestimentos,
+  type PorClassificar,
+} from "@/components/ClassificarInvestimentos";
 
 /** Compras e custos somam; vendas subtraem. Ver `reforcosPorMes`. */
 function reforcoDe(movs: readonly Trade[]): number {
@@ -61,6 +70,7 @@ export function AnaliseSetores({
       id: a.id,
       nome: a.name,
       setor: a.sector ?? null,
+      instrumento: a.instrumento ?? null,
       valorCents: v?.currentValueCents ?? 0,
       custoCents: Math.round((a.quantity ?? 0) * (a.unitCostCents ?? 0)),
       reforcoCents: reforcoDe(tradesByAsset.get(a.id) ?? []),
@@ -68,9 +78,62 @@ export function AnaliseSetores({
   });
 
   const carteira = carteiraPorSetor(posicoes);
+  const porTipo = carteiraPorTipo(posicoes);
+  const contra = escolhasContraFundos(porTipo);
   const empresas = empresasPorReforco(posicoes);
-  // Só os que dá para ir buscar: sem símbolo não há a quem perguntar.
-  const porPerguntar = investimentos.filter((a) => a.symbol && !a.sector && !a.profileAt).length;
+
+  /**
+   * Quem falta arrumar, para se poder arrumar aqui.
+   *
+   * Só posições que ainda valem alguma coisa: classificar à mão uma posição
+   * fechada é trabalho para não mudar percentagem nenhuma.
+   */
+  const abertos = new Set(
+    posicoes.filter((p) => p.valorCents > 0 || p.custoCents > 0).map((p) => p.id),
+  );
+  /**
+   * Um fundo sem setor não está por classificar: a fonte não classifica fundos
+   * por setor, e pedir um setor para um ETF do mundo inteiro é pedir uma
+   * resposta que não existe. O que falta a um fundo é o tipo, se lhe faltar.
+   */
+  const faltaAlgumaCoisa = (a: Asset) => {
+    const t = (a.instrumento ?? "").trim().toUpperCase();
+    if (!t) return true;
+    if (t === "ETF" || t === "MUTUALFUND") return false;
+    return !a.sector;
+  };
+  /**
+   * O que falta classificar são só fundos?
+   *
+   * Muda o que o ecrã diz por cima das percentagens: um fundo sem setor é o
+   * normal, e chamar-lhe lacuna deixava um aviso que nunca se podia fechar.
+   */
+  const semSetor = carteira.grupos.find((g) => g.porClassificar);
+  const soFundosPorClassificar =
+    (semSetor?.posicoes.length ?? 0) > 0 &&
+    semSetor!.posicoes.every((p) => {
+      const t = (p.instrumento ?? "").trim().toUpperCase();
+      return t === "ETF" || t === "MUTUALFUND";
+    });
+
+  const porClassificar: PorClassificar[] = investimentos
+    .filter((a) => abertos.has(a.id) && faltaAlgumaCoisa(a))
+    .map((a) => ({
+      id: a.id,
+      nome: a.name,
+      setor: a.sector ?? null,
+      instrumento: a.instrumento ?? null,
+      temSimbolo: Boolean(a.symbol),
+    }));
+  /*
+    Só os que dá para ir buscar: sem símbolo não há a quem perguntar.
+
+    A conta é a do serviço e não uma cópia dela: eram duas definições do mesmo
+    "quem falta", e a do botão ficou para trás quando a do lote passou a contar
+    também com o tipo do instrumento — um botão a dizer zero por cima de uma
+    lista por classificar.
+  */
+  const porPerguntar = porConsultar(investimentos);
 
   if (carteira.grupos.length === 0) return null;
 
@@ -85,7 +148,7 @@ export function AnaliseSetores({
         {carteira.maior ? (
           <p className="mb-1 text-sm text-fg-muted">
             O maior é{" "}
-            <span className="text-fg">{carteira.maior.setor}</span>, com{" "}
+            <span className="text-fg">{carteira.maior.nome}</span>, com{" "}
             <span className="font-mono tnum text-fg">
               {String(carteira.maior.pesoPct).replace(".", ",")}%
             </span>{" "}
@@ -100,7 +163,20 @@ export function AnaliseSetores({
           estar errado por muito — e um ecrã que mostre a percentagem sem dizer
           isto apresenta uma conta incompleta como se fosse a conta.
         */}
-        {carteira.porClassificar > 0 ? (
+        {carteira.porClassificar > 0 && soFundosPorClassificar ? (
+          /*
+            Dizer "por classificar" de um ETF do mundo inteiro é apontar um
+            trabalho que não existe: a fonte não classifica fundos por setor
+            porque um fundo não tem um setor para dar. Sem esta distinção, o
+            aviso ficava para sempre — e um aviso que nunca se pode fechar
+            ensina a ignorar os avisos todos.
+          */
+          <p className="mb-3 text-xs leading-snug text-fg-faint">
+            O que falta são fundos ({String(carteira.porClassificarPct).replace(".", ",")}%
+            do valor), e um fundo não tem um setor para dar: está em todos. A
+            leitura acima é sobre a parte da carteira em que escolheste empresas.
+          </p>
+        ) : carteira.porClassificar > 0 ? (
           <p className="mb-3 text-xs leading-snug text-fg-faint">
             {carteira.porClassificar === 1
               ? "Um investimento ainda não tem setor"
@@ -119,10 +195,10 @@ export function AnaliseSetores({
           {carteira.grupos.map((g) => {
             const max = Math.max(...carteira.grupos.map((x) => x.valorCents), 1);
             return (
-              <li key={g.setor}>
+              <li key={g.nome}>
                 <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
                   <span className={g.porClassificar ? "text-fg-faint" : "text-fg"}>
-                    {g.setor}
+                    {g.nome}
                     <span className="ml-2 font-mono text-[11px] text-fg-faint">
                       {g.posicoes.length}
                     </span>
@@ -166,7 +242,108 @@ export function AnaliseSetores({
             );
           })}
         </ul>
+
+        <ClassificarInvestimentos bens={porClassificar} />
       </section>
+
+      {/*
+        Escolher empresas ou comprar o mercado inteiro: a outra pergunta que uma
+        lista de investimentos não responde.
+
+        Está a seguir aos setores de propósito. O setor diz a que é que o
+        dinheiro está exposto; isto diz quanto dele é decisão tua — e é a única
+        leitura desta página que responde a "as minhas escolhas valeram a pena?"
+        com alguma coisa que não seja a média de tudo junto.
+      */}
+      {porTipo.grupos.length > 1 ? (
+        <section className="card p-5">
+          <p className="eyebrow mb-1">Escolhas ou cabaz</p>
+
+          {contra ? (
+            <p className="mb-1 text-sm text-fg-muted">
+              As tuas escolhas estão{" "}
+              <span
+                className={`font-mono tnum ${contra.diferencaPontos >= 0 ? "text-credit" : "text-debt"}`}
+              >
+                {String(Math.abs(contra.diferencaPontos)).replace(".", ",")} pontos
+              </span>{" "}
+              {contra.diferencaPontos >= 0 ? "à frente" : "atrás"} do que compraste
+              em cabaz.
+            </p>
+          ) : (
+            <p className="mb-1 text-sm text-fg-muted">
+              Quanto da carteira é escolha de empresas e quanto é mercado
+              comprado inteiro.
+            </p>
+          )}
+
+          {/*
+            O que a comparação vale, dito onde ela está.
+
+            É ganho sobre o custo do que ainda se tem, dos dois lados. Não conta
+            com o tempo: uma posição aberta o mês passado teve menos tempo para
+            subir do que uma de há três anos. Sem esta linha, o número lê-se
+            como um veredicto sobre saber escolher.
+          */}
+          <p className="mb-3 text-xs leading-snug text-fg-faint">
+            É o ganho sobre o que custou o que ainda tens, dos dois lados, e não
+            conta com o tempo: uma posição aberta o mês passado teve menos tempo
+            para subir. As posições já vendidas não entram.
+          </p>
+
+          <ul className="space-y-3">
+            {porTipo.grupos.map((g) => {
+              const max = Math.max(...porTipo.grupos.map((x) => x.valorCents), 1);
+              return (
+                <li key={g.nome}>
+                  <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+                    <span className={g.porClassificar ? "text-fg-faint" : "text-fg"}>
+                      {g.nome}
+                      <span className="ml-2 font-mono text-[11px] text-fg-faint">
+                        {g.posicoes.length}
+                      </span>
+                    </span>
+                    <span className="font-mono tnum text-xs text-fg-muted">
+                      <span className="dinheiro">{formatCents(g.valorCents)}</span>
+                      <span className="ml-2 text-fg-faint">
+                        {String(g.pesoPct).replace(".", ",")}%
+                      </span>
+                      {g.ganhoPct !== null ? (
+                        <span className={`ml-2 ${g.ganhoCents! >= 0 ? "text-credit" : "text-debt"}`}>
+                          {g.ganhoCents! >= 0 ? "+" : ""}
+                          {String(g.ganhoPct).replace(".", ",")}%
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">
+                    <div
+                      className={`h-full rounded-full ${
+                        g.porClassificar
+                          ? "bg-fg-faint/40"
+                          : g.nome === ESCOLHAS
+                            ? "bg-credit"
+                            : "bg-fg/40"
+                      }`}
+                      style={{ width: `${Math.max(2, (g.valorCents / max) * 100)}%` }}
+                    />
+                  </div>
+                  {g.pesoDoReforcoPct !== null &&
+                  Math.abs(g.pesoDoReforcoPct - g.pesoPct) >= 3 ? (
+                    <p className="mt-1 text-[11px] text-fg-faint">
+                      Do dinheiro que entrou, {g.nome === FUNDOS ? "o cabaz" : "este lado"}{" "}
+                      levou {String(g.pesoDoReforcoPct).replace(".", ",")}%
+                      {g.pesoDoReforcoPct < g.pesoPct
+                        ? ": pesa mais hoje do que o que se decidiu pôr nele."
+                        : ": pesa menos hoje do que o que se decidiu pôr nele."}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {empresas.length > 0 ? (
         <section className="card p-5">
