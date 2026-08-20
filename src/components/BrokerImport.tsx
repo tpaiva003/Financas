@@ -382,7 +382,7 @@ function FileCard({
                       {" · "}
                       {compras > 0 ? `${compras} compra(s)` : ""}
                       {vendas > 0 ? `${compras > 0 ? ", " : ""}${vendas} venda(s)` : ""}
-                      {investido > 0 ? ` · ${formatCents(investido)}` : ""}
+                      {investido > 0 ? <> · <span className="dinheiro">{formatCents(investido)}</span></> : ""}
                       {g.duplicates > 0 ? ` · ${g.duplicates} repetido(s)` : ""}
                     </span>
                     <span className="text-fg-faint">
@@ -402,7 +402,7 @@ function FileCard({
                   <span className="font-mono text-fg-faint">
                     {" · "}
                     {h.quantity} un.
-                    {h.unitPriceCents !== null ? `, hoje a ${formatCents(h.unitPriceCents)}` : ""}
+                    {h.unitPriceCents !== null ? <>, hoje a <span className="dinheiro">{formatCents(h.unitPriceCents)}</span></> : ""}
                   </span>
                 </li>
               ))}

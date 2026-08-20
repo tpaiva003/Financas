@@ -251,9 +251,9 @@ function DoBruto({
       {conta ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <p className="font-mono text-xs tnum text-fg-muted">
-            {formatCents(conta.brutoCents)} − {formatCents(conta.ssCents)} −{" "}
-            {formatCents(conta.irsCents)} ={" "}
-            <span className="text-fg">{formatCents(conta.liquidoCents)}</span>
+            <span className="dinheiro">{formatCents(conta.brutoCents)}</span> − <span className="dinheiro">{formatCents(conta.ssCents)}</span> −{" "}
+            <span className="dinheiro">{formatCents(conta.irsCents)}</span> ={" "}
+            <span className="text-fg"><span className="dinheiro">{formatCents(conta.liquidoCents)}</span></span>
           </p>
           <button
             type="button"

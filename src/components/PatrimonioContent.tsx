@@ -496,15 +496,15 @@ export async function PatrimonioContent({
             netFoco.netCents < 0 ? "text-debt" : ""
           }`}
         >
-          {formatCents(netFoco.netCents)}
+          <span className="dinheiro">{formatCents(netFoco.netCents)}</span>
         </p>
         {netFoco.assets.length === 0 ? (
           <p className="mt-2 text-sm text-fg-muted">{focoVazioPorExtenso(foco)}</p>
         ) : (
         <p className="mt-2 text-sm text-fg-muted">
-          {formatCents(netFoco.totalAssetsCents)} em bens
+          <span className="dinheiro">{formatCents(netFoco.totalAssetsCents)}</span> em bens
           {netFoco.totalLiabilitiesCents > 0
-            ? `, menos ${formatCents(netFoco.totalLiabilitiesCents)} de dívidas`
+            ? [", menos ", <span key="d" className="dinheiro">{formatCents(netFoco.totalLiabilitiesCents)}</span>, " de dívidas"]
             : ""}
           .
         </p>
@@ -516,7 +516,7 @@ export async function PatrimonioContent({
           <p className="mt-1 text-xs text-fg-faint">
             É uma parte do teu património, não o total. Ao todo tens{" "}
             <Link href="/patrimonio" className="text-fg-muted underline-offset-4 hover:underline">
-              {formatCents(net.netCents)}
+              <span className="dinheiro">{formatCents(net.netCents)}</span>
             </Link>
             .
           </p>
@@ -527,10 +527,10 @@ export async function PatrimonioContent({
             Investimentos:{" "}
             <span className={netFoco.investmentGainCents >= 0 ? "text-credit" : "text-debt"}>
               {netFoco.investmentGainCents >= 0 ? "+" : ""}
-              {formatCents(netFoco.investmentGainCents)}
+              <span className="dinheiro">{formatCents(netFoco.investmentGainCents)}</span>
             </span>{" "}
             <span className="text-fg-faint">
-              sobre {formatCents(netFoco.investmentCostCents)} de custo das posições
+              sobre <span className="dinheiro">{formatCents(netFoco.investmentCostCents)}</span> de custo das posições
               abertas
             </span>
           </p>
@@ -588,7 +588,7 @@ export async function PatrimonioContent({
                 <li key={k.kind}>
                   <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                     <span className="text-fg">{k.label}</span>
-                    <span className="font-mono tnum text-fg-muted">{formatCents(k.totalCents)}</span>
+                    <span className="font-mono tnum text-fg-muted"><span className="dinheiro">{formatCents(k.totalCents)}</span></span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">
                     <div
@@ -609,12 +609,12 @@ export async function PatrimonioContent({
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
             {ratesFoco.annualInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Recebes <span className="text-credit">{formatCents(ratesFoco.annualInterestCents)}</span>
+                Recebes <span className="text-credit"><span className="dinheiro">{formatCents(ratesFoco.annualInterestCents)}</span></span>
               </p>
             ) : null}
             {ratesFoco.annualDebtInterestCents > 0 ? (
               <p className="text-fg-muted">
-                Pagas <span className="text-debt">{formatCents(ratesFoco.annualDebtInterestCents)}</span>
+                Pagas <span className="text-debt"><span className="dinheiro">{formatCents(ratesFoco.annualDebtInterestCents)}</span></span>
               </p>
             ) : null}
           </div>
@@ -641,14 +641,14 @@ export async function PatrimonioContent({
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <p className="font-display text-2xl font-semibold tracking-tight tnum">
-                {formatCents(rates.monthlyPaymentsCents)}
+                <span className="dinheiro">{formatCents(rates.monthlyPaymentsCents)}</span>
               </p>
               <p className="mt-0.5 text-xs text-fg-muted">em prestações, por mês</p>
             </div>
             {rates.annualDebtInterestCents > 0 ? (
               <div>
                 <p className="font-display text-2xl font-semibold tracking-tight tnum text-debt">
-                  {formatCents(rates.annualDebtInterestCents)}
+                  <span className="dinheiro">{formatCents(rates.annualDebtInterestCents)}</span>
                 </p>
                 <p className="mt-0.5 text-xs text-fg-muted">de juros no próximo ano</p>
               </div>
@@ -671,7 +671,7 @@ export async function PatrimonioContent({
         <section className="card p-5">
           <p className="eyebrow">Juros a receber</p>
           <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum text-credit">
-            {formatCents(rates.annualInterestCents)}
+            <span className="dinheiro">{formatCents(rates.annualInterestCents)}</span>
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
             por ano, de {rates.earningCount}{" "}
@@ -810,14 +810,15 @@ export async function PatrimonioContent({
                             {g.porConfirmar > 0 && (g.oversold || g.implausiveis.length > 0) ? "; " : null}
                             {g.oversold ? "mais vendas do que compras" : null}
                             {g.oversold && g.implausiveis.length > 0 ? "; " : null}
-                            {g.implausiveis.length > 0
-                              ? g.implausiveis
-                                  .map(
-                                    (m) =>
-                                      `${new Date(`${m.date}T00:00:00Z`).toLocaleDateString("pt-PT")}: ${formatCents(m.implicitoCents)}/un., ${Math.round(m.vezes >= 1 ? m.vezes : 1 / m.vezes)}× ${m.vezes >= 1 ? "acima" : "abaixo"} do normal`,
-                                  )
-                                  .join("; ")
-                              : null}
+                            {g.implausiveis.map((m, i) => (
+                              <span key={m.date + i}>
+                                {i > 0 ? "; " : null}
+                                {new Date(`${m.date}T00:00:00Z`).toLocaleDateString("pt-PT")}:{" "}
+                                <span className="dinheiro">{formatCents(m.implicitoCents)}</span>
+                                /un., {Math.round(m.vezes >= 1 ? m.vezes : 1 / m.vezes)}×{" "}
+                                {m.vezes >= 1 ? "acima" : "abaixo"} do normal
+                              </span>
+                            ))}
                           </span>
                         </li>
                       ))}
@@ -1043,7 +1044,7 @@ async function PortfolioReturnSection({
             className={`mt-0.5 font-mono text-lg tnum ${contaminado ? "text-fg-faint line-through" : "text-fg"}`}
             title={contaminado ? "Inflacionado por movimentos com valores impossíveis." : undefined}
           >
-            {formatCents(ret.investedCents)}
+            <span className="dinheiro">{formatCents(ret.investedCents)}</span>
           </p>
           {/* Ver a nota no resumo: aqui soma-se TODAS as compras, incluindo as
               de posições já vendidas. No resumo é o custo do que ainda se tem.
@@ -1056,7 +1057,7 @@ async function PortfolioReturnSection({
         <div>
           <p className="text-xs text-fg-muted">Vale hoje</p>
           <p className="mt-0.5 font-mono text-lg tnum text-fg">
-            {formatCents(ret.currentValueCents)}
+            <span className="dinheiro">{formatCents(ret.currentValueCents)}</span>
           </p>
           {/*
             O que já se vendeu não está aqui, e tinha de ser dito.
@@ -1070,10 +1071,10 @@ async function PortfolioReturnSection({
           */}
           {ret.proceedsCents > 0 ? (
             <p className="mt-0.5 text-[11px] leading-snug text-fg-faint">
-              Mais {formatCents(ret.proceedsCents)} que já saíram em vendas, com{" "}
+              Mais <span className="dinheiro">{formatCents(ret.proceedsCents)}</span> que já saíram em vendas, com{" "}
               <span className={ret.realizedGainCents >= 0 ? "text-credit" : "text-debt"}>
                 {ret.realizedGainCents >= 0 ? "+" : ""}
-                {formatCents(ret.realizedGainCents)}
+                <span className="dinheiro">{formatCents(ret.realizedGainCents)}</span>
               </span>{" "}
               de resultado já garantido.
             </p>
@@ -1144,7 +1145,7 @@ async function PortfolioReturnSection({
         */}
         {ret.foraDaComparacaoCents > 0 ? (
           <p className="mb-4 text-xs leading-snug text-fg-faint">
-            Ficam de fora {formatCents(ret.foraDaComparacaoCents)} de{" "}
+            Ficam de fora <span className="dinheiro">{formatCents(ret.foraDaComparacaoCents)}</span> de{" "}
             {ret.missingPrice === 1
               ? "um investimento sem preço atual"
               : `${ret.missingPrice} investimentos sem preço atual`}
@@ -1166,7 +1167,7 @@ async function PortfolioReturnSection({
                     }`}
                   >
                     {b.comparison.differenceCents >= 0 ? "+" : ""}
-                    {formatCents(b.comparison.differenceCents)}
+                    <span className="dinheiro">{formatCents(b.comparison.differenceCents)}</span>
                   </p>
                 ) : null}
               </div>
@@ -1174,11 +1175,11 @@ async function PortfolioReturnSection({
                 <p className="mt-0.5 text-xs text-fg-muted">
                   No índice terias{" "}
                   <span className="tnum text-fg">
-                    {formatCents(b.comparison.benchmarkValueCents)}
+                    <span className="dinheiro">{formatCents(b.comparison.benchmarkValueCents)}</span>
                   </span>
                   , tens{" "}
                   <span className="tnum text-fg">
-                    {formatCents(b.comparison.portfolioValueCents)}
+                    <span className="dinheiro">{formatCents(b.comparison.portfolioValueCents)}</span>
                   </span>
                   .{" "}
                   {b.comparison.differenceCents >= 0
@@ -1196,7 +1197,7 @@ async function PortfolioReturnSection({
                       {" "}
                       Os dois incluem os{" "}
                       <span className="tnum">
-                        {formatCents(b.comparison.withdrawnCents)}
+                        <span className="dinheiro">{formatCents(b.comparison.withdrawnCents)}</span>
                       </span>{" "}
                       que já voltaram de vendas e dividendos.
                     </>
@@ -1248,9 +1249,9 @@ function ResumoDoGrupo({ resumo }: { resumo: ResumoDoTipo }) {
       <span>
         {resumo.quantos} {resumo.quantos === 1 ? "bem" : "bens"}
       </span>
-      <span className="text-fg-muted">{formatCents(resumo.valorCents)}</span>
+      <span className="text-fg-muted"><span className="dinheiro">{formatCents(resumo.valorCents)}</span></span>
       {resumo.custoCents !== null ? (
-        <span>{formatCents(resumo.custoCents)} investido</span>
+        <span><span className="dinheiro">{formatCents(resumo.custoCents)}</span> investido</span>
       ) : null}
       {resumo.ganhoPct !== null ? (
         <span className={resumo.ganhoCents! >= 0 ? "text-credit" : "text-debt"}>
@@ -1327,7 +1328,7 @@ function CreditoResumo({
   return (
     <div className="mt-2 space-y-0.5 text-xs text-fg-muted">
       <p>
-        <span className="tnum text-fg">{formatCents(atual.monthlyPaymentCents)}</span> por mês
+        <span className="tnum text-fg"><span className="dinheiro">{formatCents(atual.monthlyPaymentCents)}</span></span> por mês
         {" · "}
         <span className="tnum">{pct(atual.annualRatePct)}</span>
         {atual.origem.kind === "variavel" && atual.origem.indexante
@@ -1342,10 +1343,10 @@ function CreditoResumo({
       {plano.nextPaymentCents !== null && plano.nextChangeOn ? (
         <p className={sobe ? "text-debt" : "text-credit"}>
           Em {formatDia(plano.nextChangeOn)} passa a{" "}
-          <span className="tnum">{formatCents(plano.nextPaymentCents)}</span> por mês,{" "}
+          <span className="tnum"><span className="dinheiro">{formatCents(plano.nextPaymentCents)}</span></span> por mês,{" "}
           {sobe ? "mais" : "menos"}{" "}
           <span className="tnum">
-            {formatCents(Math.abs(plano.nextPaymentCents - atual.monthlyPaymentCents))}
+            <span className="dinheiro">{formatCents(Math.abs(plano.nextPaymentCents - atual.monthlyPaymentCents))}</span>
           </span>
           .
         </p>
@@ -1364,7 +1365,7 @@ function CreditoResumo({
         {plano.totalInterestCents > 0 ? (
           <>
             {", com "}
-            <span className="tnum text-debt">{formatCents(plano.totalInterestCents)}</span> de
+            <span className="tnum text-debt"><span className="dinheiro">{formatCents(plano.totalInterestCents)}</span></span> de
             juros até lá
           </>
         ) : null}
@@ -1504,9 +1505,9 @@ function AssetRow({
         <p className="mt-0.5 font-mono text-[11px] text-fg-faint">
           {isInvestment ? (
             <>
-              {a.quantity} un. a {formatCents(a.unitCostCents ?? 0)}
+              {a.quantity} un. a <span className="dinheiro">{formatCents(a.unitCostCents ?? 0)}</span>
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
-                ? `, a ${formatCents(a.unitPriceCents)}`
+                ? [", a ", <span key="p" className="dinheiro">{formatCents(a.unitPriceCents)}</span>]
                 : ", sem preço atual"}
               {/* De quando é o preço. Sem isto, um valor velho passa por atual.
                   E **só se mostra a data quando ela é mesmo a deste preço**: se a
@@ -1597,14 +1598,14 @@ function AssetRow({
         ) : null}
 
         <div className="text-right">
-          <p className="font-mono text-sm tnum text-fg">{formatCents(a.currentValueCents)}</p>
+          <p className="font-mono text-sm tnum text-fg"><span className="dinheiro">{formatCents(a.currentValueCents)}</span></p>
           {/* Com quota parcial, o número acima é só a tua parte. Dizer de quanto
               é que ele é parte evita a pergunta "porque é que isto está a
               menos?" — e evita a resposta errada, que seria alguém corrigir o
               valor para o dobro e passar a contar a casa toda. */}
           {quota < 1 ? (
             <p className="font-mono text-[11px] tnum text-fg-faint">
-              {quotaLabel} de {formatCents(assetTotalValueCents(a))}
+              {quotaLabel} de <span className="dinheiro">{formatCents(assetTotalValueCents(a))}</span>
             </p>
           ) : null}
           {/* A estimativa da zona, com a diferença em percentagem: é a diferença
@@ -1616,14 +1617,14 @@ function AssetRow({
               muda com a quota — divide-se dos dois lados. */}
           {zonaCents !== null ? (
             <p className="font-mono text-[11px] tnum text-fg-faint">
-              zona: {formatCents(Math.round(zonaCents * quota))}
+              zona: <span className="dinheiro">{formatCents(Math.round(zonaCents * quota))}</span>
               {zona ? ` (${zona.ratio >= 1 ? "+" : ""}${Math.round((zona.ratio - 1) * 100)}%)` : ""}
             </p>
           ) : null}
           {a.gainCents !== null ? (
             <p className={`font-mono text-[11px] tnum ${a.gainCents >= 0 ? "text-credit" : "text-debt"}`}>
               {a.gainCents >= 0 ? "+" : ""}
-              {formatCents(a.gainCents)}
+              <span className="dinheiro">{formatCents(a.gainCents)}</span>
               {a.gainPct !== null ? ` (${a.gainPct >= 0 ? "+" : ""}${Math.round(a.gainPct)}%)` : ""}
             </p>
           ) : null}
@@ -1679,14 +1680,14 @@ function AssetRow({
         <p className="mt-2 text-xs text-debt">
           {(plan.monthlyPaymentCents ?? 0) <= (plan.nextInterestCents ?? 0) ? (
             <>
-              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} não chega para os{" "}
-              {formatCents(plan.nextInterestCents ?? 0)} de juro do mês: assim a dívida cresce.
+              A prestação de <span className="dinheiro">{formatCents(plan.monthlyPaymentCents ?? 0)}</span> não chega para os{" "}
+              <span className="dinheiro">{formatCents(plan.nextInterestCents ?? 0)}</span> de juro do mês: assim a dívida cresce.
             </>
           ) : (
             <>
-              A prestação de {formatCents(plan.monthlyPaymentCents ?? 0)} cobre os{" "}
-              {formatCents(plan.nextInterestCents ?? 0)} de juro por pouco e só abate{" "}
-              {formatCents(plan.nextPrincipalCents ?? 0)} por mês: a este ritmo não salda em
+              A prestação de <span className="dinheiro">{formatCents(plan.monthlyPaymentCents ?? 0)}</span> cobre os{" "}
+              <span className="dinheiro">{formatCents(plan.nextInterestCents ?? 0)}</span> de juro por pouco e só abate{" "}
+              <span className="dinheiro">{formatCents(plan.nextPrincipalCents ?? 0)}</span> por mês: a este ritmo não salda em
               cem anos.
             </>
           )}
@@ -1696,7 +1697,7 @@ function AssetRow({
       {plan && plan.monthsToPayOff !== null ? (
         <div className="mt-2 space-y-0.5 text-xs text-fg-muted">
           <p>
-            <span className="tnum text-fg">{formatCents(plan.monthlyPaymentCents ?? 0)}</span> por
+            <span className="tnum text-fg"><span className="dinheiro">{formatCents(plan.monthlyPaymentCents ?? 0)}</span></span> por
             mês{plan.paymentIsEstimated ? " (estimada pelo prazo)" : ""}
             {a.interestRatePct ? (
               <>
@@ -1715,7 +1716,7 @@ function AssetRow({
             {plan.totalInterestCents ? (
               <>
                 {", com "}
-                <span className="tnum text-debt">{formatCents(plan.totalInterestCents)}</span> de
+                <span className="tnum text-debt"><span className="dinheiro">{formatCents(plan.totalInterestCents)}</span></span> de
                 juros até lá
               </>
             ) : null}
@@ -1723,8 +1724,8 @@ function AssetRow({
           </p>
           {plan.nextInterestCents ? (
             <p className="text-fg-faint">
-              Da próxima prestação, {formatCents(plan.nextInterestCents)} é juro e{" "}
-              {formatCents(plan.nextPrincipalCents ?? 0)} abate mesmo à dívida.
+              Da próxima prestação, <span className="dinheiro">{formatCents(plan.nextInterestCents)}</span> é juro e{" "}
+              <span className="dinheiro">{formatCents(plan.nextPrincipalCents ?? 0)}</span> abate mesmo à dívida.
             </p>
           ) : null}
         </div>
@@ -1734,7 +1735,7 @@ function AssetRow({
         <p className="mt-2 text-xs text-fg-muted">
           <span className="tnum">{String(a.interestRatePct).replace(".", ",")}%</span> ao ano
           {rateLabel ? `, ${rateLabel}` : ""}: rende cerca de{" "}
-          <span className="tnum text-credit">{formatCents(yearlyInterest)}</span> por ano.
+          <span className="tnum text-credit"><span className="dinheiro">{formatCents(yearlyInterest)}</span></span> por ano.
         </p>
       ) : null}
 
@@ -1769,10 +1770,10 @@ function AssetRow({
           <span
             className={`font-mono tnum ${liquido.liquidoCents >= 0 ? "text-credit" : "text-debt"}`}
           >
-            {formatCents(liquido.liquidoCents)}
+            <span className="dinheiro">{formatCents(liquido.liquidoCents)}</span>
           </span>{" "}
           <span className="text-fg-faint">
-            (falta pagar {formatCents(liquido.dividaCents)} em{" "}
+            (falta pagar <span className="dinheiro">{formatCents(liquido.dividaCents)}</span> em{" "}
             {liquido.creditos.map((c) => c.name).join(", ")}
             {liquido.pagoPct !== null ? `. ${liquido.pagoPct}% já é teu` : ""}
             {liquido.liquidoCents < 0

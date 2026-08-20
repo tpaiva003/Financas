@@ -161,7 +161,7 @@ export function QuickTradeForm({
           onClick={() => setValor((sugestao / 100).toFixed(2).replace(".", ","))}
           className="text-[11px] text-fg-muted underline underline-offset-2 hover:text-fg"
         >
-          Usar {formatCents(sugestao)}, à cotação de hoje
+          Usar <span className="dinheiro">{formatCents(sugestao)}</span>, à cotação de hoje
         </button>
       ) : null}
 

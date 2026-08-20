@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { THEME_SCRIPT } from "@/components/ThemeToggle";
+import { PRIVACY_SCRIPT } from "@/components/PrivacyToggle";
 
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const display = Space_Grotesk({
@@ -76,8 +77,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt">
       <head>
-        {/* Aplica o tema guardado antes de pintar (evita flash ao mudar de página). */}
+        {/* Aplica o tema e o modo privacidade guardados antes de pintar: sem
+            isto, cada navegação mostrava um instante o tema errado — ou, pior,
+            os valores que o modo privacidade existe para tapar. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: PRIVACY_SCRIPT }} />
       </head>
       <body className={`${sans.variable} ${display.variable} ${mono.variable} font-sans`}>
         {children}

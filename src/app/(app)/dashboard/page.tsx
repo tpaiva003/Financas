@@ -297,7 +297,7 @@ function BalanceHero({
       <Link href="/saldo" className="block pt-4">
         <p className="eyebrow">Saldo atual</p>
         <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-          {formatCents(t.amountCents)}
+          <span className="dinheiro">{formatCents(t.amountCents)}</span>
         </p>
         <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-fg-muted">
           <span className="font-medium text-fg">{nameOf(t.fromUserId)}</span>
@@ -314,7 +314,7 @@ function BalanceHero({
     <Link href="/saldo" className="block pt-4">
       <p className="eyebrow">Por acertar</p>
       <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-        {formatCents(totalToSettle)}
+        <span className="dinheiro">{formatCents(totalToSettle)}</span>
       </p>
       <p className="mt-4 text-[15px] text-fg-muted">
         {transfers.length} pagamento(s) sugerido(s) para zerar o saldo.

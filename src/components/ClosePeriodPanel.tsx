@@ -1,5 +1,7 @@
 "use client";
 
+import type * as React from "react";
+
 import { useFormStatus } from "react-dom";
 import {
   settleAndPayAction,
@@ -38,7 +40,7 @@ export function ClosePeriodPanel({
             disabled={!hasBalance}
             variant="primary"
             label="Registar pagamento e fechar"
-            hint={hasBalance ? balanceLabel : "Nada a pagar"}
+            hint={hasBalance ? <span className="dinheiro">{balanceLabel}</span> : "Nada a pagar"}
           />
           <ConfirmForm
             action={carryBalanceAction}
@@ -75,7 +77,7 @@ function ConfirmForm({
   action: () => Promise<void>;
   confirm: string;
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   variant: "primary" | "secondary" | "ghost";
   disabled?: boolean;
 }) {
@@ -99,7 +101,7 @@ function SubmitBtn({
 }: {
   variant: "primary" | "secondary" | "ghost";
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   disabled?: boolean;
 }) {
   const { pending } = useFormStatus();

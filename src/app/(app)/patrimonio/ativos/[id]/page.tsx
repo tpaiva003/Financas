@@ -243,15 +243,20 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       <section className="card p-6">
         <p className="eyebrow">Vale hoje</p>
         <p className="mt-2 font-display text-4xl font-semibold tracking-tightest tnum">
-          {formatCents(ret ? ret.currentValueCents : Math.round(quantity * (asset.unitPriceCents ?? asset.unitCostCents ?? 0)))}
+          <span className="dinheiro">{formatCents(ret ? ret.currentValueCents : Math.round(quantity * (asset.unitPriceCents ?? asset.unitCostCents ?? 0)))}</span>
         </p>
         <p className="mt-2 text-sm text-fg-muted">
           {quantity} unidades
           {position.unitCostCents !== null || asset.unitCostCents
-            ? `, a um custo médio de ${formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}`
+            ? [
+                ", a um custo médio de ",
+                <span key="c" className="dinheiro">
+                  {formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}
+                </span>,
+              ]
             : ""}
           {asset.unitPriceCents
-            ? `, a ${formatCents(asset.unitPriceCents)}`
+            ? [", a ", <span key="p" className="dinheiro">{formatCents(asset.unitPriceCents)}</span>]
             : ". Sem cotação, conta pelo que custou"}
           .
         </p>
@@ -385,7 +390,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             <div>
               <p className="text-xs text-fg-muted">Investido</p>
               <p className="mt-0.5 font-mono text-lg tnum text-fg">
-                {formatCents(position.investedCents)}
+                <span className="dinheiro">{formatCents(position.investedCents)}</span>
               </p>
             </div>
             <div>
@@ -400,7 +405,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
                 ) : (
                   <>
                     {ret.totalGainCents >= 0 ? "+" : ""}
-                    {formatCents(ret.totalGainCents)}
+                    <span className="dinheiro">{formatCents(ret.totalGainCents)}</span>
                     {ret.simpleReturnPct !== null
                       ? ` (${ret.simpleReturnPct >= 0 ? "+" : ""}${Math.round(ret.simpleReturnPct)}%)`
                       : ""}
@@ -458,9 +463,9 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
               <div>
                 <p className="text-xs text-fg-muted">Já realizado</p>
                 <p className="mt-0.5 font-mono text-lg tnum text-fg">
-                  {formatCents(position.realizedGainCents)}
+                  <span className="dinheiro">{formatCents(position.realizedGainCents)}</span>
                   {position.dividendsCents > 0
-                    ? ` (${formatCents(position.dividendsCents)} de dividendos)`
+                    ? [" (", <span key="d" className="dinheiro">{formatCents(position.dividendsCents)}</span>, " de dividendos)"]
                     : ""}
                 </p>
               </div>

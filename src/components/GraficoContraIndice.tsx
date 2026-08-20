@@ -102,9 +102,9 @@ export function GraficoContraIndice({
           <>
             {" "}
             O desnível passou de{" "}
-            <span className="font-mono tnum">{formatCents(rumo.de)}</span> para{" "}
+            <span className="font-mono tnum"><span className="dinheiro">{formatCents(rumo.de)}</span></span> para{" "}
             <span className={`font-mono tnum ${rumo.melhorou ? "text-credit" : "text-debt"}`}>
-              {formatCents(rumo.para)}
+              <span className="dinheiro">{formatCents(rumo.para)}</span>
             </span>
             {/* O que interessa não é o sinal, é a direção: estar atrás e a
                 recuperar é uma situação diferente de estar atrás e a afastar-se,

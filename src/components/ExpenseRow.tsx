@@ -94,7 +94,7 @@ export function ExpenseRow({
         <div
           className={`shrink-0 font-mono text-[15px] tnum ${isRefund ? "text-credit" : "text-fg"}`}
         >
-          {formatCents(expense.amountCents, expense.currency)}
+          <span className="dinheiro">{formatCents(expense.amountCents, expense.currency)}</span>
         </div>
         <span className="ml-1 shrink-0 text-fg-faint opacity-0 transition group-hover:opacity-100" aria-hidden>
           ›

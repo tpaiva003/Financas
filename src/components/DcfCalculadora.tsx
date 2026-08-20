@@ -387,9 +387,10 @@ export function DcfCalculadora({
                   </tr>
                 </thead>
                 <tbody className="font-mono tnum">
-                  <Linha titulo="Valor intrínseco" valores={ok.cenarios.map((c) => formatCents(c.valorPorAcaoCents))} />
+                  <Linha titulo="Valor intrínseco" dinheiro valores={ok.cenarios.map((c) => formatCents(c.valorPorAcaoCents))} />
                   <Linha
                     titulo={`Com margem de ${ok.margemPct}%`}
+                    dinheiro
                     valores={ok.cenarios.map((c) => formatCents(c.comMargemCents))}
                     destaque
                   />
@@ -406,7 +407,7 @@ export function DcfCalculadora({
           <section className="card p-5">
             <p className="eyebrow mb-1">Preço ponderado</p>
             <p className="font-display text-3xl font-semibold tracking-tight tnum">
-              {formatCents(ok.precoPonderadoCents)}
+              <span className="dinheiro">{formatCents(ok.precoPonderadoCents)}</span>
             </p>
             {ok.upsidePonderadoPct !== null ? (
               <p className="mt-1 text-sm">
@@ -415,7 +416,7 @@ export function DcfCalculadora({
                   {ok.upsidePonderadoPct}%
                 </span>{" "}
                 <span className="text-fg-muted">
-                  face aos {formatCents(Math.round(num(preco) * 100))} de mercado.
+                  face aos <span className="dinheiro">{formatCents(Math.round(num(preco) * 100))}</span> de mercado.
                 </span>
               </p>
             ) : null}
@@ -458,15 +459,15 @@ export function DcfCalculadora({
                         <tr key={a.ano}>
                           <td className="py-0.5 text-left">{a.ano}</td>
                           <td className="py-0.5 text-right">{String(a.crescimentoPct).replace(".", ",")}%</td>
-                          <td className="py-0.5 text-right">{formatCents(a.fcfCents)}</td>
-                          <td className="py-0.5 text-right text-fg">{formatCents(a.presenteCents)}</td>
+                          <td className="py-0.5 text-right"><span className="dinheiro">{formatCents(a.fcfCents)}</span></td>
+                          <td className="py-0.5 text-right text-fg"><span className="dinheiro">{formatCents(a.presenteCents)}</span></td>
                         </tr>
                       ))}
                       <tr className="border-t border-hair2">
                         <td className="py-1 text-left" colSpan={3}>
                           Valor terminal
                         </td>
-                        <td className="py-1 text-right text-fg">{formatCents(c.resultado.terminalCents)}</td>
+                        <td className="py-1 text-right text-fg"><span className="dinheiro">{formatCents(c.resultado.terminalCents)}</span></td>
                       </tr>
                     </tbody>
                   </table>
@@ -702,11 +703,14 @@ function Linha({
   valores,
   destaque,
   cores,
+  /** Os valores são montantes em euros? Se sim, o modo privacidade tapa-os. */
+  dinheiro,
 }: {
   titulo: string;
   valores: string[];
   destaque?: boolean;
   cores?: (boolean | null)[];
+  dinheiro?: boolean;
 }) {
   return (
     <tr>
@@ -722,7 +726,7 @@ function Linha({
               cor === undefined || cor === null ? (destaque ? "text-fg" : "text-fg-muted") : cor ? "text-credit" : "text-debt"
             }`}
           >
-            {v}
+            {dinheiro ? <span className="dinheiro">{v}</span> : v}
           </td>
         );
       })}

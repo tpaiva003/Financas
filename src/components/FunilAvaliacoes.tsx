@@ -134,7 +134,7 @@ function Cartao({
         {a.temEstudo && a.precoPonderadoCents !== null ? (
           <p className="shrink-0 text-right">
             <span className="font-mono tnum text-lg text-fg">
-              {formatCents(a.precoPonderadoCents)}
+              <span className="dinheiro">{formatCents(a.precoPonderadoCents)}</span>
             </span>
             <span className="block text-[11px] text-fg-faint">preço a que compras</span>
           </p>
@@ -144,7 +144,7 @@ function Cartao({
       {a.temEstudo ? (
         a.precoNaAlturaCents !== null ? (
           <p className="text-xs leading-snug text-fg-muted">
-            Estava a <span className="font-mono tnum">{formatCents(a.precoNaAlturaCents)}</span>{" "}
+            Estava a <span className="font-mono tnum"><span className="dinheiro">{formatCents(a.precoNaAlturaCents)}</span></span>{" "}
             quando o estudaste.
             {falta !== null ? (
               <>

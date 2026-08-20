@@ -115,9 +115,9 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
               }`}
             >
               {r.confirmacao.bate ? "Confere: " : "Não confere: "}
-              o contrato diz {formatCents(r.confirmacao.contratoCents)} de prestação e, com o
+              o contrato diz <span className="dinheiro">{formatCents(r.confirmacao.contratoCents)}</span> de prestação e, com o
               montante, a taxa e o prazo que li, as contas dão{" "}
-              {formatCents(r.confirmacao.calculadaCents)}.
+              <span className="dinheiro">{formatCents(r.confirmacao.calculadaCents)}</span>.
             </p>
           ) : null}
 
@@ -125,7 +125,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
             <div>
               <dt className="text-fg-faint">Montante emprestado</dt>
               <dd className="text-fg">
-                {r.capitalCents === null ? "por apurar" : formatCents(r.capitalCents)}
+                {r.capitalCents === null ? "por apurar" : <span className="dinheiro">{formatCents(r.capitalCents)}</span>}
               </dd>
             </div>
             <div>
@@ -139,7 +139,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
             <div>
               <dt className="text-fg-faint">Prestação no contrato</dt>
               <dd className="text-fg">
-                {r.statedPaymentCents === null ? "não vinha" : formatCents(r.statedPaymentCents)}
+                {r.statedPaymentCents === null ? "não vinha" : <span className="dinheiro">{formatCents(r.statedPaymentCents)}</span>}
               </dd>
             </div>
           </dl>

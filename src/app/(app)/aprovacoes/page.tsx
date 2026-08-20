@@ -59,7 +59,7 @@ export default async function AprovacoesPage() {
                   </p>
                 </div>
                 <div className="shrink-0 font-mono text-[15px] tnum text-fg">
-                  {formatCents(e.amountCents, e.currency)}
+                  <span className="dinheiro">{formatCents(e.amountCents, e.currency)}</span>
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2">

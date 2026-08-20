@@ -76,10 +76,10 @@ export default async function RendimentosPage() {
               {Math.round(rate.ratePct)}%
             </p>
             <p className="mt-2 text-sm text-fg-muted">
-              Entraram <span className="text-fg">{formatCents(rate.incomeCents)}</span>, saíram{" "}
-              <span className="text-fg">{formatCents(rate.expensesCents)}</span>, ficaram{" "}
+              Entraram <span className="text-fg"><span className="dinheiro">{formatCents(rate.incomeCents)}</span></span>, saíram{" "}
+              <span className="text-fg"><span className="dinheiro">{formatCents(rate.expensesCents)}</span></span>, ficaram{" "}
               <span className={rate.savedCents < 0 ? "text-debt" : "text-credit"}>
-                {formatCents(rate.savedCents)}
+                <span className="dinheiro">{formatCents(rate.savedCents)}</span>
               </span>
               .
             </p>
@@ -95,7 +95,7 @@ export default async function RendimentosPage() {
           <div className="mt-4 border-t border-hair pt-4">
             <p className="text-sm text-fg-muted">
               Rendimento passivo (juros, dividendos, rendas):{" "}
-              <span className="text-fg">{formatCents(rate.passiveIncomeCents)}</span>
+              <span className="text-fg"><span className="dinheiro">{formatCents(rate.passiveIncomeCents)}</span></span>
               {rate.passiveCoveragePct !== null ? (
                 <>
                   , que já paga{" "}
@@ -128,7 +128,7 @@ export default async function RendimentosPage() {
                       ) : null}
                     </span>
                     <span className="font-mono tnum text-fg-muted">
-                      {formatCents(k.amountCents)}
+                      <span className="dinheiro">{formatCents(k.amountCents)}</span>
                     </span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">
@@ -171,7 +171,7 @@ export default async function RendimentosPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm tnum text-credit">
-                    {formatCents(i.amountCents)}
+                    <span className="dinheiro">{formatCents(i.amountCents)}</span>
                   </span>
                   <form action={deleteIncomeAction}>
                     <input type="hidden" name="id" value={i.id} />

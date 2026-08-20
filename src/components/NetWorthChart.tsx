@@ -112,7 +112,11 @@ export function NetWorthChart({
             ? captura === "sem-bens"
               ? "Ainda não há bens registados, por isso não há o que fotografar."
               : "A fotografia de hoje ficou guardada. É a primeira."
-            : `Está guardada a fotografia de ${points[0]!.label}, com ${formatCents(points[0]!.netCents)}.`}
+            : [
+                `Está guardada a fotografia de ${points[0]!.label}, com `,
+                <span key="v" className="dinheiro">{formatCents(points[0]!.netCents)}</span>,
+                ".",
+              ]}
         </p>
         <p className="mt-2 text-xs text-fg-faint">
           O património de antes não se reconstrói: cada bem só sabe o que vale
@@ -229,7 +233,7 @@ export function NetWorthChart({
         {cents !== null ? (
           <p className={`font-mono text-xs tnum ${subiu ? "text-credit" : "text-debt"}`}>
             {subiu ? "+" : ""}
-            {formatCents(cents)}
+            <span className="dinheiro">{formatCents(cents)}</span>
             {/* Só há percentagem quando se parte de um património positivo: de
                 -50 mil para -10 mil a divisão dá o sinal ao contrário do que
                 aconteceu. Sem ela, mostra-se a variação em euros e mais nada. */}
@@ -300,11 +304,11 @@ export function NetWorthChart({
             <span className="font-mono uppercase tracking-[0.04em] text-fg-faint">
               {p.label}
             </span>
-            <span className="font-mono tnum text-fg">{formatCents(p.netCents)}</span>
+            <span className="font-mono tnum text-fg"><span className="dinheiro">{formatCents(p.netCents)}</span></span>
             {delta !== null ? (
               <span className={`font-mono tnum ${delta >= 0 ? "text-credit" : "text-debt"}`}>
                 {delta >= 0 ? "+" : ""}
-                {formatCents(delta)} no mês
+                <span className="dinheiro">{formatCents(delta)}</span> no mês
               </span>
             ) : null}
             {p.estimado ? <span className="text-fg-faint">reconstruído</span> : null}

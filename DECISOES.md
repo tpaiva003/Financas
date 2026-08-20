@@ -2930,3 +2930,24 @@ comparação atrás do Suspense). As leituras de render passam por
 leitura de código a guardar a proibição. O `refreshStalePrices` lê fora do
 memo de propósito: escreve preços depois de ler, e a página tem de ler o
 estado já escrito.
+
+### Modo privacidade: os euros tapam-se, o resto fica
+Botão ao lado do tema, para mostrar a app ou gravar o ecrã sem expor
+montantes. Três decisões que valem a pena registar:
+
+**Pontos e não desfoque.** Um valor desfocado deixa ler a ordem de grandeza
+(quantos dígitos, que sinal), e num ecrã gravado isso chega para se perceber
+de quanto se fala. Os "•••" não dizem nada e lêem-se como uma decisão.
+
+**Só os euros.** Percentagens, datas, contagens, nomes e a forma dos gráficos
+ficam à vista: é o que faz a app continuar legível a quem está a ver. "Estás
+3% à frente do índice" diz o que interessa sem dizer de quanto se fala.
+
+**A cortina é visual, não é uma tranca.** Os valores continuam no HTML — quem
+abrir as ferramentas do browser vê-os. Serve para o caso que existe (mostrar,
+projetar, gravar), e prometer mais do que isso seria mentir.
+
+O gancho é a classe `dinheiro`, posta em todos os montantes desenhados. Um
+teste de leitura de código (`modo-privacidade.test.ts`) impede que um valor
+novo escape: um buraco na cortina só se descobre a projetar à frente de
+alguém, que é o pior sítio para o descobrir.

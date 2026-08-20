@@ -112,7 +112,7 @@ export function TradeRow({
           <span className="text-right">
             <span className={`block font-mono text-sm tnum ${entrada ? "text-fg" : "text-credit"}`}>
               {entrada ? "" : "+"}
-              {formatCents(t.amountCents)}
+              <span className="dinheiro">{formatCents(t.amountCents)}</span>
             </span>
             {/*
               O que esta entrada valeu a pena até hoje. Não é FIFO nem
@@ -126,7 +126,7 @@ export function TradeRow({
                 title={`Estas ${t.quantity} un. ${lucro.kind === "compra" ? "valem" : "valeriam"} hoje ${formatCents(lucro.nowCents)}.`}
               >
                 {lucro.gainCents >= 0 ? "+" : ""}
-                {formatCents(lucro.gainCents)}
+                <span className="dinheiro">{formatCents(lucro.gainCents)}</span>
                 {lucro.gainPct !== null
                   ? ` (${lucro.gainCents >= 0 ? "+" : ""}${Math.round(lucro.gainPct)}%)`
                   : ""}

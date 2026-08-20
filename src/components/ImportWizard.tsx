@@ -923,7 +923,7 @@ function PreviewStep({
         <p className="text-sm text-fg-muted">
           <span className="text-fg">{selected}</span> selecionada(s)
           {personalCount > 0 ? ` · ${personalCount} pessoal(is)` : ""} · total{" "}
-          <span className="font-mono tnum text-fg">{formatCents(total)}</span>
+          <span className="font-mono tnum text-fg"><span className="dinheiro">{formatCents(total)}</span></span>
         </p>
         <CommitButton disabled={selected === 0} />
       </div>
@@ -1037,7 +1037,7 @@ function PreviewRowItem({
           </div>
         </div>
         <div className={`shrink-0 font-mono text-sm tnum ${isRefund ? "text-credit" : "text-fg"}`}>
-          {formatCents(row.amountCents)}
+          <span className="dinheiro">{formatCents(row.amountCents)}</span>
         </div>
       </div>
     </li>

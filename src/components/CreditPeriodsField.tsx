@@ -512,12 +512,12 @@ function CapitalPeloContrato({
     <div className="mt-4 rounded-xl border border-hair bg-panel2/40 p-3">
       <p className="label mb-1">Pelo contrato, faltariam</p>
       <p className="font-display text-2xl font-semibold tracking-tight tnum">
-        {formatCents(balanceCents)}
+        <span className="dinheiro">{formatCents(balanceCents)}</span>
       </p>
       <p className="mt-1 text-xs leading-snug text-fg-muted">
         Ao fim de {mesesPagos} {mesesPagos === 1 ? "prestação" : "prestações"}, com{" "}
-        {formatCents(jurosPagosCents)} de juros já pagos. A prestação em vigor
-        daria {formatCents(prestacaoCents)}.
+        <span className="dinheiro">{formatCents(jurosPagosCents)}</span> de juros já pagos. A prestação em vigor
+        daria <span className="dinheiro">{formatCents(prestacaoCents)}</span>.
       </p>
       <p className="mt-1.5 text-xs leading-snug text-fg-faint">
         É uma simulação: não sabe de amortizações antecipadas, carências nem

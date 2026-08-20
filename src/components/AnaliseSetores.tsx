@@ -128,7 +128,7 @@ export function AnaliseSetores({
                     </span>
                   </span>
                   <span className="font-mono tnum text-xs text-fg-muted">
-                    {formatCents(g.valorCents)}
+                    <span className="dinheiro">{formatCents(g.valorCents)}</span>
                     <span className="ml-2 text-fg-faint">
                       {String(g.pesoPct).replace(".", ",")}%
                     </span>
@@ -200,7 +200,7 @@ export function AnaliseSetores({
                       <span className="ml-2 text-[11px] text-fg-faint">{e.setorPorExtenso}</span>
                     </td>
                     <td className="py-1.5 pl-3 text-right font-mono tnum text-xs text-fg-muted">
-                      {formatCents(e.reforcoCents)}
+                      <span className="dinheiro">{formatCents(e.reforcoCents)}</span>
                       {e.pesoDoReforcoPct !== null ? (
                         <span className="ml-1.5 text-fg-faint">
                           {String(e.pesoDoReforcoPct).replace(".", ",")}%
@@ -208,7 +208,7 @@ export function AnaliseSetores({
                       ) : null}
                     </td>
                     <td className="py-1.5 pl-3 text-right font-mono tnum text-xs text-fg">
-                      {formatCents(e.valorCents)}
+                      <span className="dinheiro">{formatCents(e.valorCents)}</span>
                     </td>
                     <td
                       className={`py-1.5 pl-3 text-right font-mono tnum text-xs ${

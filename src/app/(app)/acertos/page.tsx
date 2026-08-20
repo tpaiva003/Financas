@@ -54,7 +54,7 @@ export default async function AcertosPage() {
             {transfers.map((t, i) => (
               <li key={i} className="text-[15px] text-fg-muted">
                 <span className="font-medium text-fg">{nameOf(t.fromUserId)}</span> paga{" "}
-                <span className="font-mono tnum text-fg">{formatCents(t.amountCents)}</span> a{" "}
+                <span className="font-mono tnum text-fg"><span className="dinheiro">{formatCents(t.amountCents)}</span></span> a{" "}
                 <span className="font-medium text-fg">{nameOf(t.toUserId)}</span>
               </li>
             ))}
@@ -62,6 +62,8 @@ export default async function AcertosPage() {
         )}
       </div>
 
+      {/* O rótulo do saldo é dinheiro: quem o desenha (ClosePeriodPanel,
+          TransferBalanceForm) é que lhe põe a classe que o modo privacidade tapa. */}
       <ClosePeriodPanel
         hasBalance={transfers.length > 0}
         balanceLabel={formatCents(transfersTotal)}
@@ -72,6 +74,7 @@ export default async function AcertosPage() {
       {canTransfer ? (
         <div className="card p-6">
           <h2 className="label">Transferir saldo para outro ambiente</h2>
+          {/* Também é dinheiro: o formulário tapa-o onde o desenha. */}
           <TransferBalanceForm
             spaces={otherSpaces.map((s) => ({ id: s.id, name: s.name }))}
             balanceLabel={formatCents(transfersTotal)}
@@ -107,7 +110,7 @@ export default async function AcertosPage() {
                   </p>
                 </div>
                 <div className="shrink-0 font-mono text-[15px] tnum text-fg">
-                  {formatCents(s.amountCents, s.currency)}
+                  <span className="dinheiro">{formatCents(s.amountCents, s.currency)}</span>
                 </div>
               </li>
             ))}

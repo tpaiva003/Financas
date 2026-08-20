@@ -5,6 +5,7 @@ import { getRepository } from "@/lib/data";
 import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PrivacyToggle } from "@/components/PrivacyToggle";
 import { SectionNav } from "@/components/SectionNav";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickAdd } from "@/components/QuickAdd";
@@ -62,6 +63,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             ) : null}
           </div>
           <div className="flex items-center gap-2">
+            {/* Ao lado do tema: as duas são preferências do aparelho, e é
+                aqui que se procura "como é que isto se mostra". */}
+            <PrivacyToggle />
             <ThemeToggle />
             <AppNav
               userName={user.name}

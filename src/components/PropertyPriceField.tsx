@@ -247,7 +247,7 @@ export function PropertyPriceField({
                 {c.geodsg}
                 {c.dentroDe ? <span className="text-fg-faint"> · em {c.dentroDe}</span> : null}
                 {" · "}
-                {formatCents(c.pricePerM2Cents)}/m²
+                <span className="dinheiro">{formatCents(c.pricePerM2Cents)}</span>/m²
               </button>
             </li>
           ))}
@@ -280,7 +280,7 @@ export function PropertyPriceField({
             {estimativa === null ? (
               <span className="text-fg-faint">falta a área ou o preço</span>
             ) : (
-              formatCents(estimativa)
+              <span className="dinheiro">{formatCents(estimativa)}</span>
             )}
           </p>
           {fonte ? <p className="mt-0.5 text-xs text-fg-faint">{fonte}</p> : null}
@@ -300,14 +300,14 @@ export function PropertyPriceField({
         {pelosIndices ? (
           <>
             <p className="font-mono text-base tnum text-fg">
-              {formatCents(pelosIndices.valueCents)}
+              <span className="dinheiro">{formatCents(pelosIndices.valueCents)}</span>
             </p>
             <p className="mt-1 text-[11px] leading-snug text-fg-faint">
-              {formatCents(pelosIndices.custoCents)} de custo, e a zona subiu{" "}
+              <span className="dinheiro">{formatCents(pelosIndices.custoCents)}</span> de custo, e a zona subiu{" "}
               {Math.round((pelosIndices.fator - 1) * 100)}% de{" "}
               {pelosIndices.periodoCompra} para {pelosIndices.periodoHoje} (
-              {formatCents(pelosIndices.indiceCompraCents)}/m² para{" "}
-              {formatCents(pelosIndices.indiceHojeCents)}/m²).
+              <span className="dinheiro">{formatCents(pelosIndices.indiceCompraCents)}</span>/m² para{" "}
+              <span className="dinheiro">{formatCents(pelosIndices.indiceHojeCents)}</span>/m²).
             </p>
           </>
         ) : (
