@@ -62,8 +62,12 @@ export function SplitSugerido({
         Isto parece um desdobramento de {ratioPorExtenso(s.ratio)} em {data}.
       </p>
       <p className="text-xs leading-snug text-fg-muted">
-        Nesse dia há uma venda de {s.unidadesAntes} unidades e uma compra de{" "}
-        {s.unidadesDepois}, <strong className="font-medium text-fg">pelo mesmo dinheiro</strong>. Não
+        {/* As unidades absolutas dizem o tamanho da posição; o rácio, que é o
+            que interessa aqui, já está na frase de cima. */}
+        Nesse dia há uma venda
+        <span className="so-aberto"> de {s.unidadesAntes} unidades</span> e uma compra
+        <span className="so-aberto"> de {s.unidadesDepois}</span>,{" "}
+        <strong className="font-medium text-fg">pelo mesmo dinheiro</strong>. Não
         saiu nem entrou nada da conta: é a forma como a corretora regista um
         desdobramento.
       </p>

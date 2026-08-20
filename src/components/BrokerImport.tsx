@@ -401,8 +401,8 @@ function FileCard({
                   <span className="text-fg">{h.name}</span>
                   <span className="font-mono text-fg-faint">
                     {" · "}
-                    {h.quantity} un.
-                    {h.unitPriceCents !== null ? <>, hoje a <span className="dinheiro">{formatCents(h.unitPriceCents)}</span></> : ""}
+                    <span className="so-aberto">{h.quantity} un.</span>
+                    {h.unitPriceCents !== null ? <><span className="so-aberto">, </span>hoje a <span className="preco-un">{formatCents(h.unitPriceCents)}</span></> : ""}
                   </span>
                 </li>
               ))}

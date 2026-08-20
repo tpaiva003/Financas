@@ -106,6 +106,8 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
   // Sem movimentos, a posição é a que está escrita no ativo.
   const quantity = hasTrades ? position.quantity : (asset.quantity ?? 0);
   const ret = hasTrades ? buildPositionReturn(position, asset.unitPriceCents, today) : null;
+  /** Quanto custou cada unidade, em média. Null quando não há por onde saber. */
+  const custoUnCents = position.unitCostCents ?? asset.unitCostCents ?? null;
 
   /**
    * A outra pergunta: o investimento foi bom?
@@ -245,20 +247,33 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
         <p className="mt-2 font-display text-4xl font-semibold tracking-tightest tnum">
           <span className="dinheiro">{formatCents(ret ? ret.currentValueCents : Math.round(quantity * (asset.unitPriceCents ?? asset.unitCostCents ?? 0)))}</span>
         </p>
+        {/*
+          Duas frases, uma por modo, e não uma frase com pedaços a acender e a
+          apagar. As unidades têm de sair no modo privacidade — com a cotação,
+          que é pública, elas dizem quanto lá está — e tirá-las do meio da frase
+          deixava-a a começar por vírgula em metade dos casos. Os preços por
+          unidade ficam à vista nas duas: sozinhos não reconstroem a posição.
+        */}
         <p className="mt-2 text-sm text-fg-muted">
-          {quantity} unidades
-          {position.unitCostCents !== null || asset.unitCostCents
-            ? [
-                ", a um custo médio de ",
-                <span key="c" className="dinheiro">
-                  {formatCents(position.unitCostCents ?? asset.unitCostCents ?? 0)}
-                </span>,
-              ]
-            : ""}
-          {asset.unitPriceCents
-            ? [", a ", <span key="p" className="dinheiro">{formatCents(asset.unitPriceCents)}</span>]
-            : ". Sem cotação, conta pelo que custou"}
-          .
+          <span className="so-aberto">
+            {quantity} unidades
+            {custoUnCents !== null
+              ? [", a um custo médio de ", <span key="c" className="preco-un">{formatCents(custoUnCents)}</span>]
+              : ""}
+            {asset.unitPriceCents
+              ? [", a ", <span key="p" className="preco-un">{formatCents(asset.unitPriceCents)}</span>]
+              : ". Sem cotação, conta pelo que custou"}
+            .
+          </span>
+          <span className="so-privado">
+            {custoUnCents !== null
+              ? ["Comprado a ", <span key="c" className="preco-un">{formatCents(custoUnCents)}</span>]
+              : "Sem custo médio registado"}
+            {asset.unitPriceCents
+              ? [", hoje a ", <span key="p" className="preco-un">{formatCents(asset.unitPriceCents)}</span>]
+              : ". Sem cotação, conta pelo que custou"}
+            .
+          </span>
         </p>
 
         {/* De quando é o preço. Um valor velho que se apresenta como atual é

@@ -1505,9 +1505,13 @@ function AssetRow({
         <p className="mt-0.5 font-mono text-[11px] text-fg-faint">
           {isInvestment ? (
             <>
-              {a.quantity} un. a <span className="dinheiro">{formatCents(a.unitCostCents ?? 0)}</span>
+              {/* Com os valores tapados, as unidades saem e fica só por quanto
+                  se comprou: o preço por unidade não diz quanto lá está. */}
+              <span className="so-aberto">{a.quantity} un. a </span>
+              <span className="so-privado">comprado a </span>
+              <span className="preco-un">{formatCents(a.unitCostCents ?? 0)}</span>
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
-                ? [", a ", <span key="p" className="dinheiro">{formatCents(a.unitPriceCents)}</span>]
+                ? [", a ", <span key="p" className="preco-un">{formatCents(a.unitPriceCents)}</span>]
                 : ", sem preço atual"}
               {/* De quando é o preço. Sem isto, um valor velho passa por atual.
                   E **só se mostra a data quando ela é mesmo a deste preço**: se a

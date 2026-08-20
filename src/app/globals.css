@@ -186,6 +186,45 @@
   }
 
   /*
+   * Tapar os euros não chegava: as unidades diziam o mesmo por outras palavras.
+   *
+   * O preço de uma ação é público. Quem vir "125 un." num ecrã com os valores
+   * tapados vai ao telemóvel, multiplica pela cotação e sabe exactamente quanto
+   * lá está — e, com a percentagem de retorno que fica à vista, quanto se
+   * ganhou. A cortina não tapava nada a quem se desse ao trabalho.
+   *
+   * A troca: **as unidades saem, os preços por unidade ficam**. Um preço por
+   * unidade não diz quanto se tem (falta-lhe o número de unidades, que é o que
+   * passou a estar escondido) e é o que faz a app continuar legível: dá para
+   * mostrar por quanto se comprou e por quanto está hoje sem dizer de quanto
+   * se fala.
+   */
+  .so-privado {
+    display: none;
+  }
+  html[data-privado="1"] .so-aberto {
+    display: none;
+  }
+  html[data-privado="1"] .so-privado {
+    display: inline;
+  }
+  /* Uma célula inteira que só faz sentido com os valores à vista. */
+  html[data-privado="1"] .bloco-aberto {
+    display: none;
+  }
+
+  /*
+   * Preço por unidade: dinheiro que NÃO se tapa, de propósito.
+   *
+   * É a excepção à regra do `.dinheiro`, e a classe existe para a excepção ser
+   * escrita e não deduzida — quem lê o código vê que aquele valor ficou à vista
+   * porque alguém decidiu, e não porque se esqueceu.
+   */
+  .preco-un {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
    * Fichas da landing: superfícies elevadas e lavagens de fundo.
    *
    * A landing deixou de separar blocos com linhas. O contorno de um cartão

@@ -2973,3 +2973,31 @@ da mesma maneira que o anel.
 Medido, não visto: com o corte, o anel perdia 8 px numa captura a 4x; com a
 folga, a barra que corta desenha exactamente o mesmo que uma barra sem corte
 nenhum. Um teste de leitura de código proíbe `overflow-x-auto` à mão.
+
+### Tapar os euros não chegava: as unidades diziam o mesmo
+O modo privacidade tapava os montantes e deixava "125 un." à vista. Só que o
+preço de uma ação é público: quem visse as unidades ia ao telemóvel, multiplicava
+pela cotação e sabia exactamente quanto lá estava — e, com a percentagem de
+retorno que fica à vista de propósito, quanto se tinha ganho. A cortina não
+tapava nada a quem se desse ao trabalho de fazer uma multiplicação.
+
+**A troca: saem as unidades, ficam os preços por unidade.** Um preço por unidade
+não diz quanto se tem, porque lhe falta exactamente o número que passou a estar
+escondido. E é o que faz a app continuar a valer a pena mostrar: vê-se por
+quanto se comprou e por quanto está hoje, movimento a movimento, sem se ver de
+quanto se fala. A página de um ativo passa a ler-se "comprado a 130,35 €, hoje
+a 138,53 €", e cada linha de movimento mostra o preço a que se fez o negócio em
+vez das unidades.
+
+Três classes: `so-aberto` e `bloco-aberto` para o que sai, `so-privado` para o
+que entra no lugar, e `preco-un` para o dinheiro que fica à vista de propósito
+— a excepção à regra do `dinheiro`, escrita e não deduzida.
+
+**O balão do rato foi o único sítio onde o CSS não chegou.** O que vai dentro de
+um atributo não se troca com uma folha de estilo, e aquele dizia as unidades e o
+que valem hoje. Para esse caso há um `usePrivado()` (o estado do modo, a sério),
+usado só onde é mesmo preciso: o resto continua em CSS, que é o que permite a
+cortina aplicar-se antes de pintar.
+
+Um segundo teste de leitura de código apanha uma quantidade desenhada sem a
+marca — apanhou as oito que existiam.

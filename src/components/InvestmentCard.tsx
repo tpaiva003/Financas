@@ -167,7 +167,10 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
       ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2.5">
-        <div>
+        {/* As unidades saem no modo privacidade: com a cotação (que é pública)
+            elas dizem quanto lá está, e os preços por unidade abaixo já contam
+            a história toda sem dizer de quanto se fala. */}
+        <div className="bloco-aberto">
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Unidades</p>
           <p className="font-mono text-sm tnum text-fg">{fmtQty(data.quantity)}</p>
         </div>
@@ -178,13 +181,13 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Custo médio</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitCostCents === null ? "-" : <span className="dinheiro">{formatCents(data.unitCostCents)}</span>}
+            {data.unitCostCents === null ? "-" : <span className="preco-un">{formatCents(data.unitCostCents)}</span>}
           </p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Preço atual</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitPriceCents === null ? "-" : <span className="dinheiro">{formatCents(data.unitPriceCents)}</span>}
+            {data.unitPriceCents === null ? "-" : <span className="preco-un">{formatCents(data.unitPriceCents)}</span>}
           </p>
         </div>
       </div>
