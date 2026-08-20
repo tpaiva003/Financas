@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
@@ -38,51 +39,16 @@ export async function ReportsContent({
 }) {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
-  const categories = await getRepository().listCategories(ctx.space.id);
 
   const periodo = (REPORT_PERIODS.find((p) => p.id === searchParams.periodo)?.id ??
     "12m") as ReportPeriodId;
-  const COMPARISONS = [
-    { id: "previous", label: "Mês anterior" },
-    { id: "average", label: "Média" },
-    { id: "yoy", label: "Homólogo" },
-  ] as const;
   const comparar = (COMPARISONS.find((c) => c.id === searchParams.comparar)?.id ??
     "previous") as BaselineMode;
-
-  // Janela das médias por categoria: quantos meses anteriores entram na conta.
-  const AVERAGE_WINDOWS = [3, 6, 12] as const;
   const media = AVERAGE_WINDOWS.includes(Number(searchParams.media) as 3 | 6 | 12)
     ? (Number(searchParams.media) as 3 | 6 | 12)
     : 3;
 
-  const report = await getSpaceReport(
-    ctx.space.id,
-    ctx.viewerMemberId,
-    ctx.members,
-    categories,
-    periodo,
-    comparar,
-    media,
-  );
-
-  /** Mantém as outras escolhas ao trocar de período, comparação ou média. */
-  const href = (patch: { periodo?: string; comparar?: string; media?: number }) => {
-    const p = new URLSearchParams();
-    const per = patch.periodo ?? periodo;
-    const cmp = patch.comparar ?? comparar;
-    const med = patch.media ?? media;
-    if (per !== "12m") p.set("periodo", per);
-    if (cmp !== "previous") p.set("comparar", cmp);
-    if (med !== 3) p.set("media", String(med));
-    const path =
-      view === "categorias"
-        ? "/relatorios/categorias"
-        : view === "evolucao"
-          ? "/relatorios/evolucao"
-          : "/relatorios";
-    return p.toString() ? `${path}?${p}` : path;
-  };
+  const href = fazerHref(view, periodo, comparar, media);
 
   return (
     <div className="space-y-9">
@@ -111,20 +77,87 @@ export async function ReportsContent({
         ))}
       </div>
 
+      {/* Tudo o que precisa do relatório flui atrás de Suspense: os seletores
+          lá de cima ficam clicáveis IMEDIATAMENTE, e o trabalho caro (todas as
+          despesas + comerciantes) chega quando chegar. */}
+      <Suspense fallback={<RelatorioAEncher />}>
+        <CorpoDoRelatorio
+          view={view}
+          periodo={periodo}
+          comparar={comparar}
+          media={media}
+          spaceId={ctx.space.id}
+          viewerMemberId={ctx.viewerMemberId}
+          members={ctx.members}
+        />
+      </Suspense>
+
+      <Link href="/despesas" className="inline-block text-sm text-fg-muted hover:text-fg">
+        ← Voltar às despesas
+      </Link>
+    </div>
+  );
+}
+
+/** As esperas com a forma do que vai aparecer, para a página não saltar. */
+function RelatorioAEncher() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <span className="sr-only">A preparar o relatório…</span>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="card h-32 animate-pulse p-6" />
+        <div className="card h-32 animate-pulse p-6" />
+      </div>
+      <div className="card h-56 animate-pulse p-6" />
+    </div>
+  );
+}
+
+async function CorpoDoRelatorio({
+  view,
+  periodo,
+  comparar,
+  media,
+  spaceId,
+  viewerMemberId,
+  members,
+}: {
+  view: ReportView;
+  periodo: ReportPeriodId;
+  comparar: BaselineMode;
+  media: 3 | 6 | 12;
+  spaceId: string;
+  viewerMemberId: string;
+  members: Parameters<typeof getSpaceReport>[2];
+}) {
+  const categories = await getRepository().listCategories(spaceId);
+  const report = await getSpaceReport(
+    spaceId,
+    viewerMemberId,
+    members,
+    categories,
+    periodo,
+    comparar,
+    media,
+  );
+  const href = fazerHref(view, periodo, comparar, media);
+
+  return (
+    <div className="space-y-9">
       {view === "resumo" ? (
       <>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-6">
           <p className="eyebrow">Total do ambiente · {report.periodLabel}</p>
           <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum">
-            {formatCents(report.totalCents)}
+            <span className="dinheiro">{formatCents(report.totalCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-muted">{report.count} despesa(s)</p>
         </div>
         <div className="card p-6">
           <p className="eyebrow">A tua parte</p>
           <p className="mt-2 font-display text-4xl font-semibold tracking-tight tnum text-credit">
-            {formatCents(report.myShareCents)}
+            <span className="dinheiro">{formatCents(report.myShareCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-muted">
             a tua quota nas partilhadas + as tuas pessoais
@@ -136,13 +169,13 @@ export async function ReportsContent({
         <div className="card p-5">
           <p className="eyebrow">Partilhadas</p>
           <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
-            {formatCents(report.sharedCents)}
+            <span className="dinheiro">{formatCents(report.sharedCents)}</span>
           </p>
         </div>
         <div className="card p-5">
           <p className="eyebrow">Pessoais (tuas)</p>
           <p className="mt-1.5 font-display text-2xl font-semibold tracking-tight tnum">
-            {formatCents(report.personalCents)}
+            <span className="dinheiro">{formatCents(report.personalCents)}</span>
           </p>
         </div>
       </div>
@@ -269,13 +302,43 @@ export async function ReportsContent({
           ) : null}
         </>
       )}
-
-      <Link href="/despesas" className="inline-block text-sm text-fg-muted hover:text-fg">
-        ← Voltar às despesas
-      </Link>
     </div>
   );
 }
+
+/** Mantém as outras escolhas ao trocar de período, comparação ou média. */
+function fazerHref(
+  view: ReportView,
+  periodo: ReportPeriodId,
+  comparar: BaselineMode,
+  media: 3 | 6 | 12,
+) {
+  return (patch: { periodo?: string; comparar?: string; media?: number }) => {
+    const p = new URLSearchParams();
+    const per = patch.periodo ?? periodo;
+    const cmp = patch.comparar ?? comparar;
+    const med = patch.media ?? media;
+    if (per !== "12m") p.set("periodo", per);
+    if (cmp !== "previous") p.set("comparar", cmp);
+    if (med !== 3) p.set("media", String(med));
+    const path =
+      view === "categorias"
+        ? "/relatorios/categorias"
+        : view === "evolucao"
+          ? "/relatorios/evolucao"
+          : "/relatorios";
+    return p.toString() ? `${path}?${p}` : path;
+  };
+}
+
+const COMPARISONS = [
+  { id: "previous", label: "Mês anterior" },
+  { id: "average", label: "Média" },
+  { id: "yoy", label: "Homólogo" },
+] as const;
+
+// Janela das médias por categoria: quantos meses anteriores entram na conta.
+const AVERAGE_WINDOWS = [3, 6, 12] as const;
 
 function MonthOverMonth({ c }: { c: MonthComparison }) {
   const rows = c.categories.filter((r) => r.currentCents !== 0 || r.previousCents !== 0).slice(0, 8);
@@ -285,11 +348,23 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
         {c.currentLabel} vs {c.baselineLabel}
       </h2>
 
+      {/*
+        Dito uma vez, em vez de repetido em cada número. Sem isto, um total de
+        meio mês ao lado de um mês inteiro lê-se como uma poupança — e a
+        referência já vem cortada, mas quem lê não tem como saber disso.
+      */}
+      {c.partial ? (
+        <p className="mb-3 text-xs text-fg-muted">
+          {c.currentLabel} vai em curso: os dois lados contam só até ao dia{" "}
+          {c.throughDay}, senão a diferença era só calendário.
+        </p>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-5">
           <p className="eyebrow">Este mês ({c.currentLabel})</p>
           <p className="mt-2 font-display text-3xl font-semibold tracking-tight tnum">
-            {formatCents(c.currentTotalCents)}
+            <span className="dinheiro">{formatCents(c.currentTotalCents)}</span>
           </p>
           <div className="mt-1 text-sm">
             <DeltaInline
@@ -302,11 +377,11 @@ function MonthOverMonth({ c }: { c: MonthComparison }) {
         <div className="card p-5">
           <p className="eyebrow">Referência · {c.baselineLabel}</p>
           <p className="mt-2 font-display text-3xl font-semibold tracking-tight tnum text-fg-muted">
-            {formatCents(c.baselineTotalCents)}
+            <span className="dinheiro">{formatCents(c.baselineTotalCents)}</span>
           </p>
           <p className="mt-1 text-sm text-fg-faint">
             média móvel de {c.movingAvgMonths} {c.movingAvgMonths === 1 ? "mês" : "meses"}:{" "}
-            <span className="tnum">{formatCents(c.movingAvgCents)}</span>
+            <span className="tnum"><span className="dinheiro">{formatCents(c.movingAvgCents)}</span></span>
           </p>
         </div>
       </div>
@@ -333,7 +408,7 @@ function CategoryDeltaRow({ r }: { r: CategoryDelta }) {
         <span className="truncate text-fg">{r.label}</span>
       </span>
       <span className="flex shrink-0 items-center gap-3">
-        <span className="font-mono tnum text-fg-muted">{formatCents(r.currentCents)}</span>
+        <span className="font-mono tnum text-fg-muted"><span className="dinheiro">{formatCents(r.currentCents)}</span></span>
         <span className="w-[5.5rem] text-right">
           <DeltaBadge deltaCents={r.deltaCents} deltaPct={r.deltaPct} />
         </span>
@@ -377,7 +452,7 @@ function DeltaInline({
   return (
     <span>
       <span className={`font-mono tnum ${cls}`}>
-        {sign}{formatCents(Math.abs(deltaCents))}{pctLabel}
+        {sign}<span className="dinheiro">{formatCents(Math.abs(deltaCents))}</span>{pctLabel}
       </span>{" "}
       <span className="text-fg-faint">{suffix}</span>
     </span>
@@ -404,7 +479,7 @@ function BarList({ slices }: { slices: Slice[] }) {
             <div className="mb-1 flex items-center justify-between gap-3 text-sm">
               <span className="truncate text-fg">{s.label}</span>
               <span className="shrink-0 font-mono tnum text-fg-muted">
-                {formatCents(s.amountCents)}
+                <span className="dinheiro">{formatCents(s.amountCents)}</span>
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">

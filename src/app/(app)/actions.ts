@@ -4,14 +4,51 @@ import { z } from "zod";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/session";
 import { getSpaceContext, getTargetSpace, SPACE_COOKIE } from "@/lib/space";
+import { normalizeAmount, parseAmountCents, porqueNaoGravou } from "@/lib/form-helpers";
+import { ESCRITA_CONGELADA } from "@/lib/congelamento";
 import { getRepository } from "@/lib/data";
+import { INVITE_VALIDITY_MS, TOKEN_VALIDITY_MS, hashToken } from "@/lib/tokens";
 import { isAdmin, userByEmail, householdUsers } from "@/lib/users";
 import { isEmailAllowed } from "@/lib/env";
 import { uploadReceipt } from "@/lib/services/receipts-service";
 import { buildImportPreview, commitImport, ImportError } from "@/lib/services/import-service";
+import { buscarEuribor } from "@/lib/services/euribor-service";
+import { buscarFundamentais } from "@/lib/services/fundamentais-service";
+import { atualizarDatasDeMercado } from "@/lib/services/datas-service";
+import { atualizarSetores } from "@/lib/services/setores-service";
+import { descobrirMarcas } from "@/lib/services/marca-service";
+import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
+import {
+  creditContractExtractAvailable,
+  extractCreditContract,
+} from "@/lib/services/credit-contract-service";
+import { extractRecibo } from "@/lib/services/recibo-service";
+import { readPdfText } from "@/lib/import/read-file";
+import { getInePriceTable } from "@/lib/services/ine-service";
+import {
+  caminhoDoAnexo,
+  caminhoDoAnexoDaAvaliacao,
+  descarregarAnexo,
+  removerAnexoDoStorage,
+  signedUploadUrl,
+} from "@/lib/services/attachments-service";
+import {
+  resumirAnexos,
+  resumoAnexosAvailable,
+} from "@/lib/services/resumo-anexos-service";
+import {
+  conversar,
+  conversaAvailable,
+  limparHistorico,
+  type MensagemConversa,
+} from "@/lib/services/conversa-service";
+import {
+  captureNetWorthSnapshot,
+  getNetWorthHistory,
+} from "@/lib/services/networth-history-service";
 import { refreshAssetPrice, refreshStalePrices } from "@/lib/services/quotes-service";
 import type {
   ImportCommitPayload,
@@ -20,19 +57,50 @@ import type {
   ManualMapping,
 } from "@/lib/import/types";
 import { getSpaceBalance } from "@/lib/services/balance-service";
-import { sendInvite, emailConfigured } from "@/lib/email/send";
+import { sendInvite, sendMemberInvite, emailConfigured, siteUrl } from "@/lib/email/send";
 import {
   toCents,
   validateSplit,
+  classify,
   nextOccurrence,
   accountsVisibleTo,
   isForeign,
   normalizeSymbol,
   toEurCents,
   type Split,
+  checkAnexo,
+  validarTicket,
+  ratioValido,
+  ratioPorExtenso,
+  type SituacaoOutroAmbiente,
+  isTicketStatus,
+  estadoDepoisDaResposta,
+  TICKET_CORPO_MAX,
   checkLimit,
   type SpacePlan,
+  INDEXANTES,
+  type CreditTerms,
+  type Indexante,
+  type IndexanteRates,
+  type PeriodoTipo,
+  type RatePeriod,
+  type ContratoRevisto,
+  procurarLocal,
+  precoNaData,
+  buildNetWorth,
+  buildNetWorthSeries,
+  buildSituacao,
+  buildCreditoPlano,
+  parseCreditTerms,
+  derivePosition,
+  avaliarCenarios,
+  lerCenarios,
+  etapaValida,
+  etapaSugerida,
+  ETAPA_LABEL,
+  assinatura,
 } from "@/lib/domain";
+import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
 export interface ActionState {
   error?: string;
@@ -44,23 +112,89 @@ export interface ActionState {
 async function handleReceipt(expenseId: string, spaceId: string, formData: FormData) {
   try {
     const path = await uploadReceipt(expenseId, spaceId, formData.get("receipt"));
-    if (path) await getRepository().setReceiptPath(expenseId, path);
+    if (path) await getRepository().setReceiptPath(expenseId, spaceId, path);
   } catch {
     // upload de recibo falhou: não bloqueia a gravação da despesa
   }
 }
 
-/** Normaliza valores monetários europeus ("1.234,56" / "12,34") para número. */
-function normalizeAmount(v: unknown): unknown {
-  if (typeof v !== "string") return v;
-  let s = v.trim().replace(/\s/g, "");
-  if (s.includes(",") && s.includes(".")) {
-    s = s.replace(/\./g, "").replace(",", "."); // ponto = milhares, vírgula = decimal
-  } else if (s.includes(",")) {
-    s = s.replace(",", ".");
-  }
-  return s;
+/** O que a leitura de um recibo devolve ao formulário. Nada disto está gravado. */
+export interface ReciboPreviewState {
+  error?: string;
+  proposta?: {
+    amountCents: number;
+    description: string;
+    /** `null` = o recibo não deu data fiável; o formulário usa a de hoje. */
+    date: string | null;
+    /** Sugerida pelas MESMAS regras determinísticas do import, não pelo modelo. */
+    categoryId: string | null;
+    avisos: string[];
+    /** O que o modelo percebeu do documento, para confirmar que leu o certo. */
+    notas: string;
+  };
 }
+
+const RECIBO_IMAGENS = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+const RECIBO_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Lê o recibo e PROPÕE a despesa — não grava nada.
+ *
+ * O contrato é o do contrato de crédito: o modelo copia o que está impresso, o
+ * `reviewRecibo` (determinístico, testado) decide o que é utilizável, e a
+ * pessoa confirma no formulário. A categoria nem sequer vem do modelo: sai das
+ * regras de classificação da app, sobre o nome da loja.
+ */
+export async function previewReceiptAction(
+  _prev: ReciboPreviewState,
+  formData: FormData,
+): Promise<ReciboPreviewState> {
+  await getSpaceContext(); // exige sessão; a leitura não toca no ambiente
+  const file = formData.get("receipt");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Escolhe primeiro a fotografia do recibo." };
+  }
+  if (file.size > RECIBO_MAX_BYTES) {
+    return { error: "O ficheiro é grande de mais (máximo 8 MB)." };
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  let entrada: import("@/lib/services/recibo-service").ReciboInput;
+  if ((RECIBO_IMAGENS as readonly string[]).includes(file.type)) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    entrada = {
+      kind: "imagem",
+      mediaType: file.type as (typeof RECIBO_IMAGENS)[number],
+      dataBase64: bytes.toString("base64"),
+    };
+  } else if (file.type === "application/pdf") {
+    const texto = await readPdfText(Buffer.from(await file.arrayBuffer())).catch(() => "");
+    entrada = { kind: "texto", texto };
+  } else {
+    return { error: "Formato não suportado: usa uma fotografia (JPG/PNG) ou um PDF." };
+  }
+
+  const lido = await extractRecibo(entrada, hoje);
+  if (!lido.proposta) {
+    return { error: lido.problem ?? "Não consegui ler este recibo." };
+  }
+
+  // A categoria vem das regras da app (as mesmas do import), nunca do modelo.
+  const rules = await getRepository().listClassificationRules().catch(() => []);
+  const sugestao = classify(lido.proposta.description, rules);
+
+  return {
+    proposta: {
+      amountCents: lido.proposta.amountCents,
+      description: lido.proposta.description,
+      date: lido.proposta.date,
+      categoryId: sugestao.categoryId ?? null,
+      avisos: lido.proposta.avisos,
+      notas: lido.notas,
+    },
+  };
+}
+
 
 const amountField = z.preprocess(
   normalizeAmount,
@@ -132,9 +266,19 @@ async function semEspaco(
   kind: "expenses" | "assets" | "members",
 ): Promise<string | null> {
   if ((plan ?? "free") === "full") return null;
-  const atuais = await getRepository()
-    .countInSpace(spaceId, kind)
-    .catch(() => 0);
+  /**
+   * **Um erro na contagem fecha, não abre.** O `catch(() => 0)` transformava
+   * um soluço da base de dados em "este ambiente está vazio" e desligava o
+   * tecto do plano free exatamente no pedido em que menos se sabia o estado.
+   * A mensagem é de tentativa falhada e não a do limite: dizer "atingiste o
+   * tecto" a quem não atingiu era mentir com ar de regra.
+   */
+  let atuais: number;
+  try {
+    atuais = await getRepository().countInSpace(spaceId, kind);
+  } catch {
+    return "Não deu para confirmar o espaço disponível. Tenta outra vez.";
+  }
   const check = checkLimit(kind, atuais, "free");
   return check.allowed ? null : check.message;
 }
@@ -144,6 +288,7 @@ export async function createExpenseAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "expenses");
   if (cheio) return { error: cheio };
   // O saldo/divisão é sempre entre os participantes plenos.
@@ -168,12 +313,16 @@ export async function createExpenseAction(
   const data = parsed.data;
   if (!memberIds.includes(data.payerId)) return { error: "Pagador inválido." };
 
-  // Submitter: precisa de um aprovador (membro pleno) e a despesa fica pendente.
-  let approverId: string | null = null;
-  if (isSubmitter) {
-    approverId = String(formData.get("approverId") ?? "");
-    if (!memberIds.includes(approverId)) return { error: "Escolhe quem aprova a despesa." };
-  }
+  /**
+   * O `approverId` deixou de se pedir: era um campo que prometia um controlo
+   * que nunca existiu. O submitter escolhia "quem aprova", mas qualquer membro
+   * pleno podia aprovar — e ainda bem, senão umas férias do escolhido
+   * encravavam as despesas pendentes. Exigir a escolha era pedir uma decisão
+   * que não decidia nada. A despesa de um submitter continua pendente até um
+   * membro pleno a aprovar; o campo continua no modelo (despesas antigas
+   * têm-no e mostra-se), só não se pede mais.
+   */
+  const approverId: string | null = null;
 
   const amountCents = toCents(data.amount);
 
@@ -221,6 +370,7 @@ export async function createSettlementAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const parsed = settlementSchema.safeParse({
     fromUserId: formData.get("fromUserId"),
@@ -233,6 +383,13 @@ export async function createSettlementAction(
   const data = parsed.data;
   if (data.fromUserId === data.toUserId) {
     return { error: "O pagador e o recetor têm de ser diferentes." };
+  }
+  // Como no pagador de uma despesa: um id vindo do formulário não é prova de
+  // nada. Um acerto entre ids que não são participantes deste ambiente
+  // distorcia o saldo — e o saldo tem de ser sempre explicável.
+  const idsDeMembros = ctx.members.map((m) => m.id);
+  if (!idsDeMembros.includes(data.fromUserId) || !idsDeMembros.includes(data.toUserId)) {
+    return { error: "Participante inválido." };
   }
 
   await getRepository().createSettlement({
@@ -264,6 +421,7 @@ function revalidatePeriod() {
 export async function settleAndPayAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const { transfers } = await getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -289,6 +447,7 @@ export async function settleAndPayAction(): Promise<void> {
 export async function carryBalanceAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   await getRepository().settleOpenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
@@ -298,6 +457,7 @@ export async function carryBalanceAction(): Promise<void> {
 export async function reopenPeriodAction(): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   await getRepository().reopenExpenses(ctx.space.id);
   revalidatePeriod();
   redirect("/acertos");
@@ -308,9 +468,10 @@ export async function reopenPeriodAction(): Promise<void> {
 export async function approveExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return; // só membros plenos aprovam
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "approved");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "approved");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -320,9 +481,10 @@ export async function approveExpenseAction(formData: FormData): Promise<void> {
 export async function rejectExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().setExpenseApproval(id, "rejected");
+  await getRepository().setExpenseApproval(id, ctx.space.id, "rejected");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -331,12 +493,60 @@ export async function rejectExpenseAction(formData: FormData): Promise<void> {
 
 // ---- Acesso de submissão (role submitter) ---------------------------------
 
+/**
+ * O acesso passou a ser um CONVITE, não uma conta feita por outra pessoa.
+ *
+ * Escrever aqui um email criava logo a conta — em nome de alguém que não pediu
+ * nada, não consentiu nada e nem sabia. A conta só nasce quando quem recebe o
+ * email abre a ligação e escolhe a palavra-chave; ignorar o email é recusar, e
+ * não fica nada criado. Até lá o participante fica «convite enviado».
+ */
+async function criarConviteDeSubmissao(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+  memberId: string,
+  email: string,
+): Promise<ActionState> {
+  const repo = getRepository();
+  const token = randomBytes(32).toString("base64url");
+  try {
+    await repo.createMemberInvite({
+      spaceId: ctx.space.id,
+      memberId,
+      email,
+      tokenHash: hashToken(token),
+      invitedBy: ctx.user.id,
+      expiresAt: new Date(Date.now() + INVITE_VALIDITY_MS).toISOString(),
+    });
+  } catch {
+    return { error: "Não deu para preparar o convite. Tenta outra vez." };
+  }
+
+  const memberName = ctx.members.find((m) => m.id === memberId)?.name ?? "";
+  const mail = await sendMemberInvite(email, memberName, ctx.space.name, token);
+  if (mail.sent) {
+    return { ok: true, message: `Convite enviado para ${email}. Vale sete dias.` };
+  }
+  // Sem envio de email (p.ex. em desenvolvimento), a ligação é a única forma de
+  // o convite chegar: mostra-se a quem convidou, para a passar em mão. Quem a
+  // abre e escolhe a palavra-chave continua a ser quem aceita.
+  if (!emailConfigured()) {
+    return {
+      ok: true,
+      message: `O envio de email não está configurado. Passa esta ligação a ${memberName}: ${siteUrl()}/convite/${token}`,
+    };
+  }
+  return {
+    error: `O convite ficou registado mas o email não saiu (${mail.reason ?? "falha no envio"}). Tenta "Dar acesso" outra vez para reenviar.`,
+  };
+}
+
 export async function grantSubmitterAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberId = String(formData.get("memberId") ?? "");
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
 
@@ -347,25 +557,32 @@ export async function grantSubmitterAction(
   if (isEmailAllowed(email) || userByEmail(email)) {
     return { error: "Esse email já pertence a um utilizador base." };
   }
+  if (await getRepository().getAppUserByEmail(email)) {
+    return { error: "Esse email já tem acesso." };
+  }
 
-  const repo = getRepository();
-  if (await repo.getAppUserByEmail(email)) return { error: "Esse email já tem acesso." };
-
-  const userId = `usr_${randomUUID()}`;
-  await repo.createAppUser({ id: userId, email, name: member.name });
-  await repo.updateMember(memberId, ctx.space.id, {
-    role: "submitter",
-    linkedUserId: userId,
-    email,
-  });
+  const resultado = await criarConviteDeSubmissao(ctx, memberId, email);
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
-  return { ok: true };
+  return resultado;
+}
+
+/** Cancela um convite pendente: a ligação enviada deixa de servir. */
+export async function cancelMemberInviteAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const memberId = String(formData.get("memberId") ?? "");
+  const member = ctx.members.find((m) => m.id === memberId);
+  if (!member) return;
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id);
+  revalidatePath("/ambiente");
 }
 
 export async function revokeSubmitterAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const memberId = String(formData.get("memberId") ?? "");
   const member = ctx.members.find((m) => m.id === memberId);
   // Só revoga submitters (nunca utilizadores base).
@@ -376,6 +593,9 @@ export async function revokeSubmitterAction(formData: FormData): Promise<void> {
     role: "full",
     linkedUserId: null,
   });
+  // Um convite pendente que sobrasse era uma ligação viva para um acesso que
+  // se acabou de tirar.
+  await getRepository().deleteMemberInvites(memberId, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
 }
@@ -392,9 +612,22 @@ export async function transferBalanceToSpaceAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const targetId = String(formData.get("targetSpaceId") ?? "");
   if (!targetId || targetId === ctx.space.id) return { error: "Escolhe o ambiente destino." };
-  if (!ctx.spaces.some((s) => s.id === targetId)) return { error: "Ambiente destino inválido." };
+  // O destino tem regras próprias, e escrever lá é escrever LÁ: o estado do
+  // ambiente aberto no ecrã não prova nada sobre o outro. Como na importação
+  // para outro ambiente, é o `getTargetSpace` que responde por ele.
+  const target = await getTargetSpace(ctx, targetId);
+  if (!target) return { error: "Ambiente destino inválido." };
+  if (target.congelado) {
+    return { error: `O ambiente "${target.space.name}" está congelado: entra lá e reativa-o primeiro.` };
+  }
+  if (target.viewerRole === "submitter") {
+    return { error: `No ambiente "${target.space.name}" só podes submeter despesas para aprovação.` };
+  }
+  const cheioNoDestino = await semEspaco(targetId, target.space.plan, "expenses");
+  if (cheioNoDestino) return { error: cheioNoDestino };
   if (ctx.fullMembers.length !== 2) {
     return { error: "A transferência entre ambientes só está disponível para ambientes de 2 pessoas." };
   }
@@ -410,8 +643,8 @@ export async function transferBalanceToSpaceAction(
     return { error: "Os participantes têm de ter conta associada para transferir entre ambientes." };
   }
 
-  const targetSpace = ctx.spaces.find((s) => s.id === targetId)!;
-  const targetMembers = await repo.listMembers(targetId);
+  const targetSpace = target.space;
+  const targetMembers = target.members;
   const debtorY = targetMembers.find((m) => m.linkedUserId === debtorX.linkedUserId);
   const creditorY = targetMembers.find((m) => m.linkedUserId === creditorX.linkedUserId);
   if (!debtorY || !creditorY) {
@@ -463,6 +696,7 @@ export async function updateExpenseAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
@@ -488,7 +722,7 @@ export async function updateExpenseAction(
   if ("error" in built) return { error: built.error };
   const split = built.split;
 
-  await getRepository().updateExpense(id, {
+  await getRepository().updateExpense(id, ctx.space.id, {
     description: data.description,
     amountCents,
     transactionDate: data.transactionDate,
@@ -510,9 +744,10 @@ export async function updateExpenseAction(
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().softDeleteExpense(id, ctx.user.id);
+  await getRepository().softDeleteExpense(id, ctx.space.id, ctx.user.id);
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
   revalidatePath("/saldo");
@@ -525,8 +760,10 @@ export async function markMessageReadAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().markContactMessageRead(id);
+  // Só a página das mensagens: o global apagava o Router Cache do browser
+  // inteiro por causa de um badge que, com as páginas dinâmicas, se atualiza
+  // na navegação seguinte de qualquer forma.
   revalidatePath("/mensagens");
-  revalidatePath("/", "layout");
 }
 
 export async function archiveMessageAction(formData: FormData): Promise<void> {
@@ -536,8 +773,9 @@ export async function archiveMessageAction(formData: FormData): Promise<void> {
   if (!id) return;
   const archived = String(formData.get("archived") ?? "") === "true";
   await getRepository().setContactMessageArchived(id, archived);
+  // Como no marcar-como-lida: o badge não justifica apagar a app inteira da
+  // memória do browser.
   revalidatePath("/mensagens");
-  revalidatePath("/", "layout");
 }
 
 export async function setMessageNotesAction(formData: FormData): Promise<void> {
@@ -621,6 +859,7 @@ export async function createCategoryAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
     color: formData.get("color") || "",
@@ -642,6 +881,7 @@ export async function createCategoryAction(
 export async function updateCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const parsed = categorySchema.safeParse({
@@ -662,6 +902,7 @@ export async function updateCategoryAction(formData: FormData): Promise<void> {
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteCategory(id, ctx.space.id);
@@ -678,6 +919,7 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
 export async function saveSpendingGoalAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
 
   const raw = String(formData.get("amount") ?? "").trim();
   // "__total__" é a meta do ambiente: na base de dados fica com categoria nula.
@@ -797,10 +1039,10 @@ export async function reportMissingBankAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
-  const bank = String(formData.get("bank") ?? "").trim();
+  const bank = String(formData.get("bank") ?? "").trim().slice(0, 100);
   if (!bank) return { error: "Diz-nos qual é o banco." };
 
-  const note = String(formData.get("note") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim().slice(0, 1000);
   // Só as colunas, e só as que o utilizador viu no ecrã antes de enviar.
   const structure = String(formData.get("structure") ?? "").trim().slice(0, 2000);
   const fileType = String(formData.get("fileType") ?? "").trim().slice(0, 40);
@@ -833,6 +1075,9 @@ export async function saveImportReminderAction(formData: FormData): Promise<void
   const ctx = await getSpaceContext();
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
 
   const source = String(formData.get("source") ?? "").trim();
   if (!source) return;
@@ -863,6 +1108,9 @@ export async function deleteImportReminderAction(formData: FormData): Promise<vo
   const ctx = await getSpaceContext();
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
   const source = String(formData.get("source") ?? "").trim();
   if (!source) return;
   await getRepository().deleteImportReminder(target.space.id, source).catch(() => {});
@@ -876,6 +1124,7 @@ export async function commitImportAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   let payload: ImportCommitPayload;
   try {
@@ -920,6 +1169,9 @@ export async function undoImportBatchAction(formData: FormData): Promise<void> {
   // O lote pode pertencer a outro ambiente do utilizador.
   const target = await getTargetSpace(ctx, String(formData.get("spaceId") || ctx.space.id));
   if (!target || target.viewerRole === "submitter") return;
+  // O que conta é o ambiente de destino: escrever para um ambiente congelado é
+  // uma escrita nesse ambiente, mesmo quando o aberto no ecrã é outro.
+  if (target.congelado) return;
 
   await getRepository().undoImportBatch(id, target.space.id, ctx.user.id);
   revalidatePath("/importar");
@@ -945,13 +1197,6 @@ const recurringSchema = z.object({
   soleMemberId: z.string().optional(),
 });
 
-function parseAmountCents(raw: unknown): number | null {
-  const s = String(normalizeAmount(String(raw ?? "")) ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) return NaN as unknown as number; // sinaliza inválido
-  return toCents(n);
-}
 
 export async function createRecurringAction(
   _prev: ActionState,
@@ -959,6 +1204,7 @@ export async function createRecurringAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
 
   const parsed = recurringSchema.safeParse({
@@ -1025,6 +1271,7 @@ export async function updateRecurringAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const memberIds = ctx.fullMembers.map((m) => m.id);
 
   const id = String(formData.get("id") ?? "");
@@ -1082,6 +1329,7 @@ export async function updateRecurringAction(
   if (applyScope === "all") {
     await repo.updateExpensesForRecurring(
       id,
+      ctx.space.id,
       {
         description: d.description,
         categoryId: d.categoryId ?? null,
@@ -1105,6 +1353,7 @@ export async function updateRecurringAction(
 export async function recurringOpAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const op = String(formData.get("op") ?? "");
   if (!id) return;
@@ -1138,13 +1387,14 @@ export async function confirmRecurringExpenseAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Despesa inválida." };
   const amountCents = parseAmountCents(formData.get("amount"));
   if (amountCents === null || Number.isNaN(amountCents)) {
     return { error: "Indica o valor real." };
   }
-  await getRepository().confirmExpense(id, amountCents);
+  await getRepository().confirmExpense(id, ctx.space.id, amountCents);
   revalidatePath("/recorrentes");
   revalidatePath("/dashboard");
   revalidatePath("/despesas");
@@ -1152,8 +1402,16 @@ export async function confirmRecurringExpenseAction(
   return { ok: true };
 }
 
+/**
+ * O `spaceId` NÃO vem daqui.
+ *
+ * Vinha do formulário, e as verificações de papel e de tecto eram feitas contra
+ * o ambiente atual enquanto a escrita ia para o ambiente que viesse no pedido —
+ * ou seja, dava para enfiar um participante (e um login) no ambiente de outra
+ * pessoa. Passa a ser sempre o `ctx.space.id`, que já foi validado contra os
+ * ambientes de quem está a pedir.
+ */
 const memberSchema = z.object({
-  spaceId: z.string().min(1),
   name: z.string().trim().min(1, "Indica um nome.").max(80),
   email: z.string().trim().email("Email inválido.").max(200).optional().or(z.literal("")),
 });
@@ -1164,6 +1422,7 @@ export async function addMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const cheio = await semEspaco(ctx.space.id, ctx.space.plan, "members");
   if (cheio) return { error: cheio };
 
@@ -1171,7 +1430,6 @@ export async function addMemberAction(
   const accessEmail = String(formData.get("accessEmail") ?? "").trim().toLowerCase();
 
   const parsed = memberSchema.safeParse({
-    spaceId: formData.get("spaceId"),
     name: formData.get("name"),
     email: formData.get("email") || "",
   });
@@ -1192,21 +1450,48 @@ export async function addMemberAction(
     }
   }
 
+  /**
+   * O que fazer ao histórico, decidido por quem acrescenta.
+   *
+   * `null` = divide tudo, incluindo o que já lá está. Uma data = só dessa data
+   * em diante. Por omissão fica a data de hoje, que é a resposta que não mexe
+   * em saldo nenhum já apresentado — a escolha segura quando alguém carrega no
+   * botão sem ler.
+   */
+  const hoje = new Date().toISOString().slice(0, 10);
+  const participa = String(formData.get("participa") ?? "agora");
+  let participatesFrom: string | null = hoje;
+  if (participa === "tudo") {
+    participatesFrom = null;
+  } else if (participa === "desde") {
+    const escolhida = String(formData.get("participaDesde") ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(escolhida)) {
+      return { error: "Indica a data a partir da qual esta pessoa divide despesas." };
+    }
+    participatesFrom = escolhida;
+  }
+
   const member = await repo.addMember({
-    spaceId: parsed.data.spaceId,
+    spaceId: ctx.space.id,
     name: parsed.data.name,
     email: grantSubmit ? accessEmail : parsed.data.email || null,
+    participatesFrom,
   });
 
-  // Dá logo acesso de submissão (role submitter + utilizador com login).
+  // O acesso segue por convite: a conta só nasce quando a pessoa aceitar. O
+  // participante fica criado na mesma — dividir despesas não depende do aceite.
   if (grantSubmit) {
-    const userId = `usr_${randomUUID()}`;
-    await repo.createAppUser({ id: userId, email: accessEmail, name: parsed.data.name });
-    await repo.updateMember(member.id, parsed.data.spaceId, {
-      role: "submitter",
-      linkedUserId: userId,
-      email: accessEmail,
-    });
+    const convite = await criarConviteDeSubmissao(
+      { ...ctx, members: [...ctx.members, member] },
+      member.id,
+      accessEmail,
+    );
+    revalidatePath("/ambiente");
+    revalidatePath("/", "layout");
+    if (convite.error) {
+      return { error: `${parsed.data.name} ficou como participante, mas o convite falhou: ${convite.error}` };
+    }
+    return convite;
   }
 
   revalidatePath("/ambiente");
@@ -1221,6 +1506,7 @@ export async function renameSpaceAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Indica um nome." };
   if (name.length > 80) return { error: "Nome demasiado longo." };
@@ -1229,6 +1515,35 @@ export async function renameSpaceAction(
   revalidatePath("/", "layout");
   revalidatePath("/ambiente");
   return { ok: true };
+}
+
+/**
+ * Descongela um ambiente que ficou parado tempo de mais.
+ *
+ * **Isto não pede nada a ninguém.** Não há aprovação, não há espera e não há
+ * contacto com o suporte: quem chega ao ambiente carrega no botão e volta a
+ * escrever. O congelamento existe para não guardar indefinidamente dados de
+ * quem nunca mais voltou — no momento em que alguém volta, deixou de ser esse
+ * o caso, e insistir seria castigar em vez de arrumar.
+ *
+ * A guarda de escrita não se aplica aqui, de propósito: uma verificação de
+ * congelamento nesta action trancava a porta pelo lado de dentro. O teste em
+ * `lib/congelamento-actions.test.ts` conhece a excepção pelo nome.
+ */
+export async function reativarAmbienteAction(): Promise<void> {
+  const ctx = await getSpaceContext();
+  // Quem só submete não decide o estado do ambiente, tal como não lhe muda o
+  // nome. Continua a poder ler tudo o que já lia.
+  if (ctx.viewerRole === "submitter") return;
+
+  await getRepository().setSpaceFrozen(ctx.space.id, null);
+  // A atividade de hoje fica marcada na mesma: sem isto, o cron da noite
+  // seguinte olhava para uma data velha e voltava a congelar o que se acabou
+  // de descongelar.
+  await getRepository()
+    .touchSpaceActivity(ctx.space.id, new Date().toISOString())
+    .catch(() => {});
+  revalidatePath("/", "layout");
 }
 
 /**
@@ -1272,9 +1587,36 @@ export async function inviteUserAction(
     // Se falhar, a pessoa entra na mesma: o primeiro acesso cria-lhe um.
   }
 
-  // Sem email, a pessoa não sabe que foi convidada, e o convite não serve de
-  // nada. Por isso o resultado diz sempre se a mensagem chegou a sair.
-  const mail = await sendInvite(email, name);
+  /**
+   * O convite leva a ligação que define a primeira palavra-chave.
+   *
+   * **É a mesma máquina da reposição, e de propósito.** Enquanto a entrada
+   * definia a palavra-chave, a conta ficava ao alcance de quem soubesse o email
+   * antes de a pessoa entrar — e a janela era exactamente a espera dela. Com a
+   * ligação, quem a define é quem recebe o email daquele endereço.
+   *
+   * Sem email, a pessoa não sabe que foi convidada e não tem como entrar. Por
+   * isso o resultado diz sempre se a mensagem saiu, e o que fazer se não saiu.
+   */
+  const token = randomBytes(32).toString("base64url");
+  const convite = await repo
+    .createPasswordResetToken({
+      userId,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + TOKEN_VALIDITY_MS).toISOString(),
+    })
+    .then(() => true)
+    .catch(() => false);
+  const mail = convite
+    ? await sendInvite(email, name, token)
+    : { sent: false as const, reason: "não consegui preparar a ligação de acesso" };
+
+  // Se esta pessoa estava na fila de espera, fica registado que o convite saiu
+  // — é o que faz a fila mostrar quem ainda espera em vez de quem já entrou.
+  // Melhor esforço: quem não estava na fila não é afetado.
+  if (mail.sent) {
+    await repo.markWaitlistInvited(email, new Date().toISOString()).catch(() => {});
+  }
 
   revalidatePath("/mensagens");
   revalidatePath("/plataforma");
@@ -1284,7 +1626,7 @@ export async function inviteUserAction(
       ? `${name} recebeu um email com as instruções. Ambiente "${spaceName}" criado, só com ela.`
       : `Conta criada e ambiente "${spaceName}" pronto, mas o email NÃO foi enviado${
           emailConfigured() ? ` (${mail.reason})` : " (envio de email por configurar)"
-        }. Diz-lhe tu para entrar em rachar.pt com ${email}.`,
+        }. Manda-lhe tu o link de "Recuperar palavra-chave" em rachar.pt/recuperar, com ${email}.`,
   };
 }
 
@@ -1321,6 +1663,7 @@ export async function linkMemberAccountAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const memberId = String(formData.get("memberId") ?? "");
   const userId = String(formData.get("userId") ?? "");
@@ -1389,6 +1732,7 @@ export async function updateMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
   const parsed = memberEditSchema.safeParse({
@@ -1414,6 +1758,7 @@ export async function deleteMemberAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Participante inválido." };
 
@@ -1424,7 +1769,7 @@ export async function deleteMemberAction(
     return { error: "Este participante tem acesso à app e não pode ser eliminado." };
   }
 
-  const activity = await getRepository().countMemberActivity(id);
+  const activity = await getRepository().countMemberActivity(id, ctx.space.id);
   if (activity > 0) {
     return {
       error: "Tem despesas ou acertos associados. Reatribui-os antes de eliminar.",
@@ -1432,6 +1777,8 @@ export async function deleteMemberAction(
   }
 
   await getRepository().deleteMember(id, ctx.space.id);
+  // Sem o participante, um convite pendente dele apontava para o vazio.
+  await getRepository().deleteMemberInvites(id, ctx.space.id).catch(() => {});
   revalidatePath("/ambiente");
   revalidatePath("/", "layout");
   return { ok: true };
@@ -1449,12 +1796,62 @@ function parseNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Os períodos de taxa de um crédito, lidos do formulário.
+ *
+ * Vêm em campos repetidos (`periodStart`, `periodKind`, …), que o `getAll`
+ * devolve como listas paralelas — é o que permite acrescentar e tirar linhas no
+ * cliente sem inventar um formato próprio.
+ *
+ * Uma linha sem data é descartada em silêncio, porque é o que a linha vazia que
+ * ficou por preencher significa. O que **não** se faz é preencher os buracos: um
+ * período variável sem indexante fica sem indexante, e mais à frente o
+ * `buildCreditoPlano` recusa-se a calcular e diz porquê. Escolher aqui uma taxa
+ * por alguém seria pôr um número com ar de resposta no meio de um plano.
+ */
+function creditTermsFromForm(formData: FormData): CreditTerms | null {
+  const datas = formData.getAll("periodStart").map((v) => String(v).trim());
+  const tipos = formData.getAll("periodKind").map((v) => String(v).trim());
+  const taxas = formData.getAll("periodRate");
+  const indexantes = formData.getAll("periodIndexante").map((v) => String(v).trim());
+  const spreads = formData.getAll("periodSpread");
+
+  const periods: RatePeriod[] = [];
+  for (let i = 0; i < datas.length; i++) {
+    const startsOn = datas[i] ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn)) continue;
+    const kind: PeriodoTipo = tipos[i] === "variavel" ? "variavel" : "fixa";
+    const indexante = indexantes[i];
+    periods.push({
+      startsOn,
+      kind,
+      ratePct: kind === "fixa" ? parseNumber(taxas[i]) : null,
+      indexante:
+        kind === "variavel" && indexante && indexante in INDEXANTES
+          ? (indexante as Indexante)
+          : null,
+      spreadPct: kind === "variavel" ? parseNumber(spreads[i]) : null,
+    });
+  }
+  if (periods.length === 0) return null;
+
+  const indexanteRates: IndexanteRates = {};
+  for (const chave of Object.keys(INDEXANTES) as Indexante[]) {
+    const v = parseNumber(formData.get(`indexanteRate-${chave}`));
+    if (v !== null) indexanteRates[chave] = v;
+  }
+
+  return { periods, indexanteRates };
+}
+
+
 export async function saveAssetAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Dá-lhe um nome." };
@@ -1471,8 +1868,12 @@ export async function saveAssetAction(
   if (kind === "investimento") {
     if (quantity === null || quantity <= 0) return { error: "Indica quantas unidades tens." };
     if (unitCost === null || unitCost < 0) return { error: "Indica o preço de compra por unidade." };
-  } else if (value === null) {
+  } else if (value === null && kind !== "imovel") {
     return { error: "Indica o valor." };
+  } else if (kind === "imovel" && value === null && parseNumber(formData.get("purchasePrice")) === null) {
+    // Num imóvel, o valor de hoje é estimado a partir do que custou. Um dos
+    // dois tem de existir, senão não há por onde começar.
+    return { error: "Indica quanto custou, ou o valor de hoje." };
   }
 
   // Taxa e plano de amortização. A taxa serve os dois lados: num depósito diz
@@ -1484,6 +1885,34 @@ export async function saveAssetAction(
   const term = parseNumber(formData.get("termMonths"));
   const rawRateKind = String(formData.get("rateKind") ?? "").trim();
   const isDebt = kind === "divida";
+  const maturity = String(formData.get("maturityDate") ?? "").trim();
+  const creditTerms = isDebt ? creditTermsFromForm(formData) : null;
+
+  /**
+   * A quota deste ambiente no bem.
+   *
+   * Fora do intervalo, ou em branco, vale "tudo" — nunca zero. Um bem que
+   * passasse a valer zero por um campo mal preenchido desaparecia do património
+   * sem dizer nada, e um património a menos não levanta suspeitas como um erro
+   * levanta.
+   */
+  const rawQuota = parseNumber(formData.get("ownershipPct"));
+  const ownershipPct =
+    rawQuota !== null && rawQuota > 0 && rawQuota < 100 ? rawQuota : null;
+  const rawCoOwner = String(formData.get("coOwnerMemberId") ?? "").trim();
+
+  /**
+   * Imóvel: área, concelho e preço de referência por m².
+   *
+   * O preço de referência **não substitui** o valor: fica ao lado dele, e a
+   * estimativa é mostrada como estimativa. A mediana do concelho não sabe se a
+   * casa é num último andar com vista ou num rés do chão para as traseiras.
+   */
+  const isImovel = kind === "imovel";
+  const rawArea = parseNumber(formData.get("areaM2"));
+  const rawPrecoM2 = parseNumber(formData.get("priceRefEurM2"));
+  const rawCompra = parseNumber(formData.get("purchasePrice"));
+  const rawObras = parseNumber(formData.get("works"));
 
   const patch = {
     spaceId: ctx.space.id,
@@ -1503,11 +1932,66 @@ export async function saveAssetAction(
         : null,
     termMonths: isDebt && term !== null && term > 0 ? Math.round(term) : null,
     rateKind: rawRateKind === "fixa" || rawRateKind === "variavel" ? rawRateKind : null,
+    maturityDate: isDebt && /^\d{4}-\d{2}-\d{2}$/.test(maturity) ? maturity : null,
+    creditTerms,
+    ownershipPct,
+    // Só vale se for mesmo alguém deste ambiente: um id vindo do formulário não
+    // é prova de nada, e apontar para fora do ambiente seria uma fuga.
+    coOwnerMemberId:
+      rawCoOwner && ctx.members.some((m) => m.id === rawCoOwner) ? rawCoOwner : null,
+    areaM2: isImovel && rawArea !== null && rawArea > 0 ? rawArea : null,
+    location: isImovel ? String(formData.get("location") ?? "").trim().slice(0, 120) || null : null,
+    priceRefCents:
+      isImovel && rawPrecoM2 !== null && rawPrecoM2 > 0 ? toCents(rawPrecoM2) : null,
+    priceRefSource: isImovel
+      ? String(formData.get("priceRefSource") ?? "").trim().slice(0, 120) || null
+      : null,
+    priceRefGeocod: isImovel
+      ? String(formData.get("priceRefGeocod") ?? "").trim().slice(0, 40) || null
+      : null,
+    purchasePriceCents:
+      isImovel && rawCompra !== null && rawCompra > 0 ? toCents(rawCompra) : null,
+    worksCents: isImovel && rawObras !== null && rawObras > 0 ? toCents(rawObras) : null,
     symbol:
       kind === "investimento"
         ? normalizeSymbol(String(formData.get("symbol") ?? ""))
         : null,
+    /**
+     * Que bem é que este crédito financia.
+     *
+     * Só nas dívidas: num bem o campo não existe e não pode entrar por um
+     * formulário adulterado. O id é confrontado com os bens do ambiente mais
+     * abaixo — um id vindo do formulário não é prova de nada.
+     */
+    financesAssetId:
+      kind === "divida" ? String(formData.get("financesAssetId") ?? "").trim() || null : null,
+    /**
+     * O montante contratado, só nas dívidas.
+     *
+     * **Não substitui o `value`**, que continua a ser o que falta pagar. Serve
+     * para a app poder calcular o segundo a partir do primeiro quando ninguém o
+     * souber de cabeça — e a escolha de o usar é de quem preenche, num botão.
+     * Ver `capital-em-divida.ts`.
+     */
+    contractedAmountCents:
+      kind === "divida"
+        ? (() => {
+            const v = parseNumber(formData.get("contractedAmount"));
+            return v === null ? null : toCents(v);
+          })()
+        : null,
   };
+
+  // O bem financiado tem de ser mesmo deste ambiente, e não pode ser o próprio
+  // crédito: um bem a financiar-se a si mesmo dava um líquido a zero com ar de
+  // conta feita.
+  if (patch.financesAssetId) {
+    const doAmbiente = await getRepository().listAssets(ctx.space.id).catch(() => []);
+    const alvo = doAmbiente.find((a) => a.id === patch.financesAssetId);
+    if (!alvo || alvo.kind === "divida" || alvo.id === String(formData.get("id") ?? "").trim()) {
+      patch.financesAssetId = null;
+    }
+  }
 
   const id = String(formData.get("id") ?? "").trim();
   // Só a criação conta para o tecto: editar um bem que já existe nunca pode ser
@@ -1519,10 +2003,11 @@ export async function saveAssetAction(
   try {
     if (id) await getRepository().updateAsset(id, ctx.space.id, patch);
     else await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
-  } catch {
-    return { error: "Não consegui gravar. A tabela do património pode faltar." };
+  } catch (e) {
+    return { error: porqueNaoGravou(e) };
   }
 
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
   return { ok: true, message: id ? "Atualizado." : `${name} adicionado.` };
 }
@@ -1530,9 +2015,11 @@ export async function saveAssetAction(
 export async function deleteAssetAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAsset(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
 }
 
@@ -1540,6 +2027,7 @@ export async function deleteAssetAction(formData: FormData): Promise<void> {
 export async function updateAssetPriceAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const price = parseNumber(formData.get("unitPrice"));
   if (!id) return;
@@ -1552,6 +2040,36 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
 }
 
 /**
+ * Só o símbolo de bolsa, a partir da ficha do investimento.
+ *
+ * **Porque é que isto existe.** O campo do símbolo só vivia no formulário
+ * completo do bem, escondido atrás do "Editar" de uma linha noutra página — e a
+ * própria ficha mandava a pessoa lá ("Indica-o em Ativos, no Editar deste
+ * investimento"), o que é uma instrução e não um campo. Quem está a olhar para
+ * "sem cotação" está no sítio onde o quer resolver.
+ *
+ * Grava e vai logo buscar o preço: o símbolo existe para isso, e gravá-lo sem
+ * ir buscar deixava o ecrã exactamente como estava.
+ */
+export async function updateAssetSymbolAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const symbol = normalizeSymbol(String(formData.get("symbol") ?? ""));
+  // Apagar o símbolo é uma escolha legítima: um ticker errado tira-se assim.
+  await getRepository()
+    .updateAsset(id, ctx.space.id, { symbol: symbol ?? null })
+    .catch(() => {});
+  if (symbol) await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
+
+  revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
  * Vai buscar a cotação do símbolo e grava-a como preço atual.
  *
  * Se a fonte não souber o símbolo, ou estiver em baixo, o preço fica como
@@ -1561,12 +2079,216 @@ export async function updateAssetPriceAction(formData: FormData): Promise<void> 
 export async function fetchAssetQuoteAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   const symbol = String(formData.get("symbol") ?? "").trim();
   if (!id || !symbol) return;
   await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
   revalidatePath("/patrimonio");
   revalidatePath(`/patrimonio/ativos/${id}`);
+}
+
+/**
+ * Sugere um símbolo de bolsa para um investimento, a partir do nome.
+ *
+ * Um produto importado vem com o nome que a corretora lhe dá e sem símbolo, e
+ * sem símbolo não há cotação, nem preço atual, nem ganho, nem TWR. Escrever
+ * dezenas de tickers à mão depois de uma importação não é trabalho que se peça.
+ *
+ * **A sugestão nunca se aplica sozinha.** Vem para confirmação, e o símbolo já
+ * foi verificado contra a fonte de cotações antes de chegar aqui — mas um ticker
+ * que existe e é da empresa errada passa nessa verificação e daria um preço
+ * plausível todos os dias, sem ninguém desconfiar. A última palavra é de quem
+ * conhece a carteira.
+ */
+export interface SuggestSymbolState extends ActionState {
+  /** A proposta, para o ecrã poder oferecer um botão que a grava. */
+  proposal?: SymbolProposal;
+}
+
+export async function suggestAssetSymbolAction(
+  _prev: SuggestSymbolState,
+  formData: FormData,
+): Promise<SuggestSymbolState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Investimento inválido." };
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const asset = assets.find((a) => a.id === id);
+  if (!asset) return { error: "Investimento inválido." };
+
+  const r = await suggestTicker(asset.name, asset.exchange).catch(() => null);
+  if (!r || !r.suggestion) {
+    return { error: r?.problem ?? "Não consegui sugerir um símbolo." };
+  }
+
+  const s = r.suggestion;
+  const moeda = s.currencyConfirmada && s.currencyConfirmada !== "EUR" ? ` em ${s.currencyConfirmada}` : "";
+  return {
+    ok: true,
+    message: `${s.symbol}${moeda} (${s.bolsa}). ${s.porque}`,
+    // A proposta desce inteira para o ecrã. Continua a ser preciso confirmar —
+    // ver o cabeçalho — mas confirmar passa a ser carregar num botão que diz o
+    // símbolo, em vez de o copiar à mão para outro ecrã.
+    proposal: {
+      assetId: asset.id,
+      assetName: asset.name,
+      symbol: s.symbol,
+      bolsa: s.bolsa,
+      moeda: s.currencyConfirmada || s.moeda,
+      porque: s.porque,
+      lastDate: s.lastDate,
+    },
+  };
+}
+
+/** Uma proposta de símbolo, já verificada contra a fonte, à espera de confirmação. */
+export interface SymbolProposal {
+  assetId: string;
+  assetName: string;
+  symbol: string;
+  bolsa: string;
+  moeda: string;
+  porque: string;
+  lastDate: string | null;
+}
+
+export interface SuggestMissingState extends ActionState {
+  proposals?: SymbolProposal[];
+  /** Ativos sem símbolo para os quais não houve proposta, e porquê. */
+  semProposta?: { assetName: string; problem: string }[];
+}
+
+/** Quantos ativos se processam de uma vez. Acima disto é uma espera absurda. */
+const MAX_SUGESTOES = 25;
+/** Quantas chamadas em paralelo. Serve para não afogar a API nem a fonte. */
+const LOTE = 4;
+
+/**
+ * Sugere símbolos para **todos** os investimentos que não têm nenhum.
+ *
+ * **Porquê existir, ao lado do botão de cada ficha.** Uma importação de
+ * corretora cria dezenas de ativos de uma vez, todos sem símbolo — e sem símbolo
+ * não há cotação, nem preço atual, nem ganho, nem TWR. Abrir quarenta fichas
+ * para carregar quarenta vezes no mesmo botão não é trabalho que se peça a
+ * ninguém, e o resultado previsível é a carteira ficar por atualizar.
+ *
+ * **Não corre durante a importação, de propósito.** Uma chamada ao modelo por
+ * produto tornaria a pré-visualização lenta ao ponto de parecer avariada, e
+ * amarrava um caminho que tem de funcionar sempre (importar) a um que é
+ * opcional (sugerir). Corre quando alguém pede, sobre o que já está gravado.
+ *
+ * **Nada é aplicado aqui.** Devolve propostas para se escolherem uma a uma. Um
+ * ticker que existe mas é de outra empresa passa na verificação contra a fonte e
+ * daria um preço plausível todos os dias, para sempre, sem ninguém desconfiar.
+ */
+export async function suggestMissingSymbolsAction(
+  _prev: SuggestMissingState,
+  _formData: FormData,
+): Promise<SuggestMissingState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (!tickerSuggestAvailable()) {
+    return { error: "A sugestão assistida não está configurada." };
+  }
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const semSimbolo = assets.filter(
+    (a) => a.kind === "investimento" && !normalizeSymbol(String(a.symbol ?? "")),
+  );
+  if (semSimbolo.length === 0) {
+    return { ok: true, message: "Todos os investimentos já têm símbolo." };
+  }
+
+  const alvo = semSimbolo.slice(0, MAX_SUGESTOES);
+  const proposals: SymbolProposal[] = [];
+  const semProposta: { assetName: string; problem: string }[] = [];
+
+  for (let i = 0; i < alvo.length; i += LOTE) {
+    const lote = alvo.slice(i, i + LOTE);
+    const rs = await Promise.all(
+      lote.map((a) =>
+        // A praça vem do ficheiro importado: é um facto, e poupa ao modelo o
+        // palpite onde ele mais erra.
+        suggestTicker(a.name, a.exchange)
+          .then((r) => ({ a, r }))
+          .catch(() => ({ a, r: null })),
+      ),
+    );
+    for (const { a, r } of rs) {
+      const s = r?.suggestion;
+      if (s) {
+        proposals.push({
+          assetId: a.id,
+          assetName: a.name,
+          symbol: s.symbol,
+          bolsa: s.bolsa,
+          moeda: s.currencyConfirmada || s.moeda,
+          porque: s.porque,
+          lastDate: s.lastDate,
+        });
+      } else {
+        semProposta.push({ assetName: a.name, problem: r?.problem ?? "Não consegui sugerir." });
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    proposals,
+    semProposta,
+    // Diz sempre o que ficou de fora. Um resultado que só mostra os acertos
+    // lê-se como "está tudo tratado", e não está.
+    message:
+      semSimbolo.length > alvo.length
+        ? `${proposals.length} de ${alvo.length} propostos. Ficaram ${semSimbolo.length - alvo.length} para uma próxima vez.`
+        : `${proposals.length} de ${alvo.length} propostos.`,
+  };
+}
+
+/**
+ * Aplica os símbolos que alguém confirmou, e vai buscar as cotações.
+ *
+ * Só entra o que vem marcado, e cada id é confrontado com os ativos do ambiente
+ * antes de tocar em nada: um id vindo do formulário não é prova de nada.
+ */
+export async function applySymbolsAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const escolhidos = formData.getAll("apply").map((v) => String(v));
+  if (escolhidos.length === 0) return { error: "Não escolheste nenhum." };
+
+  const assets = await getRepository().listAssets(ctx.space.id).catch(() => []);
+  const validos = new Set(assets.map((a) => a.id));
+
+  let aplicados = 0;
+  for (const par of escolhidos) {
+    // "assetId:simbolo", que é como a caixa o traz.
+    const sep = par.indexOf(":");
+    if (sep <= 0) continue;
+    const id = par.slice(0, sep);
+    const symbol = normalizeSymbol(par.slice(sep + 1));
+    if (!symbol || !validos.has(id)) continue;
+    await getRepository().updateAsset(id, ctx.space.id, { symbol });
+    await refreshAssetPrice(id, ctx.space.id, symbol).catch(() => null);
+    // A ficha do investimento é outra rota. Sem isto, quem grava o símbolo a
+    // partir de lá fica a olhar para o mesmo "sem cotação" que o levou a pedir
+    // a sugestão — e conclui, com razão, que o botão não fez nada.
+    revalidatePath(`/patrimonio/ativos/${id}`);
+    aplicados += 1;
+  }
+
+  revalidatePath("/patrimonio");
+  if (aplicados === 0) return { error: "Nenhum símbolo era válido." };
+  return { ok: true, message: `${aplicados} símbolo(s) aplicado(s), com a cotação buscada.` };
 }
 
 /**
@@ -1587,6 +2309,9 @@ export async function refreshAllQuotesAction(
   if (ctx.viewerRole === "submitter") {
     return { error: "Não tens permissão para isto." };
   }
+  // Ir buscar cotações a uma fonte externa custa dinheiro e tempo. Num ambiente
+  // que ninguém abre há três meses, custa por nada.
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const freshness = await refreshStalePrices(ctx.space.id, { force: true }).catch(() => null);
   if (!freshness) return { error: "Não consegui atualizar os preços." };
@@ -1642,9 +2367,24 @@ export async function addAssetTradeAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   if (!assetId) return { error: "Falta o investimento." };
+  // Um id vindo do formulário não é prova de nada: sem isto, um movimento
+  // podia ficar pendurado num ativo de outro ambiente — linha fantasma que
+  // nenhuma UI mostra mas que fica na base de dados.
+  const ativos = await getRepository().listAssets(ctx.space.id);
+  if (!ativos.some((a) => a.id === assetId)) return { error: "Investimento inválido." };
+
+  /**
+   * A corrigir um movimento já registado, em vez de acrescentar um.
+   *
+   * É o mesmo caminho de propósito: as regras que impedem gravar dólares como
+   * euros, ou um movimento sem valor, têm de valer tanto a criar como a
+   * corrigir. Duas validações separadas divergem ao segundo mês.
+   */
+  const tradeId = String(formData.get("tradeId") ?? "").trim();
 
   const rawKind = String(formData.get("kind") ?? "compra");
   const kind = (TRADE_KINDS as readonly string[]).includes(rawKind)
@@ -1687,9 +2427,8 @@ export async function addAssetTradeAction(
     amountCents = eur;
   }
 
-  try {
-    await getRepository().createAssetTrade({
-      spaceId: ctx.space.id,
+  const dados = {
+    spaceId: ctx.space.id,
       assetId,
       date,
       kind,
@@ -1705,21 +2444,37 @@ export async function addAssetTradeAction(
       fxRate: foreign ? fxRate : null,
       notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
       createdBy: ctx.user.id,
-    });
-  } catch {
-    return { error: "Não consegui gravar o movimento." };
+  };
+
+  try {
+    if (tradeId) {
+      // O `space_id` filtra a escrita: um id vindo do formulário não é prova
+      // de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+      await getRepository().updateAssetTrade(tradeId, ctx.space.id, dados);
+    } else {
+      await getRepository().createAssetTrade(dados);
+    }
+  } catch (e) {
+    // O motivo por extenso, e não "não consegui". Este ecrã já custou duas
+    // rondas de adivinhação: a mensagem genérica servia tanto para uma coluna
+    // que não existe como para uma migração por correr, e não distinguia
+    // nenhuma das duas de um problema de rede.
+    return { error: porqueNaoGravou(e, "o movimento") };
   }
 
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
-  return { ok: true, message: "Movimento registado." };
+  return { ok: true, message: tradeId ? "Movimento corrigido." : "Movimento registado." };
 }
 
 export async function deleteAssetTradeAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteAssetTrade(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
 }
 
@@ -1733,6 +2488,7 @@ export async function saveIncomeAction(
 ): Promise<ActionState> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
 
   const description = String(formData.get("description") ?? "").trim();
   if (!description) return { error: "Descreve o rendimento." };
@@ -1747,6 +2503,32 @@ export async function saveIncomeAction(
   const kind = (INCOME_KINDS as readonly string[]).includes(rawKind)
     ? (rawKind as (typeof INCOME_KINDS)[number])
     : "outro";
+
+  /**
+   * Com id, corrige-se o que já lá está; sem id, regista-se de novo.
+   *
+   * O id vem do formulário mas **nunca decide o ambiente**: o `ctx.space.id` é
+   * que manda, e o repositório exige-o. Um id de outro ambiente não encontra
+   * linha nenhuma e não escreve nada.
+   */
+  const id = String(formData.get("id") ?? "").trim();
+  if (id) {
+    try {
+      await getRepository().updateIncome(id, ctx.space.id, {
+        kind,
+        description: description.slice(0, 120),
+        amountCents: cents,
+        date,
+        recurring: String(formData.get("recurring") ?? "") === "on",
+        notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
+      });
+    } catch {
+      return { error: "Não consegui gravar a correção." };
+    }
+    revalidatePath("/rendimentos");
+    revalidatePath("/relatorios");
+    return { ok: true, message: `${description} corrigido.` };
+  }
 
   try {
     await getRepository().createIncome({
@@ -1771,6 +2553,7 @@ export async function saveIncomeAction(
 export async function deleteIncomeAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await getRepository().deleteIncome(id, ctx.space.id).catch(() => {});
@@ -1858,4 +2641,1726 @@ export async function dismissOnboardingAction(): Promise<void> {
     sameSite: "lax",
   });
   revalidatePath("/dashboard");
+}
+
+export interface ContractExtractState extends ActionState {
+  /** A proposta já verificada. Nunca gravada: vai preencher o formulário. */
+  revisto?: ContratoRevisto | null;
+  /** O que o modelo percebeu do documento, para se ver que leu o ficheiro certo. */
+  notas?: string;
+}
+
+/** Uma escritura em PDF anda pelos 2 MB. Acima disto é outra coisa qualquer. */
+const MAX_CONTRATO_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Lê o contrato do crédito e devolve os campos propostos.
+ *
+ * **O ficheiro não é guardado em lado nenhum.** Entra, dá o texto, é lido e
+ * desaparece com o pedido. Um contrato de crédito tem morada, número fiscal e
+ * a assinatura de quem o assinou; guardá-lo para nada seria uma responsabilidade
+ * que esta app não precisa de ter.
+ *
+ * O que sai daqui **não é gravado**: preenche o formulário do crédito, que ainda
+ * tem de ser conferido e submetido por quem o carregou.
+ */
+export async function extractCreditContractAction(
+  _prev: ContractExtractState,
+  formData: FormData,
+): Promise<ContractExtractState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (!creditContractExtractAvailable()) {
+    return { error: "A leitura assistida não está configurada." };
+  }
+
+  const file = formData.get("contract");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Escolhe o ficheiro do contrato." };
+  }
+  if (file.size > MAX_CONTRATO_BYTES) {
+    return { error: "O ficheiro é demasiado grande: o máximo são 15 MB." };
+  }
+
+  const nome = (file.name ?? "").toLowerCase();
+  let texto = "";
+  if (nome.endsWith(".pdf")) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    texto = await readPdfText(buf).catch(() => "");
+  } else if (nome.endsWith(".txt")) {
+    texto = await file.text().catch(() => "");
+  } else {
+    return { error: "Só consigo ler o contrato em PDF ou em texto." };
+  }
+
+  const r = await extractCreditContract(texto);
+  if (r.problem) return { error: r.problem };
+  return { ok: true, revisto: r.revisto ?? null, notas: r.notas };
+}
+
+/** Os dois índices que dão a valorização da zona desde a compra. */
+export interface InePriceIndice {
+  naCompra: { cents: number; period: string } | null;
+  hoje: { cents: number; period: string } | null;
+}
+
+export interface InePriceOption {
+  geodsg: string;
+  pricePerM2Cents: number;
+  /**
+   * O código do sítio no INE. Guarda-se no bem: é o que permite voltar a
+   * buscar o índice de uma data passada. O nome não chega — há nomes repetidos
+   * entre níveis.
+   */
+  geocod: string;
+  /** O índice na data da compra e o de agora, quando se sabe a data. */
+  indice?: InePriceIndice;
+  /**
+   * Onde é que este sítio está, na hierarquia do INE.
+   *
+   * Sem isto, "Odivelas" — que é concelho E freguesia dentro dele — dava dois
+   * botões com a mesma etiqueta e preços diferentes, e não havia forma de
+   * escolher. O nome sozinho não chega.
+   */
+  dentroDe: string | null;
+  /** A categoria de alojamento, quando o indicador a separa. */
+  categoria: string | null;
+}
+
+export interface InePriceLookup {
+  error?: string;
+  /** O que se escolheu sozinho, quando o nome bateu certo. */
+  escolhido?: InePriceOption | null;
+  /** O nome batia certo por inteiro, ou foi uma aproximação? */
+  exato?: boolean;
+  /** Nomes parecidos, para se escolher à mão. */
+  candidatos?: InePriceOption[];
+  /** O período do INE, para a proveniência. */
+  period?: string;
+}
+
+/**
+ * O preço mediano por m² que o INE publica para um concelho.
+ *
+ * Chamada direta em vez de `useFormState`: isto vive **dentro** do formulário do
+ * bem, e um `<form>` dentro de outro `<form>` não é HTML válido.
+ *
+ * Não grava nada. Devolve o preço para se pôr no campo, e quando o nome não é
+ * inequívoco devolve os candidatos em vez de escolher — há duas Lagoas em
+ * Portugal, uma nos Açores e outra no Algarve, com o dobro do preço uma da
+ * outra.
+ */
+export async function lookupPropertyPriceAction(
+  local: string,
+  /** A data da escritura, para se ir buscar o índice da altura. */
+  purchasedAt?: string | null,
+): Promise<InePriceLookup> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+
+  const query = String(local ?? "").trim();
+  if (!query) return { error: "Escreve o concelho." };
+
+  const { table, problem } = await getInePriceTable();
+  if (!table) return { error: problem ?? "Não consegui obter os preços do INE." };
+
+  const compra = /^\d{4}-\d{2}-\d{2}$/.test(String(purchasedAt ?? "")) ? String(purchasedAt) : null;
+
+  const r = procurarLocal(table.rows, query);
+  const opcao = (c: {
+    row: { geocod: string; geodsg: string; pricePerM2Cents: number; categoria?: string | null };
+    dentroDe: string | null;
+  }): InePriceOption => ({
+    geodsg: c.row.geodsg,
+    pricePerM2Cents: c.row.pricePerM2Cents,
+    geocod: c.row.geocod,
+    dentroDe: c.dentroDe,
+    categoria: c.row.categoria ?? null,
+    // Os dois índices do MESMO sítio: o da data da compra e o de agora. É a
+    // razão entre eles que faz o valor do imóvel acompanhar a zona.
+    indice: compra
+      ? {
+          naCompra: precoNaData(table.periodos, c.row.geocod, compra),
+          hoje: precoNaData(table.periodos, c.row.geocod, new Date().toISOString().slice(0, 10)),
+        }
+      : undefined,
+  });
+
+  if (r.escolhido) {
+    return {
+      escolhido: opcao(r.escolhido),
+      exato: r.exato,
+      candidatos: [],
+      period: table.period,
+    };
+  }
+  if (r.candidatos.length > 0) {
+    return { escolhido: null, candidatos: r.candidatos.map(opcao), period: table.period };
+  }
+  return { error: `O INE não tem "${query}" na lista de ${table.rows.length} sítios.` };
+}
+
+export interface ConversaState extends ActionState {
+  /** A conversa toda, para a página a voltar a mostrar. */
+  mensagens?: MensagemConversa[];
+}
+
+/**
+ * Uma pergunta sobre a própria situação financeira.
+ *
+ * **Os números vão calculados.** O resumo é montado aqui a partir do que a app
+ * já sabe somar — património, dívidas com taxa e prestação, média de despesa,
+ * rendimento, evolução — e é isso que o modelo recebe. Ele discute; não calcula.
+ *
+ * **A conversa não fica guardada.** Vive no ecrã e vai e volta em cada pedido.
+ * Uma tabela de conversas sobre dinheiro é uma responsabilidade que esta app não
+ * precisa de ter, e o valor de a guardar é pequeno.
+ */
+export async function conversarAction(
+  _prev: ConversaState,
+  formData: FormData,
+): Promise<ConversaState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+  if (!conversaAvailable()) return { error: "A conversa assistida não está configurada." };
+
+  const pergunta = String(formData.get("pergunta") ?? "").trim();
+  if (!pergunta) return { error: "Escreve uma pergunta." };
+
+  let anteriores: unknown[] = [];
+  try {
+    const bruto = JSON.parse(String(formData.get("historico") ?? "[]"));
+    if (Array.isArray(bruto)) anteriores = bruto;
+  } catch {
+    // Histórico ilegível: começa-se de novo em vez de rebentar.
+  }
+  const historico = [...limparHistorico(anteriores), { role: "user" as const, content: pergunta }];
+
+  // A página é só para o modelo poder falar do que a pessoa tem à frente.
+  // Vem do cliente, por isso é cortada e nunca usada para decidir nada.
+  const pagina = String(formData.get("pagina") ?? "").trim().slice(0, 80) || null;
+
+  const situacao = await buildSituacaoDoAmbiente(ctx, pagina);
+  const r = await conversar(situacao, historico);
+  if (r.problem || !r.reply) {
+    return { error: r.problem ?? "Não consegui responder.", mensagens: historico };
+  }
+
+  return { ok: true, mensagens: [...historico, { role: "assistant", content: r.reply }] };
+}
+
+/** Quantas categorias entram no resumo. As maiores; o resto é ruído. */
+const CATEGORIAS_NO_RESUMO = 8;
+
+/**
+ * O resumo da situação, montado do que a app já sabe.
+ *
+ * Tudo aqui sai de funções com testes. O que **não** entra: as notas dos bens
+ * (texto livre, onde cabe o que alguém escreveu sem pensar que sairia daqui),
+ * os nomes das pessoas e as despesas uma a uma. O extrato não sai deste
+ * servidor.
+ */
+async function buildSituacaoDoAmbiente(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+  pagina: string | null,
+) {
+  const spaceId = ctx.space.id;
+  const viewerId = ctx.viewerMemberId;
+  const repo = getRepository();
+  const [stored, trades, expenses, incomes, categories, historico, saldo] = await Promise.all([
+    repo.listAssets(spaceId).catch(() => []),
+    repo.listAssetTrades(spaceId).catch(() => []),
+    repo.listExpenses({ spaceId, viewerId }).catch(() => []),
+    repo.listIncome(spaceId).catch(() => []),
+    repo.listCategories(spaceId).catch(() => []),
+    getNetWorthHistory(spaceId),
+    // Metade desta app é despesa partilhada. Um chat sobre "a minha situação"
+    // que não saiba responder a "quem me deve o quê?" não serve para nada.
+    getSpaceBalance(spaceId, ctx.members, viewerId).catch(() => null),
+  ]);
+
+  const tradesByAsset = new Map<string, typeof trades>();
+  for (const t of trades) {
+    tradesByAsset.set(t.assetId, [...(tradesByAsset.get(t.assetId) ?? []), t]);
+  }
+  const assets = stored.map((a) => {
+    const d = derivePosition(a, tradesByAsset.get(a.id) ?? []);
+    return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+  });
+  const net = buildNetWorth(assets);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Despesa por mês e por categoria. Médias sobre os meses COM movimento: um
+  // mês sem despesas registadas quase nunca é um mês sem despesas.
+  const porMesTotal = new Map<string, number>();
+  const porCategoria = new Map<string, number>();
+  for (const e of expenses) {
+    if (e.status !== "confirmed" || e.deletedAt) continue;
+    const ym = e.transactionDate.slice(0, 7);
+    porMesTotal.set(ym, (porMesTotal.get(ym) ?? 0) + e.amountCents);
+    const cat = e.categoryId ?? "";
+    porCategoria.set(cat, (porCategoria.get(cat) ?? 0) + e.amountCents);
+  }
+  const meses = porMesTotal.size;
+  const monthlyExpenseCents =
+    meses > 0
+      ? Math.round([...porMesTotal.values()].reduce((a, b) => a + b, 0) / meses)
+      : null;
+
+  const nomeCategoria = new Map(categories.map((c) => [c.id, c.name]));
+  const categorias =
+    meses > 0
+      ? [...porCategoria.entries()]
+          .map(([id, cents]) => ({
+            label: nomeCategoria.get(id) ?? "Sem categoria",
+            monthlyCents: Math.round(cents / meses),
+          }))
+          .sort((a, b) => b.monthlyCents - a.monthlyCents)
+          .slice(0, CATEGORIAS_NO_RESUMO)
+      : [];
+
+  // Rendimento: o que se recebe por mês, dos registos recorrentes. Os pontuais
+  // ficam de fora — um prémio de um ano não é rendimento mensal.
+  const recorrentes = incomes.filter((i) => i.recurring);
+  const monthlyIncomeCents =
+    recorrentes.length > 0 ? recorrentes.reduce((s, i) => s + i.amountCents, 0) : null;
+
+  const dividas = net.assets
+    .filter((a) => a.kind === "divida")
+    .map((a) => {
+      const stored0 = stored.find((s) => s.id === a.id) ?? null;
+      const terms = parseCreditTerms(stored0?.creditTerms);
+      const plano = terms
+        ? buildCreditoPlano({
+            balanceCents: a.currentValueCents,
+            startDate: today,
+            maturityDate: stored0?.maturityDate,
+            periods: terms.periods,
+            indexanteRates: terms.indexanteRates,
+          })
+        : null;
+      return {
+        label: a.name,
+        balanceCents: a.currentValueCents,
+        monthlyPaymentCents: plano?.currentPaymentCents ?? a.monthlyPaymentCents ?? null,
+        annualRatePct: plano?.tramos[0]?.annualRatePct ?? a.interestRatePct ?? null,
+        nextChangeOn: plano?.nextChangeOn ?? null,
+        nextPaymentCents: plano?.nextPaymentCents ?? null,
+      };
+    });
+
+  const nomeMembro = new Map(ctx.members.map((m) => [m.id, m.name]));
+  const saldos = saldo
+    ? Object.entries(saldo.balance.netByUser).map(([id, cents]) => ({
+        nome: nomeMembro.get(id) ?? "alguém",
+        netCents: Number(cents) || 0,
+      }))
+    : [];
+  const acertos = saldo
+    ? saldo.transfers.map((t) => ({
+        de: nomeMembro.get(t.fromUserId) ?? "alguém",
+        para: nomeMembro.get(t.toUserId) ?? "alguém",
+        cents: t.amountCents,
+      }))
+    : [];
+
+  const serie = buildNetWorthSeries(historico);
+  const primeiro = serie.points[0];
+  const ultimo = serie.points.at(-1);
+
+  const outrosAmbientes = await resumoDosOutrosAmbientes(ctx);
+
+  return buildSituacao({
+    assetsCents: net.totalAssetsCents,
+    debtsCents: net.totalLiabilitiesCents,
+    byKind: net.byKind.map((k) => ({ label: k.label, totalCents: k.totalCents })),
+    dividas,
+    monthlyExpenseCents,
+    monthlyIncomeCents,
+    categorias,
+    investmentCostCents: net.investmentCostCents,
+    investmentGainCents: net.investmentCostCents > 0 ? net.investmentGainCents : null,
+    saldos,
+    acertos,
+    pagina,
+    ambiente: ctx.space.name,
+    outrosAmbientes,
+    historico:
+      serie.changeCents !== null && primeiro && ultimo
+        ? {
+            dePeriodo: primeiro.label,
+            aPeriodo: ultimo.label,
+            changeCents: serie.changeCents,
+            changePct: serie.changePct,
+          }
+        : null,
+  });
+}
+
+/** Quantos outros ambientes entram no resumo. Ver `resumoDosOutrosAmbientes`. */
+const MAX_OUTROS_AMBIENTES = 6;
+
+/**
+ * Os outros ambientes a que a pessoa tem acesso, em resumo.
+ *
+ * **Porque é que isto existe.** A app é multi-ambiente e o chat só via o que
+ * estava aberto. Perguntar "tenho dívidas?" com a casa noutro separador dava
+ * "não" — uma frase falsa dita com toda a confiança, que é o pior modo de falha
+ * que esta app conhece.
+ *
+ * **Porquê só o essencial.** Carregar tudo de todos multiplicava o tempo de
+ * resposta pelo número de ambientes, e a pergunta que atravessa ambientes é
+ * quase sempre de totais: quanto tenho ao todo, onde é que devo, onde é que me
+ * devem. O detalhe vive no ambiente respetivo, e o modelo é instruído a dizer
+ * onde se abre.
+ *
+ * Cada leitura falha para o lado de não dizer nada daquele ambiente. Um resumo
+ * a menos é um resumo a menos; um resumo a zeros por a leitura ter falhado
+ * seria o modelo a afirmar que ali não há nada.
+ */
+async function resumoDosOutrosAmbientes(
+  ctx: Awaited<ReturnType<typeof getSpaceContext>>,
+): Promise<SituacaoOutroAmbiente[]> {
+  const outros = ctx.spaces.filter((s) => s.id !== ctx.space.id).slice(0, MAX_OUTROS_AMBIENTES);
+  if (outros.length === 0) return [];
+
+  const repo = getRepository();
+  const resumos = await Promise.all(
+    outros.map(async (espaco) => {
+      try {
+        const [bens, movimentos, membros] = await Promise.all([
+          repo.listAssets(espaco.id),
+          repo.listAssetTrades(espaco.id),
+          repo.listMembers(espaco.id),
+        ]);
+        const porBem = new Map<string, typeof movimentos>();
+        for (const t of movimentos) {
+          porBem.set(t.assetId, [...(porBem.get(t.assetId) ?? []), t]);
+        }
+        const comPosicao = bens.map((a) => {
+          const d = derivePosition(a, porBem.get(a.id) ?? []);
+          return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+        });
+        const n = buildNetWorth(comPosicao);
+
+        // O saldo desta pessoa naquele ambiente, se ela for lá participante.
+        const eu = membros.find((m) => m.linkedUserId === ctx.user.id);
+        const cheios = membros.filter((m) => (m.role ?? "full") !== "submitter");
+        const saldo = eu
+          ? await getSpaceBalance(espaco.id, cheios, eu.id).catch(() => null)
+          : null;
+        const meuSaldoCents = saldo && eu ? Number(saldo.balance.netByUser[eu.id] ?? 0) : null;
+
+        return {
+          nome: espaco.name,
+          netCents: n.netCents,
+          debtsCents: n.totalLiabilitiesCents,
+          meuSaldoCents,
+        };
+      } catch {
+        // Ver o cabeçalho: calar um ambiente é melhor do que o dar a zeros.
+        return null;
+      }
+    }),
+  );
+
+  return resumos.filter((r): r is SituacaoOutroAmbiente => r !== null);
+}
+
+/**
+ * Gravar a fotografia do património depois de um movimento.
+ *
+ * **Porquê aqui e não só na visita.** A fotografia é uma por dia. Se só se
+ * gravasse ao abrir o `/patrimonio`, o gráfico tinha a resolução das visitas e
+ * não a dos movimentos: registar uma compra e não abrir a página deixava o dia
+ * de fora, e o salto aparecia depois todo junto no dia em que se abrisse.
+ *
+ * É idempotente — o mesmo dia é sempre a mesma linha — e falha calada: ninguém
+ * fica sem registar um movimento porque a fotografia não deu.
+ */
+async function fotografarDepoisDoMovimento(spaceId: string): Promise<void> {
+  try {
+    const repo = getRepository();
+    const [stored, trades] = await Promise.all([
+      repo.listAssets(spaceId),
+      repo.listAssetTrades(spaceId),
+    ]);
+    const porAtivo = new Map<string, typeof trades>();
+    for (const t of trades) porAtivo.set(t.assetId, [...(porAtivo.get(t.assetId) ?? []), t]);
+    const assets = stored.map((a) => {
+      const d = derivePosition(a, porAtivo.get(a.id) ?? []);
+      return d.derived ? { ...a, quantity: d.quantity, unitCostCents: d.unitCostCents } : a;
+    });
+    await captureNetWorthSnapshot(
+      spaceId,
+      buildNetWorth(assets),
+      new Date().toISOString().slice(0, 10),
+    );
+  } catch {
+    // Ver o cabeçalho.
+  }
+}
+
+/**
+ * Mudar um bem de posição na lista, dentro do seu tipo.
+ *
+ * **Porquê à mão e não por valor.** A lista vinha por ordem de criação, que numa
+ * carteira importada é a ordem do ficheiro da corretora — não quer dizer nada.
+ * Ordenar por valor também não serve: a ordem por que se olha para as coisas é a
+ * de quem olha, e muda de pessoa para pessoa.
+ *
+ * **A ordem é por tipo.** Trocar um imóvel com uma conta bancária não é uma
+ * ordenação, é uma mistura: a página agrupa por tipo, e mover atravessando
+ * grupos não teria efeito nenhum visível.
+ *
+ * **A primeira mexida numera o grupo todo.** Enquanto ninguém mexer, tudo fica
+ * a `null` e manda a data de criação — que é como sempre esteve, e por isso
+ * nenhuma lista já vista muda por causa desta funcionalidade.
+ */
+export async function moverAtivoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  const dir = String(formData.get("dir") ?? "");
+  if (!id || (dir !== "cima" && dir !== "baixo")) return;
+
+  const repo = getRepository();
+  const todos = await repo.listAssets(ctx.space.id).catch(() => []);
+  const alvo = todos.find((a) => a.id === id);
+  if (!alvo) return;
+
+  // Só o grupo do mesmo tipo, na ordem em que está a ser mostrado.
+  const grupo = todos.filter((a) => a.kind === alvo.kind);
+  const i = grupo.findIndex((a) => a.id === id);
+  const j = dir === "cima" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= grupo.length) return;
+
+  const nova = [...grupo];
+  nova[i] = grupo[j]!;
+  nova[j] = grupo[i]!;
+
+  // Numera o grupo todo: é uma escrita por bem, mas só de cada vez que alguém
+  // arruma a lista, e deixa a ordem explícita em vez de dependente de empates.
+  await Promise.all(
+    nova.map((a, k) =>
+      a.sortOrder === k
+        ? Promise.resolve()
+        : repo.updateAsset(a.id, ctx.space.id, { sortOrder: k }).catch(() => {}),
+    ),
+  );
+
+  revalidatePath("/patrimonio");
+}
+
+export interface AnexoPreparado extends ActionState {
+  /** Para onde o browser envia o ficheiro, sem passar por aqui. */
+  uploadUrl?: string;
+  token?: string;
+  anexoId?: string;
+}
+
+/**
+ * Preparar um anexo: valida, reserva a linha e devolve para onde enviar.
+ *
+ * **Os bytes nunca passam por aqui.** As Server Actions do Next têm tecto de
+ * 1 MB e uma função da Vercel ~4,5 MB; uma escritura digitalizada passa os
+ * dois. O que sobe é o nome, o tipo e o tamanho — e é sobre eles que se decide.
+ *
+ * A linha nasce em `a-enviar` e só passa a `pronto` quando o envio é
+ * confirmado. Um anexo que fique pelo caminho não aparece em lado nenhum.
+ */
+export async function prepararAnexoAction(
+  _prev: AnexoPreparado,
+  formData: FormData,
+): Promise<AnexoPreparado> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
+  const contentType = String(formData.get("contentType") ?? "").trim();
+  const sizeBytes = Number(formData.get("sizeBytes") ?? 0);
+  if (!assetId || !fileName) return { error: "Falta o ficheiro." };
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id vindo do formulário não é
+  // prova de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === assetId);
+  if (!bem) return { error: "Bem inválido." };
+
+  const doAmbiente = await repo.listAssetAttachments(ctx.space.id).catch(() => []);
+  const veredicto = checkAnexo({
+    // Sem plano gravado conta como gratuito: um tecto a mais nunca apaga nada,
+    // e um tecto a menos deixava passar espaço sem limite.
+    plan: ctx.space.plan ?? "free",
+    porBem: doAmbiente.filter((a) => a.assetId === assetId).length,
+    bytesNoAmbiente: doAmbiente.reduce((s, a) => s + a.sizeBytes, 0),
+    bytesDoFicheiro: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+    contentType,
+  });
+  if (!veredicto.allowed) return { error: veredicto.message ?? "Não dá para anexar isto." };
+
+  const anexoId = `anx_${randomUUID()}`;
+  // O caminho é construído aqui e nunca recebido: se viesse do cliente, ele
+  // escolhia a pasta.
+  const storagePath = caminhoDoAnexo(ctx.space.id, assetId, anexoId, contentType);
+
+  const destino = await signedUploadUrl(storagePath);
+  if (!destino) return { error: "Não consegui preparar o envio." };
+
+  try {
+    await repo.createAssetAttachment({
+      id: anexoId,
+      spaceId: ctx.space.id,
+      assetId,
+      fileName,
+      contentType,
+      sizeBytes: Math.max(0, Math.round(sizeBytes)),
+      storagePath,
+      status: "a-enviar",
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar o anexo." };
+  }
+
+  return { ok: true, uploadUrl: destino.url, token: destino.token, anexoId };
+}
+
+/** O envio correu bem: o anexo passa a contar. */
+export async function confirmarAnexoAction(anexoId: string): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+  const id = String(anexoId ?? "").trim();
+  if (!id) return { error: "Anexo inválido." };
+
+  const repo = getRepository();
+  try {
+    await repo.markAssetAttachmentReady(id, ctx.space.id);
+  } catch {
+    return { error: "Não consegui confirmar o anexo." };
+  }
+  revalidatePath("/patrimonio");
+  // A página do investimento é outra rota: sem isto, o ficheiro ficava
+  // guardado e o ecrã onde a pessoa acabou de o largar continuava vazio. O id
+  // do bem sai da linha do anexo, não do cliente.
+  const anexo = await repo.getAssetAttachment(id, ctx.space.id).catch(() => null);
+  if (anexo) revalidatePath(`/patrimonio/ativos/${anexo.assetId}`);
+  return { ok: true, message: "Anexo guardado." };
+}
+
+/**
+ * Apagar um anexo — a linha **e** o ficheiro.
+ *
+ * Os recibos das despesas ficam no Storage para sempre quando um ambiente é
+ * apagado, o que torna falsa a frase "apagamos os teus dados". Com escrituras,
+ * que têm morada e número fiscal, seria bem pior.
+ */
+export async function apagarAnexoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const repo = getRepository();
+  const anexo = await repo.getAssetAttachment(id, ctx.space.id).catch(() => null);
+  if (!anexo) return;
+
+  await repo.deleteAssetAttachment(id, ctx.space.id).catch(() => {});
+  await removerAnexoDoStorage(anexo.storagePath);
+  revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${anexo.assetId}`);
+}
+
+// ---- Pedidos de ajuda -------------------------------------------------------
+//
+// A regra que manda em tudo o que está aqui em baixo: **uma nota interna nunca
+// sai**. O ecrã do utilizador só lê por `listTicketMessagesPublicas`, que não
+// as devolve de todo, e só quem é administrador pode escrever uma.
+
+/**
+ * Abrir um pedido de ajuda.
+ *
+ * Não há tecto de plano nenhum sobre isto de propósito. Um limite que impeça
+ * alguém de pedir ajuda transforma um problema de produto num problema de
+ * atendimento — e "um limite nunca apaga nada" vale para o direito de perguntar
+ * tanto como para os dados.
+ */
+export async function abrirPedidoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+
+  const v = validarTicket({
+    assunto: String(formData.get("assunto") ?? ""),
+    corpo: String(formData.get("corpo") ?? ""),
+  });
+  if ("erro" in v) return { error: v.erro };
+
+  try {
+    await getRepository().createTicket({
+      spaceId: ctx.space.id,
+      createdBy: ctx.user.id,
+      subject: v.ok.assunto,
+      body: v.ok.corpo,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o pedido") };
+  }
+
+  revalidatePath("/ajuda");
+  return { ok: true, message: "Pedido enviado. Vais ver aqui a resposta." };
+}
+
+/**
+ * Responder a um pedido: o utilizador no seu, o administrador em qualquer um.
+ *
+ * **A nota interna só é aceite a quem é administrador, e a verificação é
+ * feita aqui.** Um campo escondido num formulário não é prova de nada: sem esta
+ * linha, bastava marcá-lo para uma pessoa escrever uma nota que ela própria
+ * deixava de ver — o que não faz mal a ninguém — mas também para descobrir, pela
+ * ausência, que a camada existe.
+ */
+export async function responderPedidoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const repo = getRepository();
+
+  const ticketId = String(formData.get("ticketId") ?? "").trim();
+  const corpo = String(formData.get("corpo") ?? "").trim().slice(0, TICKET_CORPO_MAX);
+  if (!ticketId) return { error: "Pedido inválido." };
+
+  const admin = isAdmin(user.id);
+  const interna = admin && String(formData.get("interna") ?? "") === "1";
+  const novoEstado = String(formData.get("estado") ?? "").trim();
+
+  // O pedido tem de ser mesmo desta pessoa. Para o administrador, qualquer um.
+  const ticket = admin
+    ? await repo.getTicket(ticketId).catch(() => null)
+    : await repo.getTicketDoUtilizador(ticketId, user.id).catch(() => null);
+  if (!ticket) return { error: "Pedido inválido." };
+
+  // Mudar só o estado, sem escrever nada, é uma operação legítima.
+  if (!corpo && !(admin && isTicketStatus(novoEstado))) {
+    return { error: "Escreve alguma coisa." };
+  }
+
+  try {
+    if (corpo) {
+      await repo.addTicketMessage({
+        ticketId,
+        authorId: user.id,
+        body: corpo,
+        internal: interna,
+      });
+    }
+
+    // O estado escrito à mão ganha ao automático: quem responde sabe melhor do
+    // que uma regra se o assunto ficou resolvido.
+    const estado =
+      admin && isTicketStatus(novoEstado)
+        ? novoEstado
+        : corpo
+          ? estadoDepoisDaResposta(ticket.status, admin ? "equipa" : "utilizador", interna)
+          : ticket.status;
+    if (estado !== ticket.status) await repo.setTicketStatus(ticketId, estado);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a resposta") };
+  }
+
+  revalidatePath("/ajuda");
+  revalidatePath(`/ajuda/${ticketId}`);
+  revalidatePath("/mensagens");
+  revalidatePath(`/mensagens/pedidos/${ticketId}`);
+  return {
+    ok: true,
+    message: interna ? "Nota interna guardada. Só tu a vês." : "Resposta enviada.",
+  };
+}
+
+/**
+ * Ir buscar a Euribor do prazo pedido.
+ *
+ * Devolve o valor e de quando ele é; não grava nada. Quem decide se o escreve
+ * no campo é a pessoa — o valor do indexante entra num plano que projeta
+ * prestações até 2055, e não é coisa para se preencher sozinha nas costas de
+ * ninguém.
+ */
+export interface EuriborState extends ActionState {
+  pct?: number | null;
+  nota?: string | null;
+}
+
+export async function buscarEuriborAction(
+  _prev: EuriborState,
+  formData: FormData,
+): Promise<EuriborState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const bruto = String(formData.get("indexante") ?? "");
+  if (!(bruto in INDEXANTES)) return { error: "Indexante desconhecido." };
+
+  const r = await buscarEuribor(bruto as Indexante);
+  if (r.problem || r.pct === null) {
+    return { error: r.problem ?? "Não consegui obter a Euribor." };
+  }
+  return { ok: true, pct: r.pct, nota: r.nota, message: r.nota ?? undefined };
+}
+
+// ---- Desdobramentos ---------------------------------------------------------
+
+/**
+ * Confirmar um desdobramento que a app detetou, ou registar um à mão.
+ *
+ * **Confirmar, e não aplicar sozinho.** A app sabe reconhecer a assinatura — uma
+ * venda e uma compra no mesmo dia, pelo mesmo dinheiro, com quantidades
+ * diferentes — mas essa assinatura também serve a uma venda e uma recompra a
+ * sério feitas ao cêntimo. Transformá-la num desdobramento sem perguntar
+ * apagava uma mais-valia real que alguém tem de declarar.
+ *
+ * **As duas pernas do par são apagadas.** Não são negócios: não saiu nem entrou
+ * dinheiro nenhum da conta naquele dia. Deixá-las lá era manter a mais-valia
+ * inventada e o investido inflacionado, que é o problema todo. O que se perde é
+ * o registo de duas linhas que a corretora escreveu para descrever uma operação
+ * que agora está descrita melhor — e o desdobramento fica gravado com a data e
+ * o fator, por isso a operação continua no historial.
+ */
+export async function confirmarSplitAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+  const ratio = parseNumber(formData.get("ratio"));
+  if (!assetId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Desdobramento inválido." };
+  if (ratio === null || !ratioValido(ratio)) {
+    return { error: "O fator não faz sentido. Num 20:1 escreve-se 20; num 1:10, 0,1." };
+  }
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id de um formulário não é prova
+  // de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === assetId);
+  if (!bem) return { error: "Investimento inválido." };
+
+  // As duas pernas, quando isto veio de uma deteção. Confrontadas com os
+  // movimentos deste ativo antes de se apagar seja o que for.
+  const idsParaApagar = [String(formData.get("vendaId") ?? ""), String(formData.get("compraId") ?? "")]
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const movimentos = await repo.listAssetTrades(ctx.space.id, assetId).catch(() => []);
+  const validos = new Set(movimentos.map((t) => t.id));
+
+  try {
+    await repo.createAssetSplit({
+      spaceId: ctx.space.id,
+      assetId,
+      date,
+      ratio,
+      createdBy: ctx.user.id,
+    });
+    for (const id of idsParaApagar) {
+      if (validos.has(id)) await repo.deleteAssetTrade(id, ctx.space.id);
+    }
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o desdobramento") };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  revalidatePath(`/patrimonio/ativos/${assetId}`);
+  return { ok: true, message: `Desdobramento de ${ratioPorExtenso(ratio)} registado.` };
+}
+
+/** Desfazer um desdobramento. As unidades voltam ao que estavam registadas. */
+export async function apagarSplitAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const id = String(formData.get("id") ?? "").trim();
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  if (!id) return;
+  await getRepository().deleteAssetSplit(id, ctx.space.id).catch(() => {});
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  if (assetId) revalidatePath(`/patrimonio/ativos/${assetId}`);
+}
+
+/**
+ * Descobrir e gravar a marca dos investimentos que ainda não a têm.
+ *
+ * **Aplica sem perguntar, ao contrário do símbolo — e a diferença é o que está
+ * em jogo.** Um símbolo errado devolve um preço plausível todos os dias, para
+ * sempre, e ninguém desconfia; um logo errado é um logo errado, vê-se, e
+ * arranja-se apagando o domínio. Pedir confirmação uma a uma para uma coisa
+ * decorativa era fazer trabalho por nada.
+ */
+export async function descobrirMarcasAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
+  const semMarca = bens.filter((a) => a.kind === "investimento" && !a.logoDomain);
+  if (semMarca.length === 0) return { ok: true, message: "Todos já têm marca." };
+
+  const encontradas = await descobrirMarcas(semMarca.map((a) => a.name)).catch(() => []);
+  const porNome = new Map(encontradas.map((m) => [m.nome, m.dominio]));
+
+  let gravadas = 0;
+  for (const bem of semMarca) {
+    const dominio = porNome.get(bem.name);
+    if (!dominio) continue;
+    try {
+      await repo.updateAsset(bem.id, ctx.space.id, { logoDomain: dominio });
+      gravadas += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a marca") };
+    }
+  }
+
+  revalidatePath("/patrimonio");
+  // Diz sempre o que ficou de fora: um resultado que só conta os acertos
+  // lê-se como "está tudo tratado", e não está.
+  const faltam = semMarca.length - gravadas;
+  return {
+    ok: true,
+    message:
+      faltam > 0
+        ? `${gravadas} de ${semMarca.length} com logo. ${faltam} sem marca reconhecível: esses ficam com as iniciais.`
+        : `${gravadas} com logo.`,
+  };
+}
+
+/**
+ * O domínio da marca para UMA empresa do funil, contra um prazo.
+ *
+ * É a mesma máquina dos investimentos — tabela de gestoras, depois o modelo,
+ * depois a verificação do ícone — chamada na hora em que a empresa entra no
+ * funil, para o logo aparecer sozinho: o campo manual saiu. Corre contra um
+ * prazo porque apontar uma empresa é um gesto rápido e um logo não vale dez
+ * segundos de espera; o que não chegar a tempo fica para o «Pôr logos».
+ */
+async function marcaComPrazo(nome: string): Promise<string | null> {
+  const prazo = new Promise<never[]>((res) => setTimeout(() => res([]), 6_000));
+  const encontradas = await Promise.race([descobrirMarcas([nome]).catch(() => []), prazo]);
+  return encontradas[0]?.dominio ?? null;
+}
+
+/**
+ * Descobrir e gravar a marca das empresas do funil que ainda não a têm.
+ *
+ * O par do `descobrirMarcasAction` dos investimentos, com as mesmas regras:
+ * aplica sem perguntar (um logo errado vê-se e apaga-se), e diz sempre quantos
+ * ficaram de fora.
+ */
+export async function descobrirMarcasFunilAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const linhas = (await repo.listValuations(ctx.space.id).catch(() => [])).filter(
+    (v) => !v.logoDomain,
+  );
+  if (linhas.length === 0) return { ok: true, message: "Todas já têm marca." };
+
+  // Nomes distintos: a mesma empresa com dois estudos é UMA pergunta ao modelo.
+  const nomes = [...new Set(linhas.map((v) => v.name))];
+  const encontradas = await descobrirMarcas(nomes).catch(() => []);
+  const porNome = new Map(encontradas.map((m) => [m.nome, m.dominio]));
+
+  let gravadas = 0;
+  for (const linha of linhas) {
+    const dominio = porNome.get(linha.name);
+    if (!dominio) continue;
+    try {
+      await repo.updateValuation(linha.id, ctx.space.id, { logoDomain: dominio });
+      gravadas += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a marca") };
+    }
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  const faltam = linhas.length - gravadas;
+  return {
+    ok: true,
+    message:
+      faltam > 0
+        ? `${gravadas} de ${linhas.length} com logo. ${faltam} sem marca reconhecível: essas ficam com as iniciais.`
+        : `${gravadas} com logo.`,
+  };
+}
+
+/**
+ * Ir buscar o setor dos investimentos que ainda não o têm.
+ *
+ * Um lote de cada vez, e diz sempre quantos ficaram para trás: um resultado que
+ * só conta os acertos lê-se como "está tudo tratado", e não está.
+ */
+export async function descobrirSetoresAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const r = await atualizarSetores(ctx.space.id).catch(() => null);
+  if (!r) return { error: "Não consegui falar com a fonte dos dados. Tenta daqui a pouco." };
+  if (r.consultados === 0) {
+    return { ok: true, message: "Já perguntei por todos os que têm símbolo." };
+  }
+
+  revalidatePath("/patrimonio");
+  revalidatePath("/relatorios/patrimonio");
+
+  const partes: string[] = [`${r.gravados} com setor`];
+  // Um fundo sem setor na fonte não é uma falha, e dizer-lhe "falhou" mandava
+  // alguém procurar um problema que não existe.
+  if (r.semSetorNaFonte > 0) {
+    partes.push(
+      `${r.semSetorNaFonte} sem classificação na fonte (é o normal nos fundos e ETF)`,
+    );
+  }
+  if (r.falhados > 0) partes.push(`${r.falhados} sem resposta, que se repetem à próxima`);
+  /**
+   * O que ficou por fazer, sempre à vista.
+   *
+   * Um lote que trata oito de quarenta e diz só "8 com setor" lê-se como "está
+   * tratado" — e a pessoa fica a olhar para uma tabela meia por classificar sem
+   * perceber que só tem de carregar outra vez.
+   */
+  if (r.porFazer > 0) {
+    partes.push(
+      r.faltouTempo
+        ? `faltam ${r.porFazer}, que não coube no tempo desta passagem: carrega outra vez`
+        : `faltam ${r.porFazer} para a próxima passagem: carrega outra vez`,
+    );
+  }
+
+  return { ok: true, message: `${partes.join("; ")}.` };
+}
+
+// ---- Fundamentais de uma empresa --------------------------------------------
+
+export interface FundamentaisState extends ActionState {
+  simbolo?: string | null;
+  dados?: Fundamentais | null;
+}
+
+/**
+ * Ir buscar as contas de uma empresa para a calculadora de avaliação.
+ *
+ * **Não grava nada.** É um preenchimento de formulário: os campos aparecem
+ * escritos e continuam todos editáveis, porque o número que a fonte dá é um
+ * ponto de partida e não uma verdade. O fluxo de caixa livre dos últimos doze
+ * meses de uma empresa cíclica é uma péssima base para dez anos de projeção, e
+ * quem está a avaliar sabe disso melhor do que a app.
+ *
+ * Não toca no património nem no ambiente, por isso não revalida caminho nenhum.
+ */
+export async function buscarFundamentaisAction(
+  _prev: FundamentaisState,
+  formData: FormData,
+): Promise<FundamentaisState> {
+  // Continua a exigir sessão: é uma chamada a uma fonte externa feita a partir
+  // do servidor, e sem sessão seria um proxy aberto para quem passasse.
+  await requireUser();
+
+  const simbolo = String(formData.get("symbol") ?? "").trim();
+  if (!simbolo) return { error: "Escreve o símbolo primeiro." };
+
+  const r = await buscarFundamentais(simbolo);
+  if (!r.dados) {
+    return { error: r.problem ?? "Não consegui obter as contas desta empresa." };
+  }
+  return {
+    ok: true,
+    simbolo: r.simbolo,
+    dados: r.dados,
+    message: r.dados.emFalta.length
+      ? `Preenchi o que veio. Faltou ${r.dados.emFalta.join(", ")}: escreve à mão.`
+      : "Preenchido com os dados do Yahoo Finance. Confere antes de decidir.",
+  };
+}
+
+// ---- Avaliações -------------------------------------------------------------
+
+/**
+ * Guardar um estudo de avaliação no funil.
+ *
+ * **O servidor refaz a conta.** O formulário manda os pressupostos e não o
+ * resultado: aceitar o número que o browser calculou permitia gravar um preço
+ * ponderado que não sai dos pressupostos ao lado dele, e o estudo passava a
+ * mentir sobre si próprio para sempre — sem nada, nem no ecrã nem na base de
+ * dados, a denunciá-lo.
+ *
+ * **Guarda o resultado, e não só os pressupostos.** Recalcular na leitura
+ * parecia mais limpo e tinha uma consequência séria: no dia em que a fórmula
+ * mudasse, um valor que já serviu de base a uma compra mudava de opinião
+ * retroactivamente. Ver a migração 0037.
+ */
+/**
+ * Os rácios que o formulário traz da busca de dados.
+ *
+ * Devolve **só os campos que vieram mesmo**: um campo vazio fica de fora e não
+ * chega ao `update`, para um estudo refeito à mão não apagar os rácios que a
+ * fonte já tinha dado. Um número que não se lê é ausência, nunca zero — um ROCE
+ * de zero por cento é uma afirmação sobre a empresa e não é esta a fazê-la.
+ */
+function lerRaciosDoFormulario(formData: FormData): {
+  sector?: string | null;
+  rocePct?: number | null;
+  margemOperacionalPct?: number | null;
+  margemFcfPct?: number | null;
+  crescimentoFcfPct?: number | null;
+} {
+  const numero = (campo: string): number | undefined => {
+    const bruto = String(formData.get(campo) ?? "").trim();
+    if (!bruto) return undefined;
+    const n = Number(bruto.replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const setor = String(formData.get("sector") ?? "").trim();
+
+  return {
+    ...(setor ? { sector: setor } : {}),
+    ...(numero("rocePct") !== undefined ? { rocePct: numero("rocePct") } : {}),
+    ...(numero("margemOperacionalPct") !== undefined
+      ? { margemOperacionalPct: numero("margemOperacionalPct") }
+      : {}),
+    ...(numero("margemFcfPct") !== undefined ? { margemFcfPct: numero("margemFcfPct") } : {}),
+    ...(numero("crescimentoFcfPct") !== undefined
+      ? { crescimentoFcfPct: numero("crescimentoFcfPct") }
+      : {}),
+  };
+}
+
+export async function guardarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (!nome) return { error: "Escreve o nome da empresa antes de guardar." };
+  const simboloBruto = String(formData.get("symbol") ?? "").trim();
+
+  const n = (k: string) => parseNumber(formData.get(k));
+  const fcfCents = n("fcfCents");
+  const shares = n("shares");
+  const netDebtCents = n("netDebtCents");
+  const discountPct = n("discountPct");
+  const perpetualPct = n("perpetualPct");
+  const years = n("years");
+  const marginPct = n("marginPct");
+  const priceCents = n("priceCents");
+
+  if (
+    fcfCents === null ||
+    shares === null ||
+    netDebtCents === null ||
+    discountPct === null ||
+    perpetualPct === null ||
+    years === null ||
+    marginPct === null
+  ) {
+    return { error: "Faltam pressupostos para guardar este estudo." };
+  }
+
+  // Os cenários vêm em JSON e são validados campo a campo — não convertidos.
+  let cenarios: CenarioDcf[] | null = null;
+  try {
+    cenarios = lerCenarios(JSON.parse(String(formData.get("scenarios") ?? "null")));
+  } catch {
+    cenarios = null;
+  }
+  if (!cenarios) return { error: "Os cenários não vieram inteiros. Recarrega a página." };
+
+  const avaliacao = avaliarCenarios({
+    base: {
+      fcfCents: Math.round(fcfCents),
+      crescimentoPerpetuoPct: perpetualPct,
+      descontoPct: discountPct,
+      anos: Math.round(years),
+      anosPrimeiraFase: Math.ceil(years / 2),
+      dividaLiquidaCents: Math.round(netDebtCents),
+      acoes: shares,
+      precoAtualCents: priceCents === null ? null : Math.round(priceCents),
+    },
+    cenarios,
+    margemPct: marginPct,
+  });
+  if ("erro" in avaliacao) return { error: avaliacao.erro };
+
+  const etapaBruta = String(formData.get("stage") ?? "");
+  const etapa = etapaValida(etapaBruta) ? etapaBruta : etapaSugerida(avaliacao.ok.atrativo);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const estudo = {
+    fcfCents: Math.round(fcfCents),
+    shares,
+    netDebtCents: Math.round(netDebtCents),
+    discountPct,
+    perpetualPct,
+    years: Math.round(years),
+    marginPct,
+    scenarios: cenarios,
+    weightedPriceCents: avaliacao.ok.precoPonderadoCents,
+    priceAtStudyCents: priceCents === null ? null : Math.round(priceCents),
+    upsidePct: avaliacao.ok.upsidePonderadoPct,
+    valuedAt: hoje,
+    /**
+     * Os rácios que a busca de dados trouxe, congelados com o estudo.
+     *
+     * Passavam pelo ecrã e eram deitados fora com a página. Guardados, cada
+     * estudo novo passa a poder comparar-se com os anteriores do mesmo setor —
+     * que é a única comparação setorial que esta app pode fazer sem inventar
+     * médias que não existem em fonte gratuita nenhuma.
+     *
+     * `undefined` quando não vieram: um estudo escrito à mão não apaga o que a
+     * fonte já tinha dado numa passagem anterior.
+     */
+    ...lerRaciosDoFormulario(formData),
+  };
+
+  const repo = getRepository();
+  const notas = String(formData.get("notes") ?? "").trim() || null;
+
+  /**
+   * Vinha do funil? Então escreve-se os números na linha que já lá está.
+   *
+   * Sem isto, estudar uma empresa que se tinha apontado criava um segundo
+   * cartão da mesma empresa e o primeiro ficava marcado como substituído — a
+   * app a duplicar o que o utilizador acabou de fazer o trabalho de ligar. O id
+   * é confrontado com o ambiente antes de se escrever nele.
+   */
+  const doFunil = String(formData.get("valuationId") ?? "").trim();
+  if (doFunil) {
+    const existente = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+      (v) => v.id === doFunil,
+    );
+    if (!existente) return { error: "Essa entrada do funil já não existe." };
+    // Uma linha ainda sem logo é uma segunda oportunidade de o descobrir.
+    const marcaNova = existente.logoDomain ? null : await marcaComPrazo(nome);
+    try {
+      await repo.setValuationEstudo(doFunil, ctx.space.id, estudo);
+      await repo.updateValuation(doFunil, ctx.space.id, {
+        stage: etapa,
+        name: nome,
+        symbol: simboloBruto ? simboloBruto.toLowerCase() : null,
+        // As notas do ecrã só substituem as do funil quando há mesmo alguma
+        // coisa escrita: um campo em branco não apaga o que lá estava.
+        ...(notas ? { notes: notas } : {}),
+        ...(marcaNova ? { logoDomain: marcaNova } : {}),
+      });
+    } catch (e) {
+      return { error: porqueNaoGravou(e, "a avaliação") };
+    }
+    revalidatePath("/patrimonio/avaliacoes");
+    return {
+      ok: true,
+      message: `Estudo gravado em "${nome}", na etapa "${ETAPA_LABEL[etapa]}".`,
+    };
+  }
+
+  try {
+    await repo.createValuation({
+      spaceId: ctx.space.id,
+      symbol: simboloBruto ? simboloBruto.toLowerCase() : null,
+      name: nome,
+      stage: etapa,
+      studyDate: hoje,
+      notes: notas,
+      logoDomain: await marcaComPrazo(nome),
+      estudo,
+      createdBy: ctx.user.id,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a avaliação") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return {
+    ok: true,
+    message: `Estudo guardado em "${ETAPA_LABEL[etapa]}". Fica com os pressupostos de hoje: reavaliar cria um novo.`,
+  };
+}
+
+/**
+ * Apontar uma empresa no funil, antes de haver estudo nenhum.
+ *
+ * **É o passo mais barato do processo e era o único que a app não suportava.**
+ * O funil servia só de arquivo de estudos: uma empresa só lá entrava depois de
+ * alguém ter feito um DCF completo — quando o que se faz primeiro é o oposto,
+ * apontar um nome e voltar a ele mais tarde.
+ */
+export async function criarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (!nome) return { error: "Escreve o nome da empresa." };
+
+  const simbolo = String(formData.get("symbol") ?? "").trim().toLowerCase() || null;
+
+  // A data pode ser escolhida: quem aponta uma empresa hoje pode estar a
+  // registar uma decisão de há um mês, e a data manda na ordem do funil.
+  const dataBruta = String(formData.get("studyDate") ?? "").trim();
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(dataBruta)
+    ? dataBruta
+    : new Date().toISOString().slice(0, 10);
+
+  const etapaBruta = String(formData.get("stage") ?? "");
+  const etapa = etapaValida(etapaBruta) ? etapaBruta : "radar";
+
+  // O logo descobre-se sozinho, como nos investimentos — o campo manual saiu.
+  // Sem marca reconhecível ficam as iniciais, e o «Pôr logos» tenta mais tarde.
+  const logoDomain = await marcaComPrazo(nome);
+
+  try {
+    await getRepository().createValuation({
+      spaceId: ctx.space.id,
+      symbol: simbolo,
+      name: nome,
+      stage: etapa,
+      studyDate: data,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      logoDomain,
+      // Sem estudo: é uma empresa apontada, não um DCF.
+      estudo: null,
+      createdBy: ctx.user.id,
+    });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a empresa") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: `"${nome}" ficou em "${ETAPA_LABEL[etapa]}".` };
+}
+
+/** Corrigir o que está escrito num cartão do funil: nome, símbolo, notas. */
+export async function editarAvaliacaoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Faltou a avaliação." };
+
+  // O id é confrontado com o ambiente antes de se escrever nele: um id vindo do
+  // formulário não é prova de nada, e tudo aqui corre com a chave de serviço.
+  const existente = (await getRepository().listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === id,
+  );
+  if (!existente) return { error: "Essa avaliação já não existe." };
+
+  // O logo já não se edita à mão: descobre-se sozinho (na criação e no
+  // «Pôr logos»), e um logo errado corrige-se por lá — não por um campo que
+  // pedia um domínio a quem só queria emendar uma nota.
+  const patch: { name?: string; symbol?: string | null; notes?: string | null } = {};
+
+  const nome = String(formData.get("name") ?? "").trim();
+  if (nome) patch.name = nome;
+
+  if (formData.has("symbol")) {
+    const s = String(formData.get("symbol") ?? "").trim().toLowerCase();
+    patch.symbol = s || null;
+  }
+  if (formData.has("notes")) {
+    patch.notes = String(formData.get("notes") ?? "").trim() || null;
+  }
+
+  try {
+    await getRepository().updateValuation(id, ctx.space.id, patch);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "a avaliação") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: "Guardado." };
+}
+
+export async function mudarEtapaAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  const etapa = String(formData.get("stage") ?? "");
+  if (!id || !etapaValida(etapa)) return;
+
+  // O ambiente vai na escrita: um id vindo do formulário não é prova de nada.
+  await getRepository().updateValuation(id, ctx.space.id, { stage: etapa }).catch(() => {});
+  revalidatePath("/patrimonio/avaliacoes");
+}
+
+export async function apagarAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  await getRepository().deleteValuation(id, ctx.space.id).catch(() => {});
+  revalidatePath("/patrimonio/avaliacoes");
+}
+
+// ---- Investimentos duplicados ----------------------------------------------
+
+/**
+ * Juntar dois registos do mesmo investimento num só.
+ *
+ * **O que faz:** move os movimentos e os anexos do registo a remover para o que
+ * fica, e só depois apaga o que ficou vazio. Por esta ordem, e não pela
+ * contrária: se a remoção corresse primeiro e a mudança falhasse a meio, os
+ * movimentos ficavam presos a um investimento que já não existe — invisíveis no
+ * ecrã e a contar na mesma para o dinheiro que entrou.
+ *
+ * **Não apaga um movimento que seja.** Um registo duplicado é um erro de
+ * catalogação, não um erro de dinheiro: as compras aconteceram todas. Se depois
+ * de juntos houver dois movimentos iguais, isso é dito e fica para alguém
+ * decidir — apagar um por dedução própria é apagar uma compra a sério que por
+ * acaso se parece com outra.
+ *
+ * **Os dois ids são confrontados com o ambiente antes de se tocar em nada.** Um
+ * id vindo de um formulário não é prova de nada, e tudo aqui corre com a chave
+ * de serviço, que ignora o RLS.
+ */
+export async function fundirAtivosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const manterId = String(formData.get("manterId") ?? "").trim();
+  const removerId = String(formData.get("removerId") ?? "").trim();
+  if (!manterId || !removerId) return { error: "Faltam os investimentos a juntar." };
+  if (manterId === removerId) return { error: "São o mesmo registo." };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id).catch(() => []);
+  const manter = bens.find((a) => a.id === manterId);
+  const remover = bens.find((a) => a.id === removerId);
+  if (!manter || !remover) return { error: "Investimento inválido." };
+
+  // Só o que o detetor propôs: o mesmo símbolo. Sem isto, um formulário
+  // adulterado juntava dois investimentos que não têm nada a ver um com o outro
+  // — e não há como voltar atrás.
+  const a = manter.symbol?.trim().toLowerCase();
+  const b = remover.symbol?.trim().toLowerCase();
+  if (!a || !b || a !== b) {
+    return { error: "Só junto registos com o mesmo símbolo. Estes não têm." };
+  }
+
+  const doRemovido = await repo.listAssetTrades(ctx.space.id, removerId).catch(() => []);
+  let movidos = 0;
+  for (const t of doRemovido) {
+    try {
+      await repo.updateAssetTrade(t.id, ctx.space.id, { assetId: manterId });
+      movidos += 1;
+    } catch (e) {
+      // Parar a meio deixa metade dos movimentos de cada lado, mas os dois
+      // registos continuam a existir e nada se perdeu. Continuar às cegas e
+      // apagar o registo no fim é que perdia.
+      return {
+        error: `${porqueNaoGravou(e, "o movimento")} Movi ${movidos} de ${doRemovido.length}; os dois registos continuam lá.`,
+      };
+    }
+  }
+
+  // Os anexos ANTES de apagar, e não depois: a coluna tem `on delete cascade`,
+  // por isso apagar o registo primeiro levava com ele os documentos que alguém
+  // carregou. Uma arrumação de catálogo não pode destruir ficheiros.
+  let anexos = 0;
+  try {
+    anexos = await repo.moveAssetAttachments(removerId, manterId, ctx.space.id);
+  } catch (e) {
+    return {
+      error: `${porqueNaoGravou(e, "os anexos")} Os movimentos já passaram; os dois registos continuam lá.`,
+    };
+  }
+
+  try {
+    await repo.deleteAsset(removerId, ctx.space.id);
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o registo repetido") };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  revalidatePath("/patrimonio/ativos");
+
+  // Movimentos iguais depois de juntos: diz-se, não se apaga.
+  const juntos = await repo.listAssetTrades(ctx.space.id, manterId).catch(() => []);
+  const vistas = new Set<string>();
+  let repetidos = 0;
+  for (const t of juntos) {
+    const chave = assinatura(t);
+    if (vistas.has(chave)) repetidos += 1;
+    else vistas.add(chave);
+  }
+
+  const partes = [`${movidos} ${movidos === 1 ? "movimento passou" : "movimentos passaram"} para "${manter.name}".`];
+  if (anexos > 0) {
+    partes.push(`${anexos} ${anexos === 1 ? "anexo passou" : "anexos passaram"} também.`);
+  }
+  if (repetidos > 0) {
+    partes.push(
+      `Atenção: ficaram ${repetidos} ${repetidos === 1 ? "movimento igual a outro" : "movimentos iguais a outros"} no mesmo dia. Não apago nenhum: confere se são mesmo repetidos ou duas compras a sério.`,
+    );
+  }
+  return { ok: true, message: partes.join(" ") };
+}
+
+// ---- Anexos de uma avaliação, e o resumo que a IA faz deles -----------------
+
+/**
+ * Preparar o envio de um documento para uma avaliação.
+ *
+ * Mesmo desenho dos anexos dos bens, e pela mesma razão: o ficheiro nunca passa
+ * pela app. O servidor emite um URL de envio assinado e o browser fala com o
+ * Storage; o que atravessa a app é o nome, o tipo e o tamanho.
+ */
+export async function prepararAnexoAvaliacaoAction(
+  _prev: AnexoPreparado,
+  formData: FormData,
+): Promise<AnexoPreparado> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const valuationId = String(formData.get("valuationId") ?? "").trim();
+  const fileName = String(formData.get("fileName") ?? "").trim().slice(0, 200);
+  const contentType = String(formData.get("contentType") ?? "").trim();
+  const sizeBytes = Number(formData.get("sizeBytes") ?? 0);
+  if (!valuationId || !fileName) return { error: "Falta o ficheiro." };
+
+  const repo = getRepository();
+  // A avaliação tem de ser mesmo deste ambiente: um id vindo do formulário não
+  // é prova de nada, e tudo aqui corre com a chave de serviço.
+  const avaliacao = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === valuationId,
+  );
+  if (!avaliacao) return { error: "Avaliação inválida." };
+
+  const doAmbiente = await repo.listValuationAttachments(ctx.space.id).catch(() => []);
+  const veredicto = checkAnexo({
+    plan: ctx.space.plan ?? "free",
+    porBem: doAmbiente.filter((a) => a.valuationId === valuationId).length,
+    bytesNoAmbiente: doAmbiente.reduce((s, a) => s + a.sizeBytes, 0),
+    bytesDoFicheiro: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+    contentType,
+  });
+  if (!veredicto.allowed) return { error: veredicto.message ?? "Não dá para anexar isto." };
+
+  const anexoId = `anx_${randomUUID()}`;
+  const storagePath = caminhoDoAnexoDaAvaliacao(ctx.space.id, valuationId, anexoId, contentType);
+
+  const destino = await signedUploadUrl(storagePath);
+  if (!destino) return { error: "Não consegui preparar o envio." };
+
+  try {
+    await repo.createValuationAttachment({
+      id: anexoId,
+      spaceId: ctx.space.id,
+      valuationId,
+      fileName,
+      contentType,
+      sizeBytes: Math.max(0, Math.round(sizeBytes)),
+      storagePath,
+      status: "a-enviar",
+      createdBy: ctx.user.id,
+    });
+  } catch {
+    return { error: "Não consegui gravar o anexo." };
+  }
+
+  return { ok: true, uploadUrl: destino.url, token: destino.token, anexoId };
+}
+
+export async function confirmarAnexoAvaliacaoAction(anexoId: string): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Não tens permissão para isto." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+  const id = String(anexoId ?? "").trim();
+  if (!id) return { error: "Anexo inválido." };
+
+  try {
+    await getRepository().markValuationAttachmentReady(id, ctx.space.id);
+  } catch {
+    return { error: "Não consegui confirmar o anexo." };
+  }
+  revalidatePath("/patrimonio/avaliacoes");
+  return { ok: true, message: "Anexo guardado." };
+}
+
+export async function apagarAnexoAvaliacaoAction(formData: FormData): Promise<void> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return;
+  if (ctx.congelado) return;
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const repo = getRepository();
+  const anexo = await repo.getValuationAttachment(id, ctx.space.id).catch(() => null);
+  if (!anexo) return;
+
+  // A linha **e** o ficheiro: um anexo apagado que fica no Storage torna falsa
+  // a frase "apagamos os teus dados".
+  await repo.deleteValuationAttachment(id, ctx.space.id).catch(() => {});
+  await removerAnexoDoStorage(anexo.storagePath);
+  revalidatePath("/patrimonio/avaliacoes");
+}
+
+/**
+ * Ler os anexos e escrever um resumo.
+ *
+ * **A IA lê texto e devolve prosa. Não devolve número nenhum para a app usar.**
+ * Seria fácil pedir-lhe o fluxo de caixa livre e enfiá-lo no DCF, e nesse dia o
+ * valor por ação passava a depender de um modelo a ler um PDF. O que entra no
+ * cálculo vem da fonte de dados ou do teclado de quem avalia.
+ *
+ * O texto extraído fica guardado por anexo: na segunda vez não se volta a
+ * descarregar nem a ler o ficheiro.
+ */
+export async function resumirAnexosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+  if (!resumoAnexosAvailable()) return { error: "O resumo assistido não está configurado." };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Faltou a avaliação." };
+
+  const repo = getRepository();
+  const avaliacao = (await repo.listValuations(ctx.space.id).catch(() => [])).find(
+    (v) => v.id === id,
+  );
+  if (!avaliacao) return { error: "Essa avaliação já não existe." };
+
+  const anexos = (await repo.listValuationAttachments(ctx.space.id, id).catch(() => [])).filter(
+    (a) => a.status === "pronto",
+  );
+  if (anexos.length === 0) return { error: "Ainda não há anexos para ler." };
+
+  const documentos: { fileName: string; texto: string }[] = [];
+  for (const a of anexos) {
+    // Já lido antes: não se volta a descarregar nem a extrair.
+    if (a.extractedText) {
+      documentos.push({ fileName: a.fileName, texto: a.extractedText });
+      continue;
+    }
+    const bytes = await descarregarAnexo(a.storagePath);
+    if (!bytes) continue;
+
+    let texto = "";
+    if (a.contentType === "application/pdf") {
+      texto = await readPdfText(bytes).catch(() => "");
+    } else if (a.contentType.startsWith("text/")) {
+      texto = bytes.toString("utf8");
+    }
+    // Uma imagem não tem texto para ler, e isso não é um erro — é o que é.
+    if (!texto.trim()) continue;
+
+    await repo.setValuationAttachmentText(a.id, ctx.space.id, texto).catch(() => {});
+    documentos.push({ fileName: a.fileName, texto });
+  }
+
+  const r = await resumirAnexos(avaliacao.name, documentos);
+  if (!r.resumo) return { error: r.problem ?? "Não consegui resumir." };
+
+  try {
+    await repo.updateValuation(id, ctx.space.id, { aiSummary: r.resumo });
+  } catch (e) {
+    return { error: porqueNaoGravou(e, "o resumo") };
+  }
+
+  revalidatePath("/patrimonio/avaliacoes");
+  const ignorados = anexos.length - r.usados;
+  return {
+    ok: true,
+    message:
+      ignorados > 0
+        ? `Resumi ${r.usados} de ${anexos.length} anexos. ${ignorados === 1 ? "Um ficou" : `${ignorados} ficaram`} de fora por não ter texto que se lesse: digitalizações e imagens não têm.`
+        : `Resumi ${r.usados} ${r.usados === 1 ? "anexo" : "anexos"}.`,
+  };
+}
+
+// ---- Datas de mercado -------------------------------------------------------
+
+/**
+ * Ir buscar as datas de resultados e dividendos dos investimentos em carteira.
+ *
+ * **A pedido e não a cada visita.** São uma chamada por símbolo a uma fonte
+ * externa; correr isto sozinho ao abrir a carteira punha dezenas de pedidos numa
+ * função com tempo limitado. O serviço salta os que já foram consultados esta
+ * semana, por isso carregar duas vezes seguidas não faz nada da segunda.
+ */
+export async function atualizarDatasAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const r = await atualizarDatasDeMercado(ctx.space.id, { force: true });
+  revalidatePath("/patrimonio");
+
+  if (r.consultados === 0) {
+    return { ok: true, message: "Não há investimentos com símbolo em carteira." };
+  }
+  if (r.gravados === 0) {
+    return {
+      error: `Não consegui obter datas para nenhum dos ${r.consultados}. A fonte pode estar a recusar: as cotações não são afetadas.`,
+    };
+  }
+  // Diz sempre o que ficou de fora: um resultado que só conta os acertos lê-se
+  // como "está tudo tratado", e não está.
+  return {
+    ok: true,
+    message:
+      r.falhados > 0
+        ? `${r.gravados} de ${r.consultados} com datas novas. ${r.falhados} não deram: a fonte não os conhece ou recusou.`
+        : `${r.gravados} ${r.gravados === 1 ? "investimento" : "investimentos"} com datas em dia.`,
+  };
 }

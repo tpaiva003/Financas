@@ -5,7 +5,7 @@ import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
-import { formatCents } from "@/lib/domain";
+import { formatCents, streakDeRegistos } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { OnboardingCard } from "@/components/OnboardingCard";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -21,14 +21,24 @@ export default async function DashboardPage() {
   const repo = getRepository();
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
-  // Gera ocorrências de recorrentes em atraso (idempotente, tolerante a falhas).
-  await generateDueRecurring(ctx.space.id);
-
-  const [{ transfers }, recent, categories] = await Promise.all([
-    getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
-    repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
-    repo.listCategories(ctx.space.id),
-  ]);
+  // Gera ocorrências de recorrentes em atraso (idempotente, tolerante a
+  // falhas). ANTES das leituras, de propósito: as despesas geradas têm de
+  // aparecer nas listas deste mesmo render — mas as leituras que não dependem
+  // dela (importações, rendimentos, lembretes) arrancam em paralelo.
+  const [[{ transfers }, recent, categories], batches, income, todosLembretes] =
+    await Promise.all([
+      (async () => {
+        await generateDueRecurring(ctx.space.id);
+        return Promise.all([
+          getSpaceBalance(ctx.space.id, ctx.fullMembers, ctx.viewerMemberId),
+          repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }),
+          repo.listCategories(ctx.space.id),
+        ]);
+      })(),
+      repo.listImportBatches(ctx.space.id).catch(() => []),
+      repo.listIncome(ctx.space.id).catch(() => []),
+      getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
+    ]);
 
   const pending = recent.filter((e) => e.status === "pending");
   const pendingApprovals = recent.filter((e) => e.approvalStatus === "pending");
@@ -53,18 +63,33 @@ export default async function DashboardPage() {
     : buildOnboarding({
         expenseCount: recent.filter((e) => !e.deletedAt).length,
         memberCount: ctx.members.length,
-        importCount: (await repo.listImportBatches(ctx.space.id).catch(() => [])).length,
-        incomeCount: (await repo.listIncome(ctx.space.id).catch(() => [])).length,
+        importCount: batches.length,
+        incomeCount: income.length,
       });
 
   // Lembretes de importação: o aviso visual de que há extratos por trazer.
-  const dueImports = pendingReminders(
-    await getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
-  ).filter((r) => r.status.state !== "never");
+  const dueImports = pendingReminders(todosLembretes).filter(
+    (r) => r.status.state !== "never",
+  );
+
+  /**
+   * O streak: dias seguidos com registo FEITO pela própria pessoa (dia do
+   * `createdAt`, a mesma régua da "última atividade" — um import conta como o
+   * dia em que foi feito, não como trinta). Deriva das despesas que já estão
+   * carregadas: sem tabela nova, sem pedido a mais.
+   */
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const streak = streakDeRegistos(
+    recent
+      .filter((e) => e.createdBy === ctx.user.id)
+      .map((e) => (e.createdAt ?? "").slice(0, 10))
+      .filter(Boolean),
+    hojeISO,
+  );
 
   // Última atividade do próprio (REQ: ao entrar, ver as suas últimas datas).
   const fmtDate = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleDateString("pt-PT") : "—";
+    iso ? new Date(iso).toLocaleDateString("pt-PT") : "-";
   // "Registaste" = foste tu a meter os dados na app (independentemente de quem
   // pagou). É isto que responde a "quando é que atualizei isto pela última vez",
   // por isso o que se mostra é o DIA DO REGISTO, não a data da despesa.
@@ -88,6 +113,37 @@ export default async function DashboardPage() {
       {onboarding ? <OnboardingCard onboarding={onboarding} /> : null}
 
       <InstallPrompt />
+
+      {/*
+        O streak só aparece quando existe (nada de "0 dias" a envergonhar), e
+        um dia ainda sem registo mostra-o em risco em vez de o apagar às 00:01.
+      */}
+      {streak.atual >= 2 ? (
+        <Link
+          href="/despesas/nova"
+          className="card flex items-center justify-between gap-4 p-4 transition-colors hover:border-fg/20"
+        >
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full bg-panel2 text-lg">
+              🔥
+            </span>
+            <div>
+              <p className="text-sm font-medium">
+                {streak.atual} dias seguidos a registar
+                {streak.recorde > streak.atual ? (
+                  <span className="text-fg-faint"> · recorde: {streak.recorde}</span>
+                ) : null}
+              </p>
+              <p className="text-xs text-fg-muted">
+                {streak.registadoHoje
+                  ? "Hoje já está. As contas em dia são isto."
+                  : "Ainda não registaste hoje: é hoje que ele se mantém."}
+              </p>
+            </div>
+          </div>
+          <span className="text-fg-faint">→</span>
+        </Link>
+      ) : null}
 
       {pendingApprovals.length > 0 ? (
         <Link
@@ -149,7 +205,7 @@ export default async function DashboardPage() {
         <div className="card p-4">
           <p className="eyebrow">Último registo teu</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "—"}
+            {myRegistered ? fmtDate(myRegistered.createdAt ?? myRegistered.transactionDate) : "-"}
           </p>
           {myRegistered ? (
             <>
@@ -166,7 +222,7 @@ export default async function DashboardPage() {
         <div className="card p-4">
           <p className="eyebrow">Última que pagaste</p>
           <p className="mt-1 text-[15px] font-medium tnum text-fg">
-            {myPaid ? fmtDate(myPaid.transactionDate) : "—"}
+            {myPaid ? fmtDate(myPaid.transactionDate) : "-"}
           </p>
           {myPaid ? (
             <>
@@ -241,7 +297,7 @@ function BalanceHero({
       <Link href="/saldo" className="block pt-4">
         <p className="eyebrow">Saldo atual</p>
         <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-          {formatCents(t.amountCents)}
+          <span className="dinheiro">{formatCents(t.amountCents)}</span>
         </p>
         <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-fg-muted">
           <span className="font-medium text-fg">{nameOf(t.fromUserId)}</span>
@@ -258,7 +314,7 @@ function BalanceHero({
     <Link href="/saldo" className="block pt-4">
       <p className="eyebrow">Por acertar</p>
       <p className="mt-3 font-display text-6xl font-semibold tracking-tightest tnum sm:text-7xl">
-        {formatCents(totalToSettle)}
+        <span className="dinheiro">{formatCents(totalToSettle)}</span>
       </p>
       <p className="mt-4 text-[15px] text-fg-muted">
         {transfers.length} pagamento(s) sugerido(s) para zerar o saldo.

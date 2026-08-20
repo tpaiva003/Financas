@@ -1,26 +1,26 @@
 /**
  * Proteção de rotas (REQ-AUTH-4): tudo o que não seja público exige sessão.
  *
- * Público: a landing (/), o login, a submissão de contacto, ativos estáticos e
- * as rotas de auth. Todo o resto é privado. Usa a config edge-safe.
+ * A lista do que é público está em `lib/public-routes.ts`, para ser testável —
+ * aqui dentro não era, e faltavam-lhe a recuperação de palavra-chave e as
+ * páginas legais sem que nada se queixasse.
  *
- * `api/cron` fica de fora porque quem lhe bate é a Vercel, não um browser com
- * sessão. Não é uma porta aberta: essa rota exige o `CRON_SECRET` e não lê nem
- * devolve dados de ninguém, só enche a cache de cotações, que são públicas.
+ * `api/cron` fica de fora do matcher porque quem lhe bate é a Vercel, não um
+ * browser com sessão. Não é uma porta aberta: essa rota exige o `CRON_SECRET`
+ * (e recusa quando ele não está definido) e não lê nem devolve dados de
+ * ninguém, só enche a cache de cotações, que são públicas.
  */
 
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
+import { isPublicPath } from "@/lib/public-routes";
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_EXACT = ["/", "/login"];
-
 export default auth((req) => {
   const { pathname } = req.nextUrl;
-  const isPublic =
-    PUBLIC_EXACT.includes(pathname) || pathname.startsWith("/login/");
+  const isPublic = isPublicPath(pathname);
 
   if (isPublic) {
     if (req.auth && pathname === "/login") {
@@ -39,7 +39,15 @@ export default auth((req) => {
 });
 
 export const config = {
+  // `landing/` são as capturas de ecrã da página pública, e os ícones são
+  // pedidos pelo browser antes de haver sessão nenhuma. Passar por aqui punha
+  // o middleware a responder-lhes com um redirecionamento para o login, que é
+  // o que estragava as imagens da landing.
+  //
+  // `api/logo`, `api/fx` e `api/market` validam a sessão elas próprias — o
+  // middleware decifrava o JWE e o handler fazia o mesmo trabalho outra vez,
+  // dezenas de vezes por carregamento da carteira (um pedido por logo).
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)",
+    "/((?!api/auth|api/cron|api/logo|api/fx|api/market|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|landing/|icon.svg|apple-icon.svg).*)",
   ],
 };

@@ -96,12 +96,66 @@ function validDate(y: number, m: number, d: number): string | null {
   return dt.toISOString().slice(0, 10);
 }
 
+/** Qual dos dois sinais é o separador decimal num ficheiro. */
+export type SeparadorDecimal = "." | ",";
+
+/**
+ * Que separador decimal é que ESTA coluna usa.
+ *
+ * **O problema que isto resolve, e custou dinheiro.** Sozinho, "493.975" é
+ * ambíguo: tanto pode ser quatrocentos e noventa e três mil como quatrocentos e
+ * noventa e três vírgula novecentos e setenta e cinco. A regra de "três dígitos
+ * depois do ponto são milhares" é a certa em português — e é a errada num
+ * ficheiro que escreve os decimais com ponto e às vezes usa três casas. Numa
+ * importação real, uma compra de 493,98 € entrou como **493 975,00 €**, com o
+ * resto da coluna ("500.00", "555.36") a ser lido corretamente ao lado.
+ *
+ * **A coluna inteira desfaz a ambiguidade.** Se houver um único "500.00" na
+ * coluna, então neste ficheiro o ponto é decimal — e "493.975" tem de ser
+ * 493,975. Um número sozinho não chega para decidir; a coluna chega.
+ *
+ * Devolve `null` quando a coluna não diz nada de útil (só inteiros, ou os dois
+ * sinais usados como decimais), e nesse caso vale a regra de sempre.
+ */
+export function detectDecimalSeparator(valores: readonly string[]): SeparadorDecimal | null {
+  let ponto = 0;
+  let virgula = 0;
+
+  for (const bruto of valores) {
+    const s = (bruto ?? "").toString().trim().replace(/[€$£\s ]/g, "");
+    if (!s || !/\d/.test(s)) continue;
+
+    const c = s.lastIndexOf(",");
+    const d = s.lastIndexOf(".");
+
+    // Com os dois sinais não há ambiguidade nenhuma: o da direita é o decimal.
+    if (c >= 0 && d >= 0) {
+      if (c > d) virgula++;
+      else ponto++;
+      continue;
+    }
+    // Com um só sinal, 1 ou 2 casas atrás dele é sempre decimal: ninguém
+    // escreve milhares em grupos de dois.
+    const casasC = c >= 0 ? s.length - c - 1 : -1;
+    const casasD = d >= 0 ? s.length - d - 1 : -1;
+    if (casasC === 1 || casasC === 2) virgula++;
+    if (casasD === 1 || casasD === 2) ponto++;
+  }
+
+  if (ponto > 0 && virgula === 0) return ".";
+  if (virgula > 0 && ponto === 0) return ",";
+  return null;
+}
+
 /**
  * Converte texto monetário europeu em cêntimos. Aceita "1.234,56", "1234,56",
  * "-45,20", "45.20", "1 234,56 €" e parêntesis para negativo ("(45,20)").
  * Devolve null se não for número.
+ *
+ * `separador` vem do `detectDecimalSeparator` e resolve a ambiguidade de um
+ * número sozinho — ver lá o porquê. Sem ele, vale a regra de sempre.
  */
-export function parseAmountCents(raw: string): number | null {
+export function parseAmountCents(raw: string, separador?: SeparadorDecimal | null): number | null {
   let s = (raw ?? "").toString().trim();
   if (!s) return null;
 
@@ -123,7 +177,15 @@ export function parseAmountCents(raw: string): number | null {
 
   const lastComma = s.lastIndexOf(",");
   const lastDot = s.lastIndexOf(".");
-  if (lastComma >= 0 && lastDot >= 0) {
+
+  // A coluna já disse qual é o decimal: o outro sinal só pode ser milhares.
+  if (separador === ".") {
+    s = s.replace(/,/g, "");
+  } else if (separador === ",") {
+    s = s.replace(/\./g, "");
+    const c = s.lastIndexOf(",");
+    if (c >= 0) s = `${s.slice(0, c)}.${s.slice(c + 1)}`;
+  } else if (lastComma >= 0 && lastDot >= 0) {
     // O separador decimal é o que aparece mais à direita.
     if (lastComma > lastDot) s = s.replace(/\./g, "").replace(",", ".");
     else s = s.replace(/,/g, "");

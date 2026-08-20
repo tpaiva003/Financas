@@ -20,8 +20,8 @@
  * Lógica pura, sem acesso a dados.
  */
 
-import type { CashFlow } from "./returns";
-import { xirr } from "./returns";
+import type { CashFlow, ValuePoint } from "./returns";
+import { DIAS_DE_FOLGA, priceOn, xirr } from "./returns";
 
 export type TradeKind = "compra" | "venda" | "dividendo" | "custo";
 
@@ -91,12 +91,43 @@ export function tradeAmountCents(t: Trade): number {
   return Math.abs(Math.round(qty * price));
 }
 
+/**
+ * A ordem por que os movimentos são processados.
+ *
+ * Está aqui, e não em linha, porque **dois sítios contam a mesma posição**: o
+ * `buildPosition` e o `positionValuePoints`. Se cada um ordenasse à sua maneira,
+ * a quantidade que o segundo vê num dado dia deixava de ser a que o primeiro
+ * calculou, e a rentabilidade ponderada no tempo passava a discordar do custo
+ * médio sem que nada se queixasse.
+ */
+export function sortTrades(trades: Trade[]): Trade[] {
+  return [...trades].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    // No mesmo dia, primeiro o que entra e só depois o que sai.
+    //
+    // O desempate era `a.id.localeCompare(b.id)`, e os ids são UUID: ou seja, à
+    // sorte. Uma compra e uma venda do mesmo produto no mesmo dia — que é o que
+    // acontece quando a corretora parte uma ordem — davam custo médio e
+    // mais-valia realizada diferentes conforme o sorteio, sem sequer levantar o
+    // aviso de `oversold`. Um número errado sem aviso é o pior que esta app
+    // pode fazer.
+    //
+    // Não se pode vender o que ainda não se comprou, por isso a compra vem
+    // primeiro: é a única ordem que não inventa uma venda a descoberto que
+    // nunca existiu. Empates dentro do mesmo sentido ficam pelo id, que aí já
+    // não muda conta nenhuma.
+    const peso = (k: Trade["kind"]) => (k === "compra" ? 0 : k === "venda" ? 1 : 2);
+    const pa = peso(a.kind);
+    const pb = peso(b.kind);
+    if (pa !== pb) return pa - pb;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function buildPosition(trades: Trade[]): Position {
   if (trades.length === 0) return EMPTY;
 
-  const sorted = [...trades].sort((a, b) =>
-    a.date === b.date ? a.id.localeCompare(b.id) : a.date < b.date ? -1 : 1,
-  );
+  const sorted = sortTrades(trades);
 
   let quantity = 0;
   let costCents = 0;
@@ -253,4 +284,345 @@ export function buildPositionReturn(
     annualPct:
       position.flows.length === 0 ? null : xirr(position.flows, currentValueCents, today),
   };
+}
+
+/**
+ * As fotografias de valor da posição, para a rentabilidade ponderada no tempo.
+ *
+ * **Porquê.** A TIR responde a "quanto rendeu o MEU dinheiro" e depende de
+ * quando ele entrou. A TWR responde a outra coisa — "o investimento foi bom?" —
+ * e para isso tem de anular o efeito dos reforços. Não se consegue anular esse
+ * efeito só com os fluxos: é preciso saber **quanto valia a posição em cada
+ * momento em que entrou ou saiu dinheiro**, e isso exige cotações históricas.
+ *
+ * **Dois pontos por dia de movimento, e a razão é o coração disto.** A
+ * `timeWeightedReturn` fecha cada troço com `valor / (valor anterior + fluxo)`,
+ * ou seja, assume que o dinheiro entrou no **início** do troço. Num dia em que
+ * há crescimento *e* reforço, juntar as duas coisas num só ponto faz o reforço
+ * parecer que esteve investido o período todo, e o crescimento desse período
+ * aparece diluído. Com 10 unidades compradas a 100,00 que valem 200,00 quando se
+ * reforçam mais 90, o troço rendeu 100% e a conta de um ponto só devolvia 5%.
+ *
+ * Por isso cada data de movimento dá:
+ *  1. um ponto que **fecha** o troço anterior — as unidades que já lá estavam ao
+ *     preço de hoje, sem fluxo nenhum;
+ *  2. um ponto que **aplica** o movimento — a posição depois dele, com o fluxo.
+ *
+ * O segundo nunca inventa rentabilidade: o valor sobe exatamente o que entrou.
+ * E é isto que faz um dividendo contar como ganho (sai dinheiro sem sair
+ * unidades) e uma venda a preço de mercado não contar como nada.
+ *
+ * **Devolve `null` se faltar o preço de algum dia.** Não se estima, não se
+ * interpola e não se salta o ponto: qualquer uma dessas saídas dá um número
+ * plausível e errado, que é a pior coisa que esta app pode mostrar.
+ *
+ * `prices` são preços por unidade **em cêntimos de euro**. Uma série na moeda de
+ * origem misturada com movimentos em euros daria uma rentabilidade inventada,
+ * por isso a conversão é de quem chama e tem de estar feita antes de aqui chegar.
+ */
+export function positionValuePoints(
+  trades: Trade[],
+  prices: Record<string, number>,
+  today: string,
+  currentValueCents: number,
+): ValuePoint[] | null {
+  if (trades.length === 0) return null;
+
+  const sorted = sortTrades(trades);
+  const points: ValuePoint[] = [];
+  let quantity = 0;
+
+  // Os movimentos agrupados por dia, pela ordem em que já foram ordenados.
+  const porDia = new Map<string, Trade[]>();
+  for (const t of sorted) porDia.set(t.date, [...(porDia.get(t.date) ?? []), t]);
+
+  for (const [dia, doDia] of porDia) {
+    // Com folga para fins de semana e feriados, e só com essa: um fecho velho
+    // de meses avaliava um movimento recente a preços antigos e devolvia um
+    // número plausível e errado. É a recusa que o cabeçalho promete.
+    const preco = priceOn(prices, dia, DIAS_DE_FOLGA);
+    // Um dia sem cotação não se adivinha. Ver o comentário do cabeçalho.
+    if (preco === null || preco <= 0) return null;
+
+    // (1) Fecha o troço anterior: só o que já cá estava, ao preço de hoje. No
+    // primeiro dia não há troço para fechar — ainda não havia nada investido.
+    if (points.length > 0) {
+      points.push({ date: dia, valueCents: Math.round(quantity * preco), flowCents: 0 });
+    }
+
+    // (2) Aplica o movimento do dia.
+    let fluxo = 0;
+    for (const t of doDia) {
+      const amount = tradeAmountCents(t);
+      const qty = Math.abs(t.quantity ?? 0);
+      switch (t.kind) {
+        case "compra":
+          quantity += qty;
+          fluxo += amount;
+          break;
+        case "venda":
+          // Nunca abaixo de zero: vender a mais é um erro de dados, e uma
+          // quantidade negativa punha a posição a valer valores negativos.
+          quantity = Math.max(0, quantity - qty);
+          fluxo -= amount;
+          break;
+        case "dividendo":
+          // Não mexe na quantidade: é dinheiro que saiu do investimento para o
+          // bolso, e conta como retorno, não como desinvestimento.
+          fluxo -= amount;
+          break;
+        case "custo":
+          // Comissões e impostos são dinheiro posto que não comprou unidades.
+          fluxo += amount;
+          break;
+      }
+    }
+    points.push({ date: dia, valueCents: Math.round(quantity * preco), flowCents: fluxo });
+  }
+
+  // Hoje, com o valor atual. Se o último movimento é de hoje, fica o valor
+  // atual: pode já haver preço mais recente do que o fecho aplicado acima.
+  const ultimo = points[points.length - 1]!;
+  if (ultimo.date === today) {
+    ultimo.valueCents = currentValueCents;
+  } else {
+    points.push({ date: today, valueCents: currentValueCents, flowCents: 0 });
+  }
+
+  // Um ponto só não chega para medir crescimento nenhum.
+  return points.length >= 2 ? points : null;
+}
+
+/**
+ * O que uma compra em concreto valeu a pena, até agora.
+ *
+ * **Porque não é FIFO.** A posição desta app é a **custo médio** (ver o
+ * cabeçalho): dizer aqui que uma venda consumiu esta compra e não aquela era
+ * pôr duas contabilidades diferentes no mesmo ecrã, e a de baixo contradizia a
+ * de cima. O que isto responde é outra coisa, e mais útil: *"comprar a este
+ * preço, naquele dia, foi bom negócio?"*
+ *
+ * Por isso conta **as unidades desse movimento ao preço de hoje**, mesmo que
+ * entretanto tenham sido vendidas. Não é a mais-valia realizada e não serve
+ * para o IRS — que em Portugal é FIFO. É a leitura de cada entrada.
+ *
+ * Numa venda, a conta é ao contrário: o que se recebeu contra o que essas
+ * unidades valeriam hoje. Positivo quer dizer que se vendeu acima do preço de
+ * agora.
+ */
+export interface LucroDoMovimento {
+  /** O dinheiro que este movimento moveu. */
+  amountCents: number;
+  /** O que essas unidades valem hoje. */
+  nowCents: number;
+  /** A diferença, no sentido que faz sentido para o tipo de movimento. */
+  gainCents: number;
+  /** A mesma diferença em percentagem. `null` quando não há base. */
+  gainPct: number | null;
+  /** Uma venda lê-se ao contrário de uma compra. */
+  kind: "compra" | "venda";
+}
+
+export function lucroDoMovimento(
+  t: Pick<Trade, "kind" | "quantity" | "amountCents">,
+  currentUnitPriceCents: number | null | undefined,
+): LucroDoMovimento | null {
+  if (t.kind !== "compra" && t.kind !== "venda") return null;
+  const q = typeof t.quantity === "number" ? Math.abs(t.quantity) : 0;
+  if (q <= 0) return null;
+  if (typeof currentUnitPriceCents !== "number" || currentUnitPriceCents <= 0) return null;
+
+  const amountCents = Math.abs(t.amountCents);
+  if (amountCents <= 0) return null;
+  const nowCents = Math.round(q * currentUnitPriceCents);
+
+  // Numa compra ganha-se se hoje vale mais do que se pagou. Numa venda ganha-se
+  // se se recebeu mais do que valeria hoje — vender antes de uma descida é
+  // ganhar, e o sinal tem de dizer isso.
+  const gainCents = t.kind === "compra" ? nowCents - amountCents : amountCents - nowCents;
+
+  return {
+    amountCents,
+    nowCents,
+    gainCents,
+    gainPct: amountCents > 0 ? (gainCents / amountCents) * 100 : null,
+    kind: t.kind,
+  };
+}
+
+/**
+ * Os movimentos batem certo com as cotações?
+ *
+ * **Porque é que isto tem de existir.** Uma corretora regista um desdobramento
+ * (*split*) como uma venda e uma compra no mesmo dia, pelo mesmo dinheiro: sai
+ * 1 unidade, entram 20, e o dinheiro não se mexe. A app leu isso como negócios
+ * a sério. O troço da TWR nesse dia fica `20p / 1p` = **×20 exactos**,
+ * independentemente de qualquer preço, e o ecrã mostrou +4969,9% num
+ * investimento que fez +114%.
+ *
+ * Ao mesmo tempo, a série de cotações do Yahoo vem **ajustada a splits**: as
+ * unidades gravadas são pré-split e os preços são pós-split. É essa
+ * incoerência que se procura aqui — e ela é visível sem se saber nada sobre
+ * splits: o dinheiro por unidade daquele dia não bate certo com o fecho do
+ * mesmo dia.
+ *
+ * **O limite é largo de propósito.** Uma execução longe do fecho e as comissões
+ * embutidas no montante andam nos poucos por cento; um split anda em fatores de
+ * 1,5, 2, 10 ou 20. Com 1,35 apanham-se os splits de 3:2 para cima. Um 5:4
+ * (1,25) passa — e é melhor deixar passar um caso raro do que recusar a
+ * rentabilidade a quem comprou com um limite mal colocado.
+ *
+ * Devolve o problema por extenso, ou `null` quando está tudo coerente.
+ */
+const LIMITE_COERENCIA = 1.35;
+
+export function incoerenciaEntreMovimentosECotacoes(
+  trades: Trade[],
+  prices: Record<string, number>,
+): string | null {
+  for (const t of sortTrades(trades)) {
+    if (t.kind !== "compra" && t.kind !== "venda") continue;
+    const qty = Math.abs(t.quantity ?? 0);
+    if (qty <= 0) continue;
+
+    const doDia = priceOn(prices, t.date);
+    if (doDia === null || doDia <= 0) continue;
+
+    const implicito = Math.abs(tradeAmountCents(t)) / qty;
+    if (implicito <= 0) continue;
+
+    const razao = implicito / doDia;
+    if (razao > LIMITE_COERENCIA || razao < 1 / LIMITE_COERENCIA) {
+      const vezes = razao >= 1 ? razao : 1 / razao;
+      const sentido = razao >= 1 ? "acima" : "abaixo";
+      return (
+        `O movimento de ${t.date} tem um preço por unidade cerca de ${Math.round(vezes)}× ` +
+        `${sentido} da cotação desse dia. Parece um desdobramento (split) por tratar: ` +
+        `sem isso, a rentabilidade deste investimento não é fiável.`
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Movimentos cujo preço por unidade não é plausível.
+ *
+ * **De onde veio isto.** Uma importação leu `493.975` como quatrocentos e
+ * noventa e três mil e novecentos e setenta e cinco euros, quando eram 493,98 €:
+ * na mesma coluna havia `500.00` a fingir de milhar e um separador decimal
+ * escolhido linha a linha. O parser está corrigido, mas as linhas que já
+ * entraram continuam lá — e são invisíveis, porque um total errado tem
+ * exactamente o mesmo aspecto de um total certo. Só se descobre pelo absurdo:
+ * "investi 1,4 milhões" numa carteira de meia dúzia de milhares.
+ *
+ * **Não sabe qual dos números está errado, e não finge saber.** Diz que aquele
+ * movimento destoa dos outros do mesmo ativo, por quanto, e deixa a correção a
+ * quem sabe o que comprou. Apagar ou corrigir sozinho seria decidir sobre
+ * dinheiro de outra pessoa a partir de um palpite.
+ *
+ * **Duas referências, ambas do próprio ativo**: a mediana do preço implícito
+ * dos outros movimentos (precisa de três, senão não há maioria) e o preço atual
+ * por unidade, quando existe. Nenhuma delas precisa de série de cotações — os
+ * ativos sem símbolo, que são onde a importação mais erra, também têm de ser
+ * cobertos.
+ *
+ * **O limite é enorme de propósito.** Um erro de separador é 100× ou 1000×; uma
+ * ação que triplica é vulgar. Com 20× não se apanha um preço que subiu muito, e
+ * apanha-se tudo o que veio de um ponto no sítio errado. Falso positivo aqui
+ * custa uma pergunta desnecessária; falso negativo deixa a carteira mentir.
+ */
+export const LIMITE_IMPLAUSIVEL = 20;
+
+export interface MovimentoImplausivel {
+  tradeId: string;
+  date: string;
+  /** O que este movimento diz que custou cada unidade. */
+  implicitoCents: number;
+  /** Com o que se comparou. */
+  referenciaCents: number;
+  /** Quantas vezes acima (>1) ou abaixo (<1) da referência. */
+  vezes: number;
+  porque: string;
+}
+
+/**
+ * A mediana, e num número par a do meio **de baixo** em vez da média das duas.
+ *
+ * A média das duas do meio é a definição normal e aqui seria um erro: com
+ * quatro valores em que um é mil vezes maior, a média das centrais volta a
+ * deixar o disparate entrar na referência. O que se procura é um valor típico
+ * que um único movimento não consiga mexer, e é isso que a de baixo dá.
+ */
+function mediana(valores: number[]): number | null {
+  if (valores.length === 0) return null;
+  const ord = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ord.length / 2);
+  return ord.length % 2 === 1 ? ord[meio]! : ord[meio - 1]!;
+}
+
+export function movimentosImplausiveis(
+  trades: Trade[],
+  unitPriceCents?: number | null,
+): MovimentoImplausivel[] {
+  const comPreco = trades
+    .filter((t) => (t.kind === "compra" || t.kind === "venda") && Math.abs(t.quantity ?? 0) > 0)
+    .map((t) => ({ t, implicito: tradeAmountCents(t) / Math.abs(t.quantity!) }))
+    .filter((x) => x.implicito > 0);
+
+  const out: MovimentoImplausivel[] = [];
+
+  /**
+   * A referência é a mediana de **todos**, incluindo o que está a ser julgado.
+   *
+   * A primeira versão excluía o próprio, para "a referência não ser puxada pelo
+   * erro". Esse raciocínio vale para uma média e é ao contrário numa mediana:
+   * excluir o próprio reduz a amostra, e com três movimentos sobravam dois — e
+   * o ponto médio de dois valores é a média deles, que o disparate desloca à
+   * vontade. O resultado era acusar os dois movimentos certos e ilibar o
+   * errado. Uma mediana sobre três ou mais é justamente o que um único valor
+   * absurdo não consegue mexer.
+   */
+  const todos = comPreco.map((x) => x.implicito);
+  const med = todos.length >= 3 ? mediana(todos) : null;
+
+  for (const { t, implicito } of comPreco) {
+
+    const candidatos: { ref: number; fonte: string }[] = [];
+    if (med !== null && med > 0) candidatos.push({ ref: med, fonte: "os outros movimentos deste ativo" });
+    if (unitPriceCents && unitPriceCents > 0) {
+      candidatos.push({ ref: unitPriceCents, fonte: "o preço atual por unidade" });
+    }
+    if (candidatos.length === 0) continue;
+
+    // A referência mais favorável ao movimento: se por alguma delas ele é
+    // plausível, não se acusa. Acusar por uma e ilibar por outra seria pior do
+    // que não verificar.
+    let pior: { ref: number; fonte: string; razao: number } | null = null;
+    let melhorRazao = Infinity;
+    for (const c of candidatos) {
+      const razao = implicito / c.ref;
+      const desvio = razao >= 1 ? razao : 1 / razao;
+      if (desvio < melhorRazao) {
+        melhorRazao = desvio;
+        pior = { ...c, razao };
+      }
+    }
+    if (!pior || melhorRazao < LIMITE_IMPLAUSIVEL) continue;
+
+    const sentido = pior.razao >= 1 ? "acima" : "abaixo";
+    out.push({
+      tradeId: t.id,
+      date: t.date,
+      implicitoCents: Math.round(implicito),
+      referenciaCents: Math.round(pior.ref),
+      vezes: pior.razao,
+      porque:
+        `Este movimento dá ${(Math.round(implicito) / 100).toFixed(2).replace(".", ",")} € por ` +
+        `unidade, cerca de ${Math.round(melhorRazao)}× ${sentido} de ${pior.fonte}. ` +
+        `Costuma ser um separador decimal trocado numa importação: confere o valor.`,
+    });
+  }
+
+  return out;
 }

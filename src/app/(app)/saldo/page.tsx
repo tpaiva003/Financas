@@ -43,7 +43,7 @@ export default async function SaldoPage() {
                     <span className="text-fg-muted"> paga a </span>
                     <span className="font-medium text-fg">{nameOf(t.toUserId)}</span>
                   </span>
-                  <span className="font-mono tnum text-fg">{formatCents(t.amountCents)}</span>
+                  <span className="font-mono tnum text-fg"><span className="dinheiro">{formatCents(t.amountCents)}</span></span>
                 </li>
               ))}
             </ul>
@@ -66,7 +66,7 @@ export default async function SaldoPage() {
                   }`}
                 >
                   {net > 0 ? "recebe " : net < 0 ? "deve " : ""}
-                  {formatCents(Math.abs(net))}
+                  <span className="dinheiro">{formatCents(Math.abs(net))}</span>
                 </span>
               </li>
             );
@@ -84,7 +84,7 @@ export default async function SaldoPage() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium text-fg">{c.description}</p>
                 <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
-                  {new Date(c.date).toLocaleDateString("pt-PT")} · {formatCents(c.amountCents)}
+                  {new Date(c.date).toLocaleDateString("pt-PT")} · <span className="dinheiro">{formatCents(c.amountCents)}</span>
                 </p>
               </div>
             </li>

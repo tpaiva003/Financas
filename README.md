@@ -1,71 +1,96 @@
 # Rachar, Contas à Moda do Porto
 
-App web privada (PWA) para registar e dividir despesas do agregado e manter o
-saldo entre dois utilizadores. Substitui o Tricount/Splitwise. Acesso restrito a
-dois emails (allow-list), atrás de autenticação SSO.
+App web (PWA) para registar e dividir despesas entre as pessoas de um agregado, e
+para acompanhar o património. Substitui o Tricount/Splitwise e cresceu para lá
+disso.
 
-> Especificação completa em [`REQUISITOS.md`](./REQUISITOS.md). Decisões de
-> desenvolvimento em [`DECISOES.md`](./DECISOES.md).
+> Ponto de situação em [`RETOMAR.md`](./RETOMAR.md) — **é o primeiro ficheiro a
+> ler**. Decisões, com o contexto todo, em [`DECISOES.md`](./DECISOES.md). O
+> [`REQUISITOS.md`](./REQUISITOS.md) é a especificação original e descreve uma
+> app de dois utilizadores que já não é esta; vale como história.
 
-## Estado
+## O que faz
 
-**Fase 1, fundação do MVP.** Inclui:
-
-- 🔐 Autenticação Auth.js (Google + Microsoft) com **allow-list de 2 emails**.
-- ➕ **Entrada manual rápida** de despesas (botão a um toque, 50/50 ou %).
-- ⚖️ **Saldo** "quem deve a quem", sempre **explicável** até cada despesa/acerto.
-- 🤝 **Acertos** com histórico.
-- 📋 **Lista** de despesas com filtros e pesquisa.
-- 🏷️ **Motor de classificação** por regras (partilhada/pessoal + categoria).
-- 📱 **PWA** instalável (Android/iOS), responsiva.
-- 🗄️ **Schema Supabase** (Postgres) com **RLS** e modelo de dados completo.
-- ✅ **41 testes** à lógica crítica (dedup, saldo, divisão, classificação).
-
-O que falta para fechar o MVP e as fases seguintes está em `DECISOES.md` e
-`REQUISITOS.md §10`.
+- **Despesas**: entrada rápida, importação de extratos (Excel, CSV, PDF do
+  cartão Universo) com deteção de colunas e formatos aprendidos, classificação
+  por regras, recorrentes, metas.
+- **Saldo** "quem deve a quem", sempre **explicável** até cada despesa e acerto.
+  Acrescentar alguém a um ambiente não reescreve o histórico: escolhe-se se
+  divide tudo, a partir de uma data, ou só dali para a frente.
+- **Ambientes** (multi-inquilino) com participantes, convites e dois papéis:
+  `full`, que participa no saldo, e `submitter`, que só submete despesas para
+  aprovação.
+- **Património**: bens, investimentos, movimentos de corretora, cotações
+  automáticas, câmbio, dívidas com amortização, rendimentos, comparação com
+  índices e calculadora FIRE.
+- **Relatórios** e exportação CSV.
+- **PWA** instalável (Android/iOS), responsiva.
+- **Landing pública** em [rachar.pt](https://rachar.pt), com capturas de ecrã
+  geradas a partir da própria app (`npm run shots`).
 
 ## Stack
 
 Next.js 14 (App Router) · React 18 · TypeScript · Tailwind · Auth.js (NextAuth v5)
-· Supabase (Postgres + RLS) · Vitest · Zod.
+· Supabase (Postgres + Storage) · Vitest · Zod.
+
+Entra-se com **email e palavra-chave**. Os fornecedores Google e Microsoft estão
+configurados no Auth.js mas ainda **não têm botão na interface**.
 
 ## Arranque rápido (modo mock, sem Supabase)
 
-A app arranca navegável de ponta a ponta com dados de exemplo, sem precisar de
-configurar Supabase nem OAuth.
+A app arranca navegável de ponta a ponta com dados de exemplo, sem Supabase.
 
 ```bash
 npm install
-cp .env.example .env.local      # já vem pronto para modo mock + dev login
+cp .env.example .env.local
 npm run dev                     # http://localhost:3000
 ```
 
-Na página de login, usa **"Modo de desenvolvimento"** para entrar como Tiago ou
-Clara (sem SSO real). Variáveis relevantes no `.env.local`:
+No `.env.local`, para desenvolvimento local:
 
 ```ini
 AUTH_SECRET="<gera com: openssl rand -base64 32>"
+AUTH_URL="http://localhost:3000"   # senão os redirecionamentos vão para produção
 ALLOWED_EMAILS="tiago@example.com,clara@example.com"
-AUTH_DEV_LOGIN="true"     # entra sem SSO (apenas dev!)
-APP_DATA_MODE="mock"      # repositório em memória, com seed
+APP_DATA_MODE="mock"               # repositório em memória, com seed
 ```
 
-## Configurar SSO real + Supabase (produção)
+Entra com um dos emails do `ALLOWED_EMAILS` e a palavra-chave **`demo1234`**,
+que vem já definida nos dados de exemplo.
+
+> A primeira entrada **já não** define a palavra-chave: fazia-o enquanto a app
+> era de duas pessoas conhecidas, e com contas convidadas passou a ser uma
+> janela para quem soubesse o email ficar com a conta alheia. Passa pelo mesmo
+> caminho da reposição, que prova que a pessoa recebe o email daquele endereço.
+> Em modo mock isso deixaria ninguém entrar, por isso as contas de exemplo
+> trazem a palavra-chave já definida (só nesse modo).
+
+> **O `AUTH_URL` local não é um detalhe.** Com um URL `https`, o Auth.js marca
+> os cookies de sessão como `Secure` e o browser recusa-os em
+> `http://localhost`. O login falha **sem dar erro**: volta à página de login
+> como se a palavra-chave estivesse errada.
+
+Os dados de exemplo cobrem a app toda (despesas de um ano, património,
+investimentos com movimentos datados, cotações e rendimentos), para nenhum ecrã
+abrir vazio.
+
+## Configurar Supabase (produção)
 
 1. **Supabase**: cria um projeto. Em *Project Settings → API* copia o URL, a
    `anon key` e a `service_role key` para o `.env.local`.
-2. Aplica o schema e o seed de referência:
-   - SQL Editor → cola `supabase/migrations/0001_init.sql` e corre.
-   - SQL Editor → cola `supabase/seed.sql` (atualiza os emails para os reais).
-   - Ou, com o **Supabase CLI**: `supabase db push`.
-3. **OAuth**: cria credenciais Google e/ou Microsoft Entra ID e preenche
-   `AUTH_GOOGLE_*` / `AUTH_MICROSOFT_ENTRA_ID_*` no `.env.local`.
-4. Define `ALLOWED_EMAILS` com os dois emails reais, `APP_DATA_MODE="supabase"`
-   e **remove** `AUTH_DEV_LOGIN`.
-5. (Opcional) Semear dados de exemplo no Supabase:
+2. Aplica **todas** as migrações de `supabase/migrations/`, por ordem — são 23,
+   e as despesas dependem de tabelas criadas na `0003`. Com o **Supabase CLI**:
+   `supabase db push`.
+3. Define `APP_DATA_MODE="supabase"` e `AUTH_URL` com o domínio real.
+4. Define `CRON_SECRET` — sem ele a rota de cron responde 503 e as cotações não
+   se atualizam sozinhas.
+5. (Opcional) Semear dados de exemplo:
    ```bash
    npm run seed
    ```
+
+Para SSO, preenche `AUTH_GOOGLE_*` / `AUTH_MICROSOFT_ENTRA_ID_*` — mas nota que
+falta a interface, por isso as credenciais sozinhas não chegam.
 
 ## Scripts
 
@@ -77,38 +102,64 @@ npm run lint        # ESLint
 npm run typecheck   # TypeScript (tsc --noEmit)
 npm test            # testes (Vitest)
 npm run seed        # semear o Supabase (requer credenciais)
+npm run shots       # refazer as capturas da landing (ver o cabeçalho do script)
 ```
+
+As capturas da landing são a app a correr em modo mock. Sempre que um desses
+ecrãs mudar de aspeto, vale a pena voltar a correr o `npm run shots`: uma
+landing com capturas de uma versão que já não existe promete o que não entrega.
 
 ## Estrutura
 
 ```
 src/
   app/                  # rotas (App Router)
-    (app)/              # área autenticada: dashboard, despesas, acertos, saldo
-    login/              # landing de login (única página "pública")
-    api/auth/           # rotas do Auth.js
+    (app)/              # área autenticada
+    login/  recuperar/  privacidade/  termos/   # públicas, com a landing em /
+    api/                # auth, cron, export, fx, recibos
+    error.tsx  global-error.tsx  not-found.tsx  # ecrãs de falha
   components/           # componentes de UI
+    landing/            # só da página pública (molduras, revelação ao scroll)
   lib/
-    domain/             # ⭐ lógica de domínio pura + testes (dedup, saldo, divisão, classificação)
+    domain/             # ⭐ lógica pura + testes (saldo, divisão, dedup, posições, câmbio)
+    import/             # leitura de ficheiros e deteção de colunas (+ testes)
     data/               # interface Repository + Mock + Supabase + seed
-    auth.ts             # configuração Auth.js + allow-list
-    services/           # serviços (ex.: saldo do agregado)
-supabase/
-  migrations/0001_init.sql   # modelo de dados + RLS
-  seed.sql                   # dados de referência
-scripts/seed.ts              # seed do Supabase
+    services/           # serviços que juntam dados e domínio
+    public-routes.ts    # o que se alcança sem sessão (com testes)
+supabase/migrations/    # modelo de dados, por ordem
+scripts/
+  seed.ts               # seed do Supabase
+  shots.mjs             # capturas da landing, tiradas da app a correr
+public/landing/         # essas capturas, em WebP (clara e escura de cada cena)
 ```
 
 ## Invariantes (nunca violar)
 
-- Deduplicação por **UID estável**: a mesma transação nunca entra duas vezes.
+- Deduplicação por **UID estável**: a mesma transação nunca entra duas vezes —
+  e duas transações diferentes nunca viram uma.
 - Entradas manuais **nunca** são reclassificadas automaticamente.
 - "**Quem pagou**" é independente de "**como se divide**".
-- O **saldo** é sempre **explicável** até às despesas que o compõem.
-- Nada acessível sem sessão; só os 2 emails autorizados entram.
+- O **saldo** é sempre **explicável**, e mexer nos membros não reescreve o
+  passado.
+- **Sem taxa de câmbio não se grava preço nenhum.**
+- A IA escolhe **colunas**, nunca lê valores.
+- **Um limite nunca apaga nada:** impede de criar mais, o que lá está fica.
+- Uma página pública **verifica-se sem sessão**, não se assume: quem testa está
+  quase sempre autenticado, e foi assim que as páginas legais e a recuperação de
+  palavra-chave passaram tempo a redirecionar para o login sem ninguém notar.
 
-## Privacidade
+## Privacidade e segurança
 
-Dados acessíveis só aos dois utilizadores, atrás de SSO + allow-list. Sem
-indexação pública (`X-Robots-Tag: noindex`). Recibos/ficheiros em armazenamento
-privado. Ver `DECISOES.md` para a estratégia de RLS.
+Fora as páginas públicas (landing, login, recuperação e páginas legais), nada é
+acessível sem sessão. Recibos em armazenamento privado, servidos por URL
+assinado. Sem indexação (`X-Robots-Tag: noindex`).
+
+**O RLS não é a fronteira entre ambientes.** Toda a app fala com o Supabase pela
+chave de serviço, que o ignora; as políticas existem mas nenhuma olha para o
+`space_id`. O isolamento é o `space_id` que o código passa a cada consulta — uma
+consulta por `id` sem filtrar o ambiente é uma falha de segurança. Ver
+`src/lib/data/isolation.test.ts`.
+
+As capturas de ecrã da landing são **dados de exemplo do modo mock**, com
+participantes chamados André e Maria: são imagens numa página pública e não
+levam lá dados de ninguém.

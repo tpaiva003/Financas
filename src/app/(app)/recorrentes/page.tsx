@@ -62,6 +62,7 @@ export default async function RecorrentesPage() {
     return {
       id: t.id,
       description: t.description,
+      // dinheiro: o RecurringTemplates tapa este rótulo onde o desenha.
       amountLabel: t.valueType === "variable"
         ? (t.amountCents ? `~${formatCents(t.amountCents)}` : "Variável")
         : formatCents(t.amountCents ?? 0),

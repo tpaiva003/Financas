@@ -6,14 +6,16 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { normalizeText, stableUid } from "@/lib/domain";
-import type { SpacePlan } from "@/lib/domain";
+import { buildCrescimento, isTicketStatus, lerCenarios, normalizeText, stableUid } from "@/lib/domain";
+import type { EtapaAvaliacao, SpacePlan, TicketStatus } from "@/lib/domain";
 import type { Currency, Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
 import type {
   AddMemberInput,
   AppUser,
   Category,
   ContactMessage,
+  RetentionRow,
+  WaitlistEntry,
   CreateImportBatchInput,
   ImportBatch,
   ImportTemplate,
@@ -24,8 +26,25 @@ import type {
   StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
+  CreateNetWorthSnapshot,
+  NetWorthSnapshotRow,
+  AssetAttachment,
+  CreateAssetAttachment,
+  Ticket,
+  TicketMessage,
+  StoredAssetSplit,
+  CreateAssetSplitInput,
+  StoredValuation,
+  CreateValuationInput,
+  UpdateValuationInput,
+  ValuationEstudo,
+  ValuationAttachment,
+  CreateValuationAttachment,
+  CreateTicketInput,
+  CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
+  UpdateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -72,15 +91,33 @@ export async function todasAsLinhas<T>(
     ate: number,
   ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
-  const todas: T[] = [];
+  // As páginas seguintes vão em lotes paralelos que DOBRAM: 1, 2, 4, 8. A
+  // versão em série somava uma latência por página — cem páginas eram cem idas
+  // à rede encadeadas — e era o multiplicador escondido de todas as leituras
+  // grandes. A rampa preserva o custo das leituras pequenas (mil linhas
+  // continuam a ser dois pedidos) e o `Promise.all` preserva a ordem das
+  // páginas, por isso as linhas continuam a sair pela ordem da consulta.
+  const primeira = await pagina(0, PAGINA - 1);
+  if (primeira.error) throw new Error(primeira.error.message);
+  const todas: T[] = [...(primeira.data ?? [])];
+  if (todas.length < PAGINA) return todas;
+
+  let lote = 1;
   // Um tecto de sanidade: mesmo que algo corra mal, isto não fica a rodar.
-  for (let de = 0; de < 200_000; de += PAGINA) {
-    const { data, error } = await pagina(de, de + PAGINA - 1);
-    if (error) throw new Error(error.message);
-    const linhas = data ?? [];
-    todas.push(...linhas);
-    // Uma página incompleta é a última: não há forma mais barata de saber.
-    if (linhas.length < PAGINA) break;
+  let de = PAGINA;
+  while (de < 200_000) {
+    const resultados = await Promise.all(
+      Array.from({ length: lote }, (_, i) => pagina(de + i * PAGINA, de + (i + 1) * PAGINA - 1)),
+    );
+    for (const { data, error } of resultados) {
+      if (error) throw new Error(error.message);
+      const linhas = data ?? [];
+      todas.push(...linhas);
+      // Uma página incompleta é a última: não há forma mais barata de saber.
+      if (linhas.length < PAGINA) return todas;
+    }
+    de += PAGINA * lote;
+    lote = Math.min(lote * 2, 8);
   }
   return todas;
 }
@@ -183,35 +220,47 @@ function rowToSettlement(r: any): Settlement {
 export class SupabaseRepository implements Repository {
   async listSpacesForUser(userId: string): Promise<Space[]> {
     const db = getSupabaseAdmin();
-    const { data: mem, error: e1 } = await db
-      .from("members")
-      .select("space_id")
-      .eq("linked_user_id", userId);
-    if (e1) throw new Error(e1.message);
-    const ids = [...new Set((mem ?? []).map((m: any) => m.space_id))];
-    if (ids.length === 0) return [];
-    // A coluna `position` pode não existir se a migração 0010 ainda não correu.
-    let rows: any[] | null = null;
-    const ordered = await db
-      .from("spaces")
-      .select("*")
-      .in("id", ids)
-      .order("position")
-      .order("created_at");
-    if (ordered.error) {
-      const fallback = await db.from("spaces").select("*").in("id", ids).order("created_at");
-      if (fallback.error) throw new Error(fallback.error.message);
-      rows = fallback.data;
-    } else {
-      rows = ordered.data;
+    /**
+     * UMA ida, com o embed do PostgREST, em vez de duas encadeadas (members →
+     * spaces). Isto corre no getSpaceContext, ou seja, em TODAS as páginas —
+     * era a latência mais repetida da app inteira. Paginada na mesma pelo
+     * `todasAsLinhas` (na prática é sempre uma página só): uma leitura cortada
+     * aos mil esconderia ambientes sem se queixar.
+     */
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("members")
+        .select("space_id, spaces!inner(*)")
+        .eq("linked_user_id", userId)
+        .order("id")
+        .range(de, ate),
+    );
+
+    const vistos = new Set<string>();
+    const rows: any[] = [];
+    for (const m of data ?? []) {
+      const s = (m as any).spaces;
+      if (!s || vistos.has(s.id)) continue;
+      vistos.add(s.id);
+      rows.push(s);
     }
-    return (rows ?? []).map((r: any) => ({
+    // A coluna `position` pode não existir se a migração 0010 ainda não
+    // correu — o `?? 0` no map já a trata; ordena-se como o SQL ordenava.
+    rows.sort((a, b) => {
+      const pa = a.position ?? 0;
+      const pb = b.position ?? 0;
+      if (pa !== pb) return pa - pb;
+      return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    });
+    return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       position: r.position ?? 0,
       plan: (r.plan as SpacePlan) ?? "free",
       createdBy: r.created_by,
       createdAt: r.created_at,
+      frozenAt: r.frozen_at ?? null,
+      lastActivityAt: r.last_activity_at ?? null,
     }));
   }
 
@@ -226,6 +275,8 @@ export class SupabaseRepository implements Repository {
       plan: (data.plan as SpacePlan) ?? "free",
       createdBy: data.created_by,
       createdAt: data.created_at,
+      frozenAt: data.frozen_at ?? null,
+      lastActivityAt: data.last_activity_at ?? null,
     };
   }
 
@@ -276,19 +327,17 @@ export class SupabaseRepository implements Repository {
 
   async listMembers(spaceId: string): Promise<Member[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("members")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("members").select("*").eq("space_id", spaceId).order("created_at").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       spaceId: r.space_id,
       name: r.name,
       linkedUserId: r.linked_user_id,
       email: r.email,
       role: (r.role ?? "full") as Member["role"],
+      participatesFrom: r.participates_from ?? null,
     }));
   }
 
@@ -302,6 +351,7 @@ export class SupabaseRepository implements Repository {
         name: input.name,
         linked_user_id: input.linkedUserId ?? null,
         email: input.email ?? null,
+        participates_from: input.participatesFrom ?? null,
       })
       .select("*")
       .single();
@@ -312,6 +362,7 @@ export class SupabaseRepository implements Repository {
       name: data.name,
       linkedUserId: data.linked_user_id,
       email: data.email,
+      participatesFrom: data.participates_from ?? null,
     };
   }
 
@@ -322,6 +373,7 @@ export class SupabaseRepository implements Repository {
     if (patch.email !== undefined) update.email = patch.email;
     if (patch.role !== undefined) update.role = patch.role;
     if (patch.linkedUserId !== undefined) update.linked_user_id = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) update.participates_from = patch.participatesFrom;
     if (Object.keys(update).length === 0) return;
     const { error } = await db
       .from("members")
@@ -337,17 +389,21 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async countMemberActivity(memberId: string): Promise<number> {
+  async countMemberActivity(memberId: string, spaceId: string): Promise<number> {
     const db = getSupabaseAdmin();
+    // O filtro pelo ambiente vive AQUI, não no chamador: a regra da casa não
+    // admite métodos que procurem por id e confiem que quem chama validou.
     const exp = await db
       .from("expenses")
       .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId)
       .is("deleted_at", null)
       .or(`payer_id.eq.${memberId},owner_id.eq.${memberId}`);
     if (exp.error) throw new Error(exp.error.message);
     const set = await db
       .from("settlements")
       .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId)
       .or(`from_user_id.eq.${memberId},to_user_id.eq.${memberId}`);
     if (set.error) throw new Error(set.error.message);
     return (exp.count ?? 0) + (set.count ?? 0);
@@ -367,7 +423,14 @@ export class SupabaseRepository implements Repository {
       if (filters.payerId) q = q.eq("payer_id", filters.payerId);
       if (filters.kind) q = q.eq("kind", filters.kind);
 
-      return q.order("transaction_date", { ascending: false }).range(de, ate);
+      // O desempate pelo id importa: as páginas agora vêm em paralelo, e sem
+      // ordem TOTAL duas despesas do mesmo dia podem trocar de página entre
+      // duas consultas — uma entra duas vezes, outra desaparece, e o saldo
+      // fica errado em silêncio. Como nos acertos e nos anexos.
+      return q
+        .order("transaction_date", { ascending: false })
+        .order("id")
+        .range(de, ate);
     });
 
     let rows = (data ?? []).map(rowToExpense);
@@ -382,9 +445,14 @@ export class SupabaseRepository implements Repository {
     return rows;
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("expenses").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await db
+      .from("expenses")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
     const e = rowToExpense(data);
@@ -441,6 +509,7 @@ export class SupabaseRepository implements Repository {
 
   async updateExpense(
     id: string,
+    spaceId: string,
     input: import("./repository").UpdateExpenseInput,
   ): Promise<void> {
     const db = getSupabaseAdmin();
@@ -458,22 +527,28 @@ export class SupabaseRepository implements Repository {
         visible_to_partner: input.visibleToPartner ?? false,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
     const db = getSupabaseAdmin();
-    const { error } = await db.from("expenses").update({ receipt_path: path }).eq("id", id);
+    const { error } = await db
+      .from("expenses")
+      .update({ receipt_path: path })
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ deleted_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -502,24 +577,22 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ amount_cents: amountCents, status: "confirmed" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
   async listRecurring(spaceId: string): Promise<RecurringTemplate[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("recurring_templates")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("next_date");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToRecurring);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("recurring_templates").select("*").eq("space_id", spaceId).order("next_date").range(de, ate),
+    );
+    return data.map(rowToRecurring);
   }
 
   async getRecurring(id: string, spaceId: string): Promise<RecurringTemplate | null> {
@@ -592,12 +665,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+  async recurringExpenseExists(
+    recurringId: string,
+    spaceId: string,
+    transactionDate: string,
+  ): Promise<boolean> {
     const db = getSupabaseAdmin();
     const { count, error } = await db
       .from("expenses")
       .select("id", { count: "exact", head: true })
       .eq("recurring_id", recurringId)
+      .eq("space_id", spaceId)
       .eq("transaction_date", transactionDate)
       .is("deleted_at", null);
     if (error) throw new Error(error.message);
@@ -606,6 +684,7 @@ export class SupabaseRepository implements Repository {
 
   async updateExpensesForRecurring(
     recurringId: string,
+    spaceId: string,
     patch: { description: string; categoryId: string | null; payerId: string; split: Split },
     amount?: { cents: number; onlyPending: boolean },
   ): Promise<void> {
@@ -622,6 +701,7 @@ export class SupabaseRepository implements Repository {
       .from("expenses")
       .update(base)
       .eq("recurring_id", recurringId)
+      .eq("space_id", spaceId)
       .is("deleted_at", null);
     if (e1) throw new Error(e1.message);
 
@@ -631,6 +711,7 @@ export class SupabaseRepository implements Repository {
         .from("expenses")
         .update({ amount_cents: amount.cents })
         .eq("recurring_id", recurringId)
+        .eq("space_id", spaceId)
         .is("deleted_at", null);
       if (amount.onlyPending) q = q.eq("status", "pending");
       const { error: e2 } = await q;
@@ -640,13 +721,19 @@ export class SupabaseRepository implements Repository {
 
   async listSettlements(spaceId: string): Promise<Settlement[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("settlements")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("date", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToSettlement);
+    // Paginado porque o saldo se calcula sobre isto, em par com listExpenses:
+    // ao milésimo primeiro acerto, os mais antigos desapareciam do saldo em
+    // silêncio — e o saldo tem de ser sempre explicável.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("settlements")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("date", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    );
+    return data.map(rowToSettlement);
   }
 
   async createSettlement(input: CreateSettlementInput): Promise<Settlement> {
@@ -671,13 +758,14 @@ export class SupabaseRepository implements Repository {
 
   async listCategories(spaceId?: string): Promise<Category[]> {
     const db = getSupabaseAdmin();
-    let query = db.from("categories").select("*").order("name");
-    query = spaceId
-      ? query.or(`space_id.is.null,space_id.eq.${spaceId}`)
-      : query.is("space_id", null);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let query = db.from("categories").select("*").order("name").order("id");
+      query = spaceId
+        ? query.or(`space_id.is.null,space_id.eq.${spaceId}`)
+        : query.is("space_id", null);
+      return query.range(de, ate);
+    });
+    return data.map((r: any) => ({
       id: r.id,
       name: r.name,
       color: r.color,
@@ -729,12 +817,10 @@ export class SupabaseRepository implements Repository {
 
   async listClassificationRules(): Promise<ClassificationRule[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("classification_rules")
-      .select("*")
-      .order("priority");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("classification_rules").select("*").order("priority").order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       keyword: r.keyword,
       categoryId: r.category_id,
@@ -786,12 +872,17 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db
       .from("expenses")
       .update({ approval_status: status === "approved" ? null : "rejected" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
 
@@ -809,11 +900,162 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async touchSpaceActivity(spaceId: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("spaces")
+      .update({ last_activity_at: atISO })
+      .eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listSpacesForRetention(): Promise<RetentionRow[]> {
+    const db = getSupabaseAdmin();
+    // `neq` sozinho deixaria de fora as linhas com `plan` nulo, que são
+    // gratuitas — em Postgres nada é igual nem diferente de `null`. Um ambiente
+    // sem plano é o caso mais antigo que existe, e era exactamente o que ficava
+    // de fora da retenção sem ninguém dar por isso.
+    const linhas = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("spaces")
+        .select("id, name, plan, created_at, last_activity_at, retention_warned_at, frozen_at")
+        .or("plan.is.null,plan.neq.full")
+        .order("created_at")
+        .range(de, ate),
+    );
+    if (linhas.length === 0) return [];
+
+    // Os emails de quem participa, numa leitura só. Um `select` por ambiente
+    // dentro do ciclo era o mesmo erro que já custou 48 idas à base de dados
+    // por cada abertura do património.
+    const membros = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("members")
+        .select("space_id, email")
+        .in(
+          "space_id",
+          linhas.map((l) => l.id),
+        )
+        .range(de, ate),
+    );
+    const porAmbiente = new Map<string, string[]>();
+    for (const m of membros) {
+      if (!m.email) continue;
+      const lista = porAmbiente.get(m.space_id) ?? [];
+      lista.push(m.email);
+      porAmbiente.set(m.space_id, lista);
+    }
+
+    return linhas.map((r) => ({
+      id: r.id,
+      name: r.name,
+      plan: (r.plan as SpacePlan) ?? "free",
+      createdAt: r.created_at,
+      lastActivityAt: r.last_activity_at ?? null,
+      retentionWarnedAt: r.retention_warned_at ?? null,
+      frozenAt: r.frozen_at ?? null,
+      emails: [...new Set(porAmbiente.get(r.id) ?? [])],
+    }));
+  }
+
+  async markRetentionWarned(spaceId: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("spaces")
+      .update({ retention_warned_at: atISO })
+      .eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setSpaceFrozen(spaceId: string, atISO: string | null): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("spaces").update({ frozen_at: atISO }).eq("id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.rpc("registar_tentativa", {
+      p_chave: chave,
+      p_janela_ms: janelaMs,
+      p_tecto: tecto,
+    });
+    if (error) throw new Error(error.message);
+    return Boolean(data);
+  }
+
+  async countAppUsersCreatedOn(day: string): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("app_users")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", `${day}T00:00:00Z`)
+      .lt("created_at", `${day}T23:59:59.999Z`);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  async addToWaitlist(input: {
+    email: string;
+    name?: string | null;
+    consent: boolean;
+    source?: string | null;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    const email = input.email.trim().toLowerCase();
+    // Insistir não faz subir na fila: quem já lá está fica com a data de
+    // entrada original. O `ignoreDuplicates` é o que garante que uma segunda
+    // submissão não reescreve o `created_at` de quem esperou mais tempo.
+    const { error } = await db
+      .from("waitlist")
+      .upsert(
+        {
+          email,
+          name: input.name?.trim() || null,
+          consent: input.consent,
+          source: input.source ?? null,
+        },
+        { onConflict: "email", ignoreDuplicates: true },
+      );
+    if (error) throw new Error(error.message);
+  }
+
+  async listWaitlist(): Promise<WaitlistEntry[]> {
+    const db = getSupabaseAdmin();
+    const linhas = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("waitlist")
+        .select("email, name, consent, source, created_at, invited_at")
+        .order("created_at")
+        .range(de, ate),
+    );
+    return linhas.map((r) => ({
+      email: r.email,
+      name: r.name ?? null,
+      consent: Boolean(r.consent),
+      source: r.source ?? null,
+      createdAt: r.created_at,
+      invitedAt: r.invited_at ?? null,
+    }));
+  }
+
+  async markWaitlistInvited(email: string, atISO: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("waitlist")
+      .update({ invited_at: atISO })
+      .eq("email", email.trim().toLowerCase());
+    if (error) throw new Error(error.message);
+  }
+
   async listAppUsers(): Promise<AppUser[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("app_users").select("id, email, name").order("name");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
+    // Paginado: com o registo aberto isto cresce com a plataforma, e cortado
+    // escondia contas — "Conta desconhecida" ao associar um participante.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("app_users").select("id, email, name").order("name").order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({ id: r.id, email: r.email, name: r.name }));
   }
 
   async findImportTemplate(fingerprint: string): Promise<ImportTemplate | null> {
@@ -854,23 +1096,18 @@ export class SupabaseRepository implements Repository {
 
   async listImportTemplates(): Promise<ImportTemplate[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_templates")
-      .select("*")
-      .order("uses", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToTemplate);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("import_templates").select("*").order("uses", { ascending: false }).order("id").range(de, ate),
+    );
+    return data.map(rowToTemplate);
   }
 
   async listImportReminders(spaceId: string): Promise<ImportReminder[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_reminders")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("source");
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("import_reminders").select("*").eq("space_id", spaceId).order("source").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       spaceId: r.space_id,
       source: r.source,
@@ -918,12 +1155,10 @@ export class SupabaseRepository implements Repository {
   async listMembershipsInSpaces(spaceIds: string[]): Promise<Membership[]> {
     if (spaceIds.length === 0) return [];
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("members")
-      .select("space_id, linked_user_id")
-      .in("space_id", spaceIds);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("members").select("space_id, linked_user_id").in("space_id", spaceIds).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       spaceId: r.space_id as string,
       linkedUserId: (r.linked_user_id as string | null) ?? null,
     }));
@@ -957,18 +1192,54 @@ export class SupabaseRepository implements Repository {
       return null;
     }
 
+    /**
+     * O mesmo, mas por páginas.
+     *
+     * **A consola contava até mil e calava-se.** O PostgREST corta em mil
+     * linhas sem avisar, e nenhuma destas leituras pedia páginas: acima disso,
+     * "despesas" ficava em 1000 para sempre e os ambientes que sobrassem
+     * apareciam sem uma única despesa. Um tecto que se apresenta como total é
+     * o modo de falha nº 1 desta app, e a consola era o sítio onde ele estava
+     * mais à vontade — ninguém confere um número de gestão contra nada.
+     */
+    async function readAll<T>(
+      label: string,
+      pagina: (
+        de: number,
+        ate: number,
+      ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+    ): Promise<T[] | null> {
+      try {
+        return await todasAsLinhas<T>(pagina);
+      } catch (e) {
+        warnings.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    }
+
     const [spaceRows, memberRows, expenseRows, accountRows] = await Promise.all([
-      read<{ id: string; name: string; created_at: string }>("ambientes", () =>
-        db.from("spaces").select("id, name, created_at"),
+      readAll<{ id: string; name: string; created_at: string }>("ambientes", (de, ate) =>
+        db.from("spaces").select("id, name, created_at").range(de, ate),
       ),
-      read<{ space_id: string; linked_user_id: string | null }>("participantes", () =>
-        db.from("members").select("space_id, linked_user_id"),
+      readAll<{ space_id: string; linked_user_id: string | null }>("participantes", (de, ate) =>
+        db.from("members").select("space_id, linked_user_id").range(de, ate),
       ),
       // Só o que é preciso para contar e datar: nunca descrições nem valores.
-      read<{ space_id: string; transaction_date: string }>("despesas", () =>
-        db.from("expenses").select("space_id, transaction_date").is("deleted_at", null),
+      // O `created_at` é o que diz quando alguém USOU a app; o
+      // `transaction_date` diz quando a compra foi feita, e quem importa dois
+      // anos de extrato numa noite tem duas coisas muito diferentes.
+      readAll<{ space_id: string; transaction_date: string; created_at: string }>(
+        "despesas",
+        (de, ate) =>
+          db
+            .from("expenses")
+            .select("space_id, transaction_date, created_at")
+            .is("deleted_at", null)
+            .range(de, ate),
       ),
-      read<{ id: string }>("contas", () => db.from("app_users").select("id")),
+      readAll<{ id: string; created_at: string }>("contas", (de, ate) =>
+        db.from("app_users").select("id, created_at").range(de, ate),
+      ),
     ]);
 
     /**
@@ -988,8 +1259,12 @@ export class SupabaseRepository implements Repository {
 
     const featureRows = await Promise.all(
       FEATURES.map(async (f) => {
-        const { data } = await db.from(f.table).select("space_id");
-        return { ...f, rows: (data ?? []) as { space_id: string }[] };
+        // Também por páginas, e também com `created_at`: estas linhas são o
+        // que faz a curva de uso, e não só a contagem de quem usa o quê.
+        const rows = await todasAsLinhas<{ space_id: string; created_at: string }>((de, ate) =>
+          db.from(f.table).select("space_id, created_at").range(de, ate),
+        ).catch(() => [] as { space_id: string; created_at: string }[]);
+        return { ...f, rows };
       }),
     );
 
@@ -1042,8 +1317,34 @@ export class SupabaseRepository implements Repository {
         .filter((id): id is string => Boolean(id)),
     );
 
+    /**
+     * A curva de uso.
+     *
+     * Os eventos são todos os registos que entraram na app — despesas e o que
+     * cada funcionalidade criou — datados por `created_at`. Ver o cabeçalho do
+     * `plataforma.ts` para a razão de não ser `transaction_date`.
+     */
+    const crescimento =
+      spaceRows && accountRows
+        ? buildCrescimento({
+            hoje: new Date().toISOString().slice(0, 10),
+            contas: accountRows.map((a) => a.created_at).filter(Boolean),
+            ambientes: spaceRows.map((s) => ({ id: s.id, createdAt: s.created_at })),
+            eventos: [
+              ...(expenseRows ?? []).map((e) => ({
+                spaceId: e.space_id,
+                createdAt: e.created_at ?? e.transaction_date,
+              })),
+              ...featureRows.flatMap((f) =>
+                f.rows.map((r) => ({ spaceId: r.space_id, createdAt: r.created_at })),
+              ),
+            ].filter((e) => e.spaceId && e.createdAt),
+          })
+        : null;
+
     return {
       accountCount: accountRows ? accountRows.length : null,
+      crescimento,
       spaceCount: spaceRows ? spaces.length : null,
       expenseCount: expenseRows ? expenseRows.length : null,
       activeSpaces:
@@ -1067,12 +1368,10 @@ export class SupabaseRepository implements Repository {
 
   async listSpendingGoals(spaceId: string): Promise<SpendingGoal[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("spending_goals")
-      .select("*")
-      .eq("space_id", spaceId);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => ({
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("spending_goals").select("*").eq("space_id", spaceId).order("id").range(de, ate),
+    );
+    return data.map((r) => ({
       id: r.id as string,
       spaceId: r.space_id as string,
       categoryId: (r.category_id as string | null) ?? null,
@@ -1126,13 +1425,152 @@ export class SupabaseRepository implements Repository {
 
   async listAssets(spaceId: string): Promise<Asset[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("assets")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at");
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("assets").select("*").eq("space_id", spaceId).order("created_at").order("id").range(de, ate),
+    );
+
+    /**
+     * A ordem escolhida à mão aplica-se **aqui**, e não no SQL.
+     *
+     * Ordenar por `sort_order` na consulta parecia mais limpo e apagou o
+     * património todo do ecrã: enquanto a migração `0030` não estivesse
+     * aplicada, a coluna não existia, o Postgres recusava a consulta inteira, e
+     * o `.catch(() => [])` de quem chama transformava isso em "não tens bens
+     * nenhuns". Um erro de esquema não pode parecer uma conta vazia.
+     *
+     * Em JavaScript, uma coluna que ainda não existe é um `undefined` — e
+     * `undefined` quer dizer exatamente o que a coluna quer dizer quando é
+     * nula: "nunca foi mexido, manda a data de criação".
+     */
+    const bens = (data ?? []).map(rowToAsset);
+    return bens
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => {
+        const ax = x.a.sortOrder ?? null;
+        const ay = y.a.sortOrder ?? null;
+        if (ax !== null && ay !== null) return ax - ay || x.i - y.i;
+        if (ax !== null) return -1;
+        if (ay !== null) return 1;
+        return x.i - y.i;
+      })
+      .map((x) => x.a);
+  }
+
+  async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
+    const db = getSupabaseAdmin();
+    // Paginado de propósito: uma fotografia por dia passa as mil linhas ao fim
+    // de três anos, e o Supabase corta nas mil sem avisar. Cortado, o gráfico
+    // perdia o princípio da série e ninguém percebia porquê.
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("net_worth_snapshots")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("on_date")
+        .range(de, ate),
+    );
+    return rows.map(rowToSnapshot);
+  }
+
+  async saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void> {
+    const db = getSupabaseAdmin();
+    // Uma por dia e por ambiente: a do dia substitui a anterior em vez de
+    // acrescentar um ponto sobreposto ao gráfico.
+    const { error } = await db.from("net_worth_snapshots").upsert(
+      {
+        // Determinístico: a fotografia de um dia é sempre a mesma linha. Com um
+        // uuid novo a cada gravação, o upsert reescrevia a chave primária todos
+        // os dias — funciona, mas deixa de haver forma de apontar para a linha.
+        id: `nw_${input.spaceId}_${input.onDate}`,
+        space_id: input.spaceId,
+        on_date: input.onDate,
+        assets_cents: input.assetsCents,
+        debts_cents: input.debtsCents,
+        net_cents: input.netCents,
+        breakdown: input.breakdown ?? null,
+      },
+      { onConflict: "space_id,on_date" },
+    );
     if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToAsset);
+  }
+
+  async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
+    const db = getSupabaseAdmin();
+    const data = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("asset_attachments").select("*").eq("space_id", spaceId);
+      if (assetId) q = q.eq("asset_id", assetId);
+      return q.order("created_at").order("id").range(de, ate);
+    });
+    return data.map(rowToAttachment);
+  }
+
+  async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
+    const db = getSupabaseAdmin();
+    // Numa consulta só: ver o comentário na interface.
+    const { data, error } = await db
+      .from("asset_attachments")
+      .select("*")
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToAttachment(data) : null;
+  }
+
+  async createAssetAttachment(input: CreateAssetAttachment): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("asset_attachments").insert({
+      id: input.id,
+      space_id: input.spaceId,
+      asset_id: input.assetId,
+      file_name: input.fileName,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      storage_path: input.storagePath,
+      status: input.status,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async markAssetAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("asset_attachments")
+      .update({ status: "pronto" })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async moveAssetAttachments(
+    fromAssetId: string,
+    toAssetId: string,
+    spaceId: string,
+  ): Promise<number> {
+    const db = getSupabaseAdmin();
+    // O `space_id` filtra a escrita, como em todas as outras: um id vindo de um
+    // formulário não é prova de nada. O `select()` devolve as linhas mexidas,
+    // que é como se sabe quantas foram — sem ele, contar-se-iam as que se
+    // esperava ter mexido, que é outra coisa.
+    const { data, error } = await db
+      .from("asset_attachments")
+      .update({ asset_id: toAssetId })
+      .eq("asset_id", fromAssetId)
+      .eq("space_id", spaceId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    return data?.length ?? 0;
+  }
+
+  async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("asset_attachments")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
   }
 
   async createAsset(input: CreateAssetInput): Promise<Asset> {
@@ -1155,7 +1593,22 @@ export class SupabaseRepository implements Repository {
         monthly_payment_cents: input.monthlyPaymentCents ?? null,
         term_months: input.termMonths ?? null,
         rate_kind: input.rateKind ?? null,
+        maturity_date: input.maturityDate ?? null,
+        credit_terms: input.creditTerms ?? null,
+        ownership_pct: input.ownershipPct ?? null,
+        co_owner_member_id: input.coOwnerMemberId ?? null,
+        area_m2: input.areaM2 ?? null,
+        location: input.location ?? null,
+        price_ref_cents: input.priceRefCents ?? null,
+        price_ref_source: input.priceRefSource ?? null,
+        price_ref_geocod: input.priceRefGeocod ?? null,
+        purchase_price_cents: input.purchasePriceCents ?? null,
+        works_cents: input.worksCents ?? null,
         symbol: input.symbol ?? null,
+        exchange: input.exchange ?? null,
+        logo_domain: input.logoDomain ?? null,
+        finances_asset_id: input.financesAssetId ?? null,
+        sort_order: input.sortOrder ?? null,
         created_by: input.createdBy ?? null,
       })
       .select("*")
@@ -1179,7 +1632,32 @@ export class SupabaseRepository implements Repository {
     if (patch.monthlyPaymentCents !== undefined) row.monthly_payment_cents = patch.monthlyPaymentCents;
     if (patch.termMonths !== undefined) row.term_months = patch.termMonths;
     if (patch.rateKind !== undefined) row.rate_kind = patch.rateKind;
+    if (patch.maturityDate !== undefined) row.maturity_date = patch.maturityDate;
+    if (patch.creditTerms !== undefined) row.credit_terms = patch.creditTerms;
+    if (patch.ownershipPct !== undefined) row.ownership_pct = patch.ownershipPct;
+    if (patch.coOwnerMemberId !== undefined) row.co_owner_member_id = patch.coOwnerMemberId;
+    if (patch.areaM2 !== undefined) row.area_m2 = patch.areaM2;
+    if (patch.location !== undefined) row.location = patch.location;
+    if (patch.priceRefCents !== undefined) row.price_ref_cents = patch.priceRefCents;
+    if (patch.priceRefSource !== undefined) row.price_ref_source = patch.priceRefSource;
+    if (patch.priceRefGeocod !== undefined) row.price_ref_geocod = patch.priceRefGeocod;
+    if (patch.purchasePriceCents !== undefined) row.purchase_price_cents = patch.purchasePriceCents;
+    if (patch.worksCents !== undefined) row.works_cents = patch.worksCents;
     if (patch.symbol !== undefined) row.symbol = patch.symbol;
+    if (patch.exchange !== undefined) row.exchange = patch.exchange;
+    if (patch.logoDomain !== undefined) row.logo_domain = patch.logoDomain;
+    if (patch.nextEarningsDate !== undefined) row.next_earnings_date = patch.nextEarningsDate;
+    if (patch.dividendDate !== undefined) row.dividend_date = patch.dividendDate;
+    if (patch.exDividendDate !== undefined) row.ex_dividend_date = patch.exDividendDate;
+    if (patch.marketDatesAt !== undefined) row.market_dates_at = patch.marketDatesAt;
+    if (patch.sector !== undefined) row.sector = patch.sector;
+    if (patch.industry !== undefined) row.industry = patch.industry;
+    if (patch.profileAt !== undefined) row.profile_at = patch.profileAt;
+    if (patch.financesAssetId !== undefined) row.finances_asset_id = patch.financesAssetId;
+    if (patch.contractedAmountCents !== undefined) {
+      row.contracted_amount_cents = patch.contractedAmountCents;
+    }
+    if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
     const { error } = await db.from("assets").update(row).eq("id", id).eq("space_id", spaceId);
     if (error) throw new Error(error.message);
   }
@@ -1197,7 +1675,9 @@ export class SupabaseRepository implements Repository {
     const data = await todasAsLinhas<any>((de, ate) => {
       let q = db.from("asset_trades").select("*").eq("space_id", spaceId);
       if (assetId) q = q.eq("asset_id", assetId);
-      return q.order("trade_date", { ascending: true }).range(de, ate);
+      // Desempate pelo id: ordem total, para as páginas paralelas não poderem
+      // duplicar nem perder movimentos do mesmo dia.
+      return q.order("trade_date", { ascending: true }).order("id").range(de, ate);
     });
     return data.map(rowToAssetTrade);
   }
@@ -1234,6 +1714,41 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
+  async updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = {};
+    // `trade_date`, não `date`: a coluna chama-se assim desde a 0016. Escrever
+    // o nome errado aqui fazia o PostgREST recusar a escrita inteira, e o ecrã
+    // dizia só "Não consegui gravar o movimento" — o erro certo, pela razão
+    // errada. O mock não apanha isto, porque guarda objetos e não colunas.
+    // `assetId` primeiro, e com razão para estar aqui: sem esta linha, mudar um
+    // movimento de investimento era um NÃO-FAZER-NADA silencioso. Nenhum erro,
+    // nenhum aviso, e a fusão de dois registos duplicados dizia "movi 12
+    // movimentos" com os doze exactamente onde estavam.
+    // `assetId` primeiro, e com razão para estar aqui: sem esta linha, mudar um
+    // movimento de investimento era um NÃO-FAZER-NADA silencioso. Nenhum erro,
+    // nenhum aviso, e a fusão de dois registos duplicados dizia "movi 12
+    // movimentos" com os doze exactamente onde estavam.
+    if (patch.assetId !== undefined) row.asset_id = patch.assetId;
+    if (patch.date !== undefined) row.trade_date = patch.date;
+    if (patch.kind !== undefined) row.kind = patch.kind;
+    if (patch.quantity !== undefined) row.quantity = patch.quantity;
+    if (patch.unitPriceCents !== undefined) row.unit_price_cents = patch.unitPriceCents;
+    if (patch.amountCents !== undefined) row.amount_cents = patch.amountCents;
+    if (patch.currency !== undefined) row.currency = patch.currency;
+    if (patch.originalAmountCents !== undefined) row.original_amount_cents = patch.originalAmountCents;
+    if (patch.fxRate !== undefined) row.fx_rate = patch.fxRate;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (Object.keys(row).length === 0) return;
+    // O `space_id` filtra a escrita: ver o comentário na interface.
+    const { error } = await db.from("asset_trades").update(row).eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   /**
    * As cotações de um símbolo, por ordem cronológica.
    *
@@ -1258,6 +1773,43 @@ export class SupabaseRepository implements Repository {
   }
 
   /**
+   * As séries de vários símbolos, numa consulta só. Ver a interface.
+   *
+   * Paginada, como todas as leituras que podem crescer: a tabela das cotações
+   * tem uma linha por dia e por símbolo, e cinquenta símbolos com anos de
+   * histórico passam das mil linhas muito à vontade. Uma leitura cortada aqui
+   * devolveria um histórico que começa a meio, sem se queixar.
+   */
+  async listQuotesFor(
+    symbols: readonly string[],
+    fromDate?: string,
+  ): Promise<Map<string, StoredQuote[]>> {
+    const fora = new Map<string, StoredQuote[]>();
+    const unicos = [...new Set(symbols.map((x) => x.trim().toLowerCase()).filter(Boolean))];
+    if (unicos.length === 0) return fora;
+
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("quotes").select("symbol, quote_date, close_cents").in("symbol", unicos);
+      if (fromDate) q = q.gte("quote_date", fromDate);
+      // A chave é (symbol, quote_date): só a data não é ordem total quando há
+      // vários símbolos, e as páginas paralelas precisam de ordem total.
+      return q.order("quote_date", { ascending: true }).order("symbol").range(de, ate);
+    });
+
+    for (const r of rows) {
+      const sym = String(r.symbol).trim().toLowerCase();
+      const lista = fora.get(sym) ?? [];
+      lista.push({
+        date: String(r.quote_date).slice(0, 10),
+        closeCents: Number(r.close_cents),
+      });
+      fora.set(sym, lista);
+    }
+    return fora;
+  }
+
+  /**
    * Só o último fecho.
    *
    * Existe para quem quer o preço de agora e não a série: atualizar o valor de um
@@ -1278,6 +1830,54 @@ export class SupabaseRepository implements Repository {
       date: String((data as any).quote_date).slice(0, 10),
       closeCents: Number((data as any).close_cents),
     };
+  }
+
+  async latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>> {
+    const fora = new Map<string, { date: string; closeCents: number; currency: string }>();
+    const unicos = [...new Set(symbols.map((s) => s.trim().toLowerCase()).filter(Boolean))];
+    if (unicos.length === 0) return fora;
+
+    const db = getSupabaseAdmin();
+    /**
+     * Um pedido curto por símbolo, em paralelo, e não uma consulta única.
+     *
+     * A versão única trazia TODAS as linhas de todos os símbolos ordenadas por
+     * data — ~100 000 linhas com dez anos de histórico — para ficar com uma
+     * por símbolo e deitar fora o resto. E como vinha paginada em série, eram
+     * ~100 idas à rede encadeadas, a cada visita ao património. Quarenta
+     * `limit(1)` em paralelo servem-se do índice (symbol, quote_date desc) e
+     * custam uma latência só.
+     */
+    const linhas = await Promise.all(
+      unicos.map(async (s) => {
+        const { data, error } = await db
+          .from("quotes")
+          .select("symbol, quote_date, close_cents, currency")
+          .eq("symbol", s)
+          .order("quote_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data as {
+          symbol: string;
+          quote_date: string;
+          close_cents: number;
+          currency?: string;
+        } | null;
+      }),
+    );
+
+    for (const r of linhas) {
+      if (!r) continue;
+      fora.set(String(r.symbol), {
+        date: String(r.quote_date).slice(0, 10),
+        closeCents: Number(r.close_cents),
+        currency: r.currency ?? "EUR",
+      });
+    }
+    return fora;
   }
 
   async quoteCurrency(symbol: string): Promise<string | null> {
@@ -1314,9 +1914,70 @@ export class SupabaseRepository implements Repository {
 
   async listAllAssetSymbols(): Promise<string[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from("assets").select("symbol").not("symbol", "is", null);
+    // Paginado: cresce com a plataforma inteira, não com um ambiente. Cortado,
+    // os símbolos além do milésimo deixavam de ser atualizados pelo cron — o
+    // caso MSFT outra vez, um preço velho com ar de atual.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("assets").select("symbol").not("symbol", "is", null).order("id").range(de, ate),
+    );
+    return [...new Set(data.map((r: any) => r.symbol).filter(Boolean))];
+  }
+
+  async getAssetLogoDomain(assetId: string, userId: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("assets")
+      .select("logo_domain, space_id")
+      .eq("id", assetId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return [...new Set((data ?? []).map((r: any) => r.symbol).filter(Boolean))];
+    if (!data?.logo_domain) return null;
+    // A pertença decide o acesso: quem não é membro pleno daquele ambiente não
+    // recebe nada — nem a confirmação de que o bem existe.
+    const { data: m, error: e2 } = await db
+      .from("members")
+      .select("role")
+      .eq("space_id", data.space_id as string)
+      .eq("linked_user_id", userId)
+      .maybeSingle();
+    if (e2) throw new Error(e2.message);
+    if (!m || m.role === "submitter") return null;
+    return data.logo_domain as string;
+  }
+
+  async getValuationLogoDomain(valuationId: string, userId: string): Promise<string | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("valuations")
+      .select("logo_domain, space_id")
+      .eq("id", valuationId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data?.logo_domain) return null;
+    const { data: m, error: e2 } = await db
+      .from("members")
+      .select("role")
+      .eq("space_id", data.space_id as string)
+      .eq("linked_user_id", userId)
+      .maybeSingle();
+    if (e2) throw new Error(e2.message);
+    if (!m || m.role === "submitter") return null;
+    return data.logo_domain as string;
+  }
+
+  async listSpacesComInvestimentos(): Promise<string[]> {
+    const db = getSupabaseAdmin();
+    // Paginado pela mesma razão do listAllAssetSymbols: cresce com a
+    // plataforma, e um ambiente cortado ficava sem preços escritos pelo cron.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("assets")
+        .select("space_id")
+        .eq("kind", "investimento")
+        .order("id")
+        .range(de, ate),
+    );
+    return [...new Set(data.map((r: any) => String(r.space_id)))];
   }
 
   async latestQuoteDate(symbol: string): Promise<string | null> {
@@ -1395,15 +2056,125 @@ export class SupabaseRepository implements Repository {
     if (!data || data.used_at || new Date(data.expires_at as string) < new Date()) return null;
 
     // Marca-se como usado ANTES de devolver: um token só serve uma vez, mesmo
-    // que dois pedidos cheguem ao mesmo tempo.
-    const { error: e2 } = await db
+    // que dois pedidos cheguem ao mesmo tempo. O `select` no update é o que
+    // fecha a corrida: dois pedidos podem passar o `select` de cima ao mesmo
+    // tempo, mas só um encontra `used_at` ainda nulo — o outro atualiza zero
+    // linhas sem erro nenhum, e sem isto levava o token na mesma.
+    const { data: marcado, error: e2 } = await db
       .from("password_reset_tokens")
       .update({ used_at: new Date().toISOString() })
       .eq("id", data.id as string)
-      .is("used_at", null);
+      .is("used_at", null)
+      .select("id");
     if (e2) throw new Error(e2.message);
+    if (!marcado || marcado.length === 0) return null;
 
     return { userId: data.user_id as string };
+  }
+
+  async createMemberInvite(input: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const db = getSupabaseAdmin();
+    // Convidar outra vez substitui: dois convites vivos para o mesmo
+    // participante seriam duas ligações válidas a apontar para o mesmo sítio.
+    await db
+      .from("member_invites")
+      .delete()
+      .eq("member_id", input.memberId)
+      .eq("space_id", input.spaceId)
+      .is("accepted_at", null);
+    const { error } = await db.from("member_invites").insert({
+      id: `min_${randomUUID()}`,
+      space_id: input.spaceId,
+      member_id: input.memberId,
+      email: input.email,
+      token_hash: input.tokenHash,
+      invited_by: input.invitedBy,
+      expires_at: input.expiresAt,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async peekMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("member_invites")
+      .select("space_id, member_id, email, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.accepted_at || new Date(data.expires_at as string) < new Date()) return null;
+    return {
+      spaceId: data.space_id as string,
+      memberId: data.member_id as string,
+      email: data.email as string,
+    };
+  }
+
+  async acceptMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("member_invites")
+      .select("id, space_id, member_id, email, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || data.accepted_at || new Date(data.expires_at as string) < new Date()) return null;
+
+    // Como no consumo dos tokens de recuperação: marca-se ANTES de devolver, e
+    // o `is("accepted_at", null)` fecha a corrida — dos dois pedidos que passem
+    // o select, só um encontra o convite ainda por aceitar.
+    const { data: marcado, error: e2 } = await db
+      .from("member_invites")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", data.id as string)
+      .is("accepted_at", null)
+      .select("id");
+    if (e2) throw new Error(e2.message);
+    if (!marcado || marcado.length === 0) return null;
+
+    return {
+      spaceId: data.space_id as string,
+      memberId: data.member_id as string,
+      email: data.email as string,
+    };
+  }
+
+  async deleteMemberInvites(memberId: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("member_invites")
+      .delete()
+      .eq("member_id", memberId)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listMemberInvites(spaceId: string): Promise<{ memberId: string; email: string }[]> {
+    const db = getSupabaseAdmin();
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("member_invites")
+        .select("member_id, email, expires_at")
+        .eq("space_id", spaceId)
+        .is("accepted_at", null)
+        .order("created_at", { ascending: true })
+        .range(de, ate),
+    );
+    const agora = new Date();
+    return data
+      .filter((r: any) => new Date(r.expires_at as string) >= agora)
+      .map((r: any) => ({ memberId: r.member_id as string, email: r.email as string }));
   }
 
   async listIncome(spaceId: string): Promise<Income[]> {
@@ -1446,6 +2217,21 @@ export class SupabaseRepository implements Repository {
     return { ...input, id };
   }
 
+  async updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = {};
+    if (patch.kind !== undefined) row.kind = patch.kind;
+    if (patch.description !== undefined) row.description = patch.description;
+    if (patch.amountCents !== undefined) row.amount_cents = patch.amountCents;
+    if (patch.date !== undefined) row.date = patch.date;
+    if (patch.recurring !== undefined) row.recurring = patch.recurring;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (Object.keys(row).length === 0) return;
+
+    const { error } = await db.from("income").update(row).eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
   async deleteIncome(id: string, spaceId: string): Promise<void> {
     const db = getSupabaseAdmin();
     const { error } = await db.from("income").delete().eq("id", id).eq("space_id", spaceId);
@@ -1454,13 +2240,14 @@ export class SupabaseRepository implements Repository {
 
   async listExpenseUids(spaceId: string): Promise<{ id: string; uid: string }[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("expenses")
-      .select("id, uid")
-      .eq("space_id", spaceId)
-      .is("deleted_at", null);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({ id: r.id, uid: r.uid }));
+    // Paginado porque o dedup da importação se decide sobre isto: cortado, o
+    // preview jurava "0 repetidos" num ambiente com mais de mil despesas e a
+    // importação rebentava a meio contra o índice único, com o lote meio
+    // escrito. O índice segura o invariante; o preview tem de dizer a verdade.
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("expenses").select("id, uid").eq("space_id", spaceId).is("deleted_at", null).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({ id: r.id, uid: r.uid }));
   }
 
   async createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch> {
@@ -1488,13 +2275,16 @@ export class SupabaseRepository implements Repository {
 
   async listImportBatches(spaceId: string): Promise<ImportBatch[]> {
     const db = getSupabaseAdmin();
-    const { data, error } = await db
-      .from("import_batches")
-      .select("*")
-      .eq("space_id", spaceId)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(rowToImportBatch);
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("import_batches")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    );
+    return data.map(rowToImportBatch);
   }
 
   async undoImportBatch(batchId: string, spaceId: string, _userId: string): Promise<number> {
@@ -1541,14 +2331,382 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
   }
 
-  async listContactMessages(): Promise<ContactMessage[]> {
+  // ---- Desdobramentos ---------------------------------------------------
+
+  async listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("asset_splits").select("*").eq("space_id", spaceId);
+      if (assetId) q = q.eq("asset_id", assetId);
+      return q.order("split_date").range(de, ate);
+    });
+    return rows.map(rowToSplit);
+  }
+
+  async createAssetSplit(input: CreateAssetSplitInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("asset_splits").insert({
+      id: `spl_${randomUUID()}`,
+      space_id: input.spaceId,
+      asset_id: input.assetId,
+      split_date: input.date,
+      ratio: input.ratio,
+      notes: input.notes ?? null,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteAssetSplit(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    // O ambiente filtra a escrita: um id vindo do formulário não é prova de nada.
+    const { error } = await db
+      .from("asset_splits")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ---- Avaliações -------------------------------------------------------
+
+  async listValuations(spaceId: string): Promise<StoredValuation[]> {
+    const db = getSupabaseAdmin();
+    // Paginado como tudo o que pode crescer: o PostgREST corta nas 1000 linhas
+    // sem avisar, e uma lista cortada em silêncio lê-se como uma lista completa.
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("valuations")
+        .select("*")
+        .eq("space_id", spaceId)
+        .order("study_date", { ascending: false })
+        .range(de, ate),
+    );
+    return rows.map(rowToValuation);
+  }
+
+  async createValuation(input: CreateValuationInput): Promise<string> {
+    const db = getSupabaseAdmin();
+    const id = `val_${randomUUID()}`;
+    const e = input.estudo ?? null;
+    const { error } = await db.from("valuations").insert({
+      id,
+      space_id: input.spaceId,
+      symbol: input.symbol,
+      name: input.name,
+      stage: input.stage,
+      study_date: input.studyDate,
+      logo_domain: input.logoDomain ?? null,
+      notes: input.notes,
+      created_by: input.createdBy ?? null,
+      // Ou vão todos, ou nenhum vai. O `check` da 0038 diz o mesmo do lado da
+      // base de dados; aqui a forma do tipo já não deixa escrever meio estudo.
+      fcf_cents: e?.fcfCents ?? null,
+      shares: e?.shares ?? null,
+      net_debt_cents: e?.netDebtCents ?? null,
+      discount_pct: e?.discountPct ?? null,
+      perpetual_pct: e?.perpetualPct ?? null,
+      years: e?.years ?? null,
+      margin_pct: e?.marginPct ?? null,
+      scenarios: e?.scenarios ?? null,
+      weighted_price_cents: e?.weightedPriceCents ?? null,
+      price_at_study_cents: e?.priceAtStudyCents ?? null,
+      upside_pct: e?.upsidePct ?? null,
+      valued_at: e?.valuedAt ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return id;
+  }
+
+  async updateValuation(
+    id: string,
+    spaceId: string,
+    patch: UpdateValuationInput,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.stage !== undefined) row.stage = patch.stage;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.symbol !== undefined) row.symbol = patch.symbol;
+    if (patch.notes !== undefined) row.notes = patch.notes;
+    if (patch.logoDomain !== undefined) row.logo_domain = patch.logoDomain;
+    if (patch.aiSummary !== undefined) {
+      row.ai_summary = patch.aiSummary;
+      // A data anda sempre com o texto: um resumo sem data lê-se como o resumo
+      // do documento que se carregou agora, mesmo que seja de há seis meses.
+      row.ai_summary_at = patch.aiSummary === null ? null : new Date().toISOString();
+    }
+    // O `space_id` filtra a escrita: um id vindo do formulário não é prova de nada.
+    const { error } = await db.from("valuations").update(row).eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setValuationEstudo(id: string, spaceId: string, e: ValuationEstudo): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuations")
+      .update({
+        fcf_cents: e.fcfCents,
+        shares: e.shares,
+        net_debt_cents: e.netDebtCents,
+        discount_pct: e.discountPct,
+        perpetual_pct: e.perpetualPct,
+        years: e.years,
+        margin_pct: e.marginPct,
+        scenarios: e.scenarios,
+        weighted_price_cents: e.weightedPriceCents,
+        price_at_study_cents: e.priceAtStudyCents,
+        upside_pct: e.upsidePct,
+        valued_at: e.valuedAt,
+        // Os rácios do dia, quando a busca de dados correu. Só se escrevem
+        // quando vêm: um estudo refeito à mão não apaga o que a fonte já tinha
+        // dado, porque `undefined` não chega ao update.
+        ...(e.sector !== undefined ? { sector: e.sector } : {}),
+        ...(e.rocePct !== undefined ? { roce_pct: e.rocePct } : {}),
+        ...(e.margemOperacionalPct !== undefined
+          ? { operating_margin_pct: e.margemOperacionalPct }
+          : {}),
+        ...(e.margemFcfPct !== undefined ? { fcf_margin_pct: e.margemFcfPct } : {}),
+        ...(e.crescimentoFcfPct !== undefined ? { fcf_growth_pct: e.crescimentoFcfPct } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteValuation(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("valuations").delete().eq("id", id).eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ---- Anexos de uma avaliação -------------------------------------------
+
+  async listValuationAttachments(
+    spaceId: string,
+    valuationId?: string,
+  ): Promise<ValuationAttachment[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) => {
+      let q = db.from("valuation_attachments").select("*").eq("space_id", spaceId);
+      if (valuationId) q = q.eq("valuation_id", valuationId);
+      return q.order("created_at").range(de, ate);
+    });
+    return rows.map(rowToValuationAttachment);
+  }
+
+  async getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null> {
     const db = getSupabaseAdmin();
     const { data, error } = await db
-      .from("contact_messages")
+      .from("valuation_attachments")
       .select("*")
-      .order("created_at", { ascending: false });
+      .eq("id", id)
+      .eq("space_id", spaceId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return (data ?? []).map((r: any) => ({
+    return data ? rowToValuationAttachment(data) : null;
+  }
+
+  async createValuationAttachment(input: CreateValuationAttachment): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("valuation_attachments").insert({
+      id: input.id,
+      space_id: input.spaceId,
+      valuation_id: input.valuationId,
+      file_name: input.fileName,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      storage_path: input.storagePath,
+      status: input.status,
+      created_by: input.createdBy ?? null,
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async markValuationAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .update({ status: "pronto" })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setValuationAttachmentText(
+    id: string,
+    spaceId: string,
+    texto: string | null,
+  ): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .update({ extracted_text: texto })
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  async deleteValuationAttachment(id: string, spaceId: string): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("valuation_attachments")
+      .delete()
+      .eq("id", id)
+      .eq("space_id", spaceId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ---- Pedidos de ajuda -------------------------------------------------
+  //
+  // A separação entre o que o utilizador lê e as notas internas é feita por
+  // DUAS funções com nomes diferentes, e não por uma bandeira. Ver o
+  // comentário na interface: uma bandeira é igual a isto até ao dia em que
+  // alguém a passa ao contrário, e aí a nota já foi lida.
+
+  async createTicket(input: CreateTicketInput): Promise<string> {
+    const db = getSupabaseAdmin();
+    const id = `tkt_${randomUUID()}`;
+    const { error } = await db.from("tickets").insert({
+      id,
+      space_id: input.spaceId,
+      created_by: input.createdBy,
+      subject: input.subject,
+      status: "novo",
+    });
+    if (error) throw new Error(error.message);
+
+    // A primeira mensagem é o corpo do pedido, e é pública por definição: foi
+    // a pessoa que a escreveu.
+    const { error: e2 } = await db.from("ticket_messages").insert({
+      id: `tkm_${randomUUID()}`,
+      ticket_id: id,
+      author_id: input.createdBy,
+      body: input.body,
+      internal: false,
+    });
+    if (e2) throw new Error(e2.message);
+    return id;
+  }
+
+  async listTicketsDoUtilizador(userId: string): Promise<Ticket[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("tickets")
+        .select("*")
+        .eq("created_by", userId)
+        .order("updated_at", { ascending: false })
+        .range(de, ate),
+    );
+    return rows.map(rowToTicket);
+  }
+
+  async listTicketsTodos(): Promise<Ticket[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db.from("tickets").select("*").order("updated_at", { ascending: false }).range(de, ate),
+    );
+    return rows.map(rowToTicket);
+  }
+
+  async getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null> {
+    const db = getSupabaseAdmin();
+    // O autor vai na consulta, não numa comparação em JS depois de ler.
+    const { data, error } = await db
+      .from("tickets")
+      .select("*")
+      .eq("id", id)
+      .eq("created_by", userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTicket(data) : null;
+  }
+
+  async getTicket(id: string): Promise<Ticket | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rowToTicket(data) : null;
+  }
+
+  async listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("ticket_messages")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        // O filtro está AQUI, na consulta. As internas nem chegam a sair da
+        // base de dados por este caminho.
+        .eq("internal", false)
+        .order("created_at")
+        .range(de, ate),
+    );
+    return rows.map(rowToTicketMessage);
+  }
+
+  async listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]> {
+    const db = getSupabaseAdmin();
+    const rows = await todasAsLinhas<any>((de, ate) =>
+      db
+        .from("ticket_messages")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        .order("created_at")
+        .range(de, ate),
+    );
+    return rows.map(rowToTicketMessage);
+  }
+
+  async addTicketMessage(input: CreateTicketMessageInput): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("ticket_messages").insert({
+      id: `tkm_${randomUUID()}`,
+      ticket_id: input.ticketId,
+      author_id: input.authorId,
+      body: input.body,
+      internal: input.internal,
+    });
+    if (error) throw new Error(error.message);
+
+    // Uma nota interna NÃO mexe no `updated_at`: se mexesse, o fio do
+    // utilizador passava a denunciar a hora a que alguém escreveu uma coisa
+    // que ele não pode ler.
+    if (!input.internal) {
+      await db
+        .from("tickets")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", input.ticketId);
+    }
+  }
+
+  async setTicketStatus(id: string, status: TicketStatus): Promise<void> {
+    const db = getSupabaseAdmin();
+    const { error } = await db
+      .from("tickets")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  async countTicketsAbertos(): Promise<number> {
+    const db = getSupabaseAdmin();
+    const { count, error } = await db
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["novo", "a-tratar", "a-aguardar"]);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  async listContactMessages(): Promise<ContactMessage[]> {
+    const db = getSupabaseAdmin();
+    const data = await todasAsLinhas<any>((de, ate) =>
+      db.from("contact_messages").select("*").order("created_at", { ascending: false }).order("id").range(de, ate),
+    );
+    return data.map((r: any) => ({
       id: r.id,
       name: r.name,
       email: r.email,
@@ -1626,6 +2784,149 @@ function rowToAssetTrade(r: any): AssetTrade {
   };
 }
 
+function rowToSplit(r: any): StoredAssetSplit {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    assetId: r.asset_id,
+    date: String(r.split_date).slice(0, 10),
+    // `numeric` chega como texto do PostgREST: sem o Number, o fator entrava
+    // nas contas como string e "5" * "20" dava NaN em metade dos sítios.
+    ratio: Number(r.ratio),
+    notes: r.notes ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToValuation(r: any): StoredValuation {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    symbol: r.symbol ?? null,
+    name: r.name,
+    stage: r.stage as EtapaAvaliacao,
+    studyDate: String(r.study_date).slice(0, 10),
+    // `numeric` e `bigint` chegam como texto do PostgREST. Sem o `Number`, uma
+    // taxa de desconto entrava nas contas como string e o DCF devolvia NaN.
+    // `n()` e não `Number()`: `Number(null)` é 0, e um zero num campo de dívida
+    // líquida ou de fluxo de caixa não se distingue de uma empresa sem dívida
+    // ou sem fluxo. Uma empresa apenas apontada tem estes campos todos vazios.
+    fcfCents: n(r.fcf_cents),
+    shares: n(r.shares),
+    netDebtCents: n(r.net_debt_cents),
+    discountPct: n(r.discount_pct),
+    perpetualPct: n(r.perpetual_pct),
+    years: n(r.years),
+    marginPct: n(r.margin_pct),
+    // Validado campo a campo. Ver `lerCenarios`.
+    scenarios: lerCenarios(r.scenarios),
+    weightedPriceCents: n(r.weighted_price_cents),
+    priceAtStudyCents: n(r.price_at_study_cents),
+    upsidePct: n(r.upside_pct),
+    valuedAt: r.valued_at ? String(r.valued_at).slice(0, 10) : null,
+    logoDomain: r.logo_domain ?? null,
+    notes: r.notes ?? null,
+    sector: r.sector ?? null,
+    // `numeric` do Postgres chega como texto: sem o `Number` isto comparava-se
+    // como cadeia e "9" ficava maior do que "14".
+    rocePct: r.roce_pct === null || r.roce_pct === undefined ? null : Number(r.roce_pct),
+    margemOperacionalPct:
+      r.operating_margin_pct === null || r.operating_margin_pct === undefined
+        ? null
+        : Number(r.operating_margin_pct),
+    margemFcfPct:
+      r.fcf_margin_pct === null || r.fcf_margin_pct === undefined ? null : Number(r.fcf_margin_pct),
+    crescimentoFcfPct:
+      r.fcf_growth_pct === null || r.fcf_growth_pct === undefined ? null : Number(r.fcf_growth_pct),
+    aiSummary: r.ai_summary ?? null,
+    aiSummaryAt: r.ai_summary_at ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+/**
+ * Um número que pode não existir.
+ *
+ * `Number(null)` é `0`, e um zero num campo de dívida líquida ou de fluxo de
+ * caixa não se distingue de uma empresa sem dívida ou sem fluxo. Numa linha do
+ * funil que ainda só está apontada, todos estes campos são nulos.
+ */
+function n(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
+
+function rowToValuationAttachment(r: any): ValuationAttachment {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    valuationId: r.valuation_id,
+    fileName: r.file_name,
+    contentType: r.content_type,
+    sizeBytes: Number(r.size_bytes),
+    storagePath: r.storage_path,
+    status: r.status === "pronto" ? "pronto" : "a-enviar",
+    extractedText: r.extracted_text ?? null,
+    createdBy: r.created_by ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToTicket(r: any): Ticket {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    createdBy: r.created_by,
+    subject: r.subject,
+    status: isTicketStatus(r.status) ? r.status : "novo",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at ?? r.created_at,
+  };
+}
+
+function rowToTicketMessage(r: any): TicketMessage {
+  return {
+    id: r.id,
+    ticketId: r.ticket_id,
+    authorId: r.author_id,
+    body: r.body ?? "",
+    // `=== true` e não `Boolean(...)`: um valor guardado por uma versão antiga
+    // chega como `null`, e o lado seguro de um `null` aqui é "não é interna" —
+    // que é o que a coluna diz por omissão.
+    internal: r.internal === true,
+    createdAt: r.created_at,
+  };
+}
+
+function rowToAttachment(r: any): AssetAttachment {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    assetId: r.asset_id,
+    fileName: r.file_name,
+    contentType: r.content_type,
+    sizeBytes: Number(r.size_bytes ?? 0),
+    storagePath: r.storage_path,
+    status: r.status === "pronto" ? "pronto" : "a-enviar",
+    createdBy: r.created_by ?? null,
+    createdAt: r.created_at ?? null,
+  };
+}
+
+function rowToSnapshot(r: any): NetWorthSnapshotRow {
+  return {
+    id: r.id,
+    spaceId: r.space_id,
+    onDate: String(r.on_date ?? "").slice(0, 10),
+    assetsCents: Number(r.assets_cents ?? 0),
+    debtsCents: Number(r.debts_cents ?? 0),
+    netCents: Number(r.net_cents ?? 0),
+    // Cru de propósito: quem lê valida. Ver o comentário do `creditTerms`.
+    breakdown: r.breakdown ?? null,
+  };
+}
+
 function rowToAsset(r: any): Asset {
   return {
     id: r.id,
@@ -1642,7 +2943,37 @@ function rowToAsset(r: any): Asset {
     monthlyPaymentCents: r.monthly_payment_cents ?? null,
     termMonths: r.term_months ?? null,
     rateKind: r.rate_kind ?? null,
+    maturityDate: r.maturity_date ?? null,
+    // Cru de propósito: quem lê valida com `parseCreditTerms`.
+    creditTerms: r.credit_terms ?? null,
+    ownershipPct:
+      r.ownership_pct === null || r.ownership_pct === undefined ? null : Number(r.ownership_pct),
+    coOwnerMemberId: r.co_owner_member_id ?? null,
+    areaM2: r.area_m2 === null || r.area_m2 === undefined ? null : Number(r.area_m2),
+    location: r.location ?? null,
+    priceRefCents: r.price_ref_cents ?? null,
+    priceRefSource: r.price_ref_source ?? null,
+    priceRefGeocod: r.price_ref_geocod ?? null,
+    purchasePriceCents: r.purchase_price_cents ?? null,
+    worksCents: r.works_cents ?? null,
     symbol: r.symbol ?? null,
+    exchange: r.exchange ?? null,
+    logoDomain: r.logo_domain ?? null,
+    financesAssetId: r.finances_asset_id ?? null,
+    contractedAmountCents:
+      r.contracted_amount_cents === null || r.contracted_amount_cents === undefined
+        ? null
+        : Number(r.contracted_amount_cents),
+    // Datas de mercado. `slice(0, 10)` porque uma coluna `date` chega como
+    // "2026-02-03" mas o PostgREST já devolveu carimbos completos noutras.
+    nextEarningsDate: r.next_earnings_date ? String(r.next_earnings_date).slice(0, 10) : null,
+    dividendDate: r.dividend_date ? String(r.dividend_date).slice(0, 10) : null,
+    exDividendDate: r.ex_dividend_date ? String(r.ex_dividend_date).slice(0, 10) : null,
+    marketDatesAt: r.market_dates_at ?? null,
+    sector: r.sector ?? null,
+    industry: r.industry ?? null,
+    profileAt: r.profile_at ?? null,
+    sortOrder: r.sort_order === null || r.sort_order === undefined ? null : Number(r.sort_order),
     updatedAt: r.updated_at ?? null,
   };
 }

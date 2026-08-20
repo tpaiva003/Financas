@@ -91,7 +91,7 @@ function CategoryRow({ category }: { category: Category }) {
           maxLength={4}
           key={`icon:${category.id}:${category.icon ?? ""}`}
           defaultValue={category.icon ?? ""}
-          placeholder="—"
+          placeholder="-"
           className="input w-12 shrink-0 px-2 text-center"
           aria-label="Ícone"
         />

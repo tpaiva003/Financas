@@ -66,17 +66,88 @@ export function siteUrl(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://rachar.pt").replace(/\/$/, "");
 }
 
-export async function sendInvite(to: string, name: string): Promise<SendResult> {
+/**
+ * O convite leva a ligação que define a primeira palavra-chave.
+ *
+ * **Não é "escreve o que quiseres da primeira vez".** Era assim, e isso deixava
+ * a conta ao alcance de quem soubesse o email antes de a pessoa entrar. A
+ * primeira palavra-chave passa pelo mesmo caminho da reposição — uma ligação
+ * com prazo, enviada para aquele endereço — que é o que prova que quem a define
+ * é mesmo quem recebe o email.
+ */
+export async function sendInvite(
+  to: string,
+  name: string,
+  token: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/recuperar/${token}`;
   return sendEmail(to, "Tens acesso à Rachar", {
     heading: `Olá ${name}, já podes entrar.`,
     paragraphs: [
       "Foi-te criado acesso à <strong style=\"color:#f3f2ee\">Rachar</strong>, uma app para registar despesas partilhadas, dividi-las e saber num instante quem deve a quem.",
       `Entra com este email: <strong style="color:#f3f2ee">${to}</strong>.`,
-      "<strong style=\"color:#f3f2ee\">A palavra-chave que escreveres da primeira vez fica a ser a tua.</strong> Não há nenhuma para decorar antes.",
+      "Carrega no botão para escolheres a tua palavra-chave. A ligação é válida durante uma hora e só pode ser usada uma vez.",
     ],
-    action: { label: "Entrar na Rachar", url: `${siteUrl()}/login` },
-    footnote:
-      "Tens um espaço só teu: ninguém vê as tuas contas. Se não estavas à espera deste email, ignora-o.",
+    action: { label: "Escolher palavra-chave", url },
+    footnote: `Tens um espaço só teu: ninguém vê as tuas contas. Se não estavas à espera deste email, ignora-o. Se o botão não funcionar, copia esta ligação: ${url}`,
+  });
+}
+
+/**
+ * O convite para submeter despesas num ambiente de outra pessoa.
+ *
+ * **A conta ainda não existe quando este email sai** — e é essa a razão de ele
+ * existir. Antes, escrever o email de alguém no ecrã de participantes criava
+ * logo a conta, pela mão de quem convidava. Agora quem decide é quem recebe:
+ * a conta só nasce se abrir a ligação e escolher a palavra-chave. Ignorar o
+ * email é recusar, e não fica nada criado em nome de ninguém.
+ */
+export async function sendMemberInvite(
+  to: string,
+  memberName: string,
+  spaceName: string,
+  token: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/convite/${token}`;
+  return sendEmail(to, "Foste convidado para a Rachar", {
+    heading: `Olá ${memberName}, convidaram-te.`,
+    paragraphs: [
+      `Convidaram-te para <strong style="color:#f3f2ee">submeter despesas</strong> no ambiente <strong style="color:#f3f2ee">${spaceName}</strong> da <strong style="color:#f3f2ee">Rachar</strong>, uma app para registar despesas partilhadas e saber num instante quem deve a quem.`,
+      `Vais entrar com este email: <strong style="color:#f3f2ee">${to}</strong>. As despesas que submeteres ficam pendentes até um membro pleno as aprovar.`,
+      "Carrega no botão para escolheres a tua palavra-chave. A ligação é válida durante sete dias e só pode ser usada uma vez.",
+    ],
+    action: { label: "Aceitar o convite", url },
+    footnote: `Se não estavas à espera deste convite, ignora este email: não foi criada conta nenhuma em teu nome, e nada acontece. Se o botão não funcionar, copia esta ligação: ${url}`,
+  });
+}
+
+/**
+ * O aviso de que um ambiente está prestes a congelar.
+ *
+ * **O que este email tem de fazer, e é fácil falhar.** Quem o recebe esteve
+ * meses sem abrir a app: não se lembra do que lá pôs, e a palavra "congelar"
+ * lida à pressa parece "apagar". Por isso diz-se o contrário logo, e diz-se
+ * duas vezes — nada se perde, e basta entrar para tudo voltar ao sítio.
+ *
+ * Não leva número nenhum de dentro do ambiente: nem saldos, nem quantas
+ * despesas lá estão. Um email é a coisa menos privada que esta app envia, e o
+ * que o aviso precisa de dizer não depende do conteúdo de ninguém.
+ */
+export async function sendRetentionWarning(
+  to: string,
+  spaceName: string,
+  quando: string,
+): Promise<SendResult> {
+  const url = `${siteUrl()}/dashboard`;
+  return sendEmail(to, "O teu ambiente na Rachar vai passar a só de leitura", {
+    heading: "Basta entrares para ficar tudo como estava",
+    paragraphs: [
+      `O ambiente <strong style="color:#f3f2ee">${spaceName}</strong> está há muito tempo sem ser aberto. ${quando === "hoje" ? "Hoje" : `A partir de ${quando}`} passa a só de leitura.`,
+      "<strong style=\"color:#f3f2ee\">Não se apaga nada.</strong> Fica tudo onde está: só deixa de se poder acrescentar ou alterar enquanto estiver assim.",
+      "Entrar chega para o reativar. Não é preciso pedir nada a ninguém.",
+    ],
+    action: { label: "Entrar na Rachar", url },
+    footnote: `Fazemos isto para não guardar indefinidamente dados de contas que ninguém usa. Se já não queres a conta, podes apagá-la dentro da app. Se o botão não funcionar, copia esta ligação: ${url}`,
   });
 }
 

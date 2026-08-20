@@ -1,7 +1,12 @@
 import { LegalLayout } from "@/components/LegalLayout";
 import { NewPasswordForm } from "@/components/NewPasswordForm";
 
-export const metadata = { title: "Nova palavra-chave · Rachar" };
+// `noindex`: cada URL destas carrega um token de uso único — não é para
+// aparecer em lado nenhum, nem sequer como "página encontrada".
+export const metadata = {
+  title: "Nova palavra-chave · Rachar",
+  robots: { index: false, follow: false },
+};
 
 export default function NovaPalavraChavePage({ params }: { params: { token: string } }) {
   return (

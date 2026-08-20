@@ -21,9 +21,32 @@
     --c-fg-faint: 109 108 103;
     --c-credit: 98 209 150;
     --c-debt: 240 116 111;
+    /*
+     * Azul dos azulejos do Porto: a cor da MARCA.
+     *
+     * Fica de propósito separada do verde e do vermelho, que são semântica de
+     * dados (quem recebe, quem deve). Uma cor que ao mesmo tempo diz "carrega
+     * aqui" e "este número é positivo" acaba por não dizer nenhuma das duas.
+     */
+    --c-marca: 30 95 168;
+    /* Texto por cima do azul, nos dois temas: o azul é escuro em ambos. */
+    --c-marca-fg: 250 248 244;
+    /*
+     * O mesmo azul, mas para ESCREVER com ele.
+     *
+     * O azulejo é escuro, e escuro sobre o fundo de noite dá 3:1, que não
+     * chega para texto. Um acento que só se lê num dos dois temas não é um
+     * acento, é um erro à espera. Por isso o azul de fundo e o azul de tinta
+     * são duas variáveis, e cada tema escolhe o tom que se lê no seu fundo.
+     */
+    --c-marca-tinta: 122 178 235;
+    /* Âmbar de aviso: para o que não é erro nem é bom — uma nota interna a ser
+       escrita, por exemplo. Verde e vermelho já significam outra coisa. */
+    --c-warn: 222 170 74;
 
     --glow-1: rgba(99, 102, 241, 0.07);
-    --glow-2: rgba(98, 209, 150, 0.05);
+    /* O halo de fundo também é da marca: era verde, e o verde aqui é saldo. */
+    --glow-2: rgba(30, 95, 168, 0.07);
     --selection: rgba(243, 242, 238, 0.18);
     --select-bg: #14141a;
     --select-fg: #f3f2ee;
@@ -46,9 +69,15 @@
        contraste suficiente para texto. */
     --c-credit: 15 122 69;
     --c-debt: 192 52 44;
+    /* Um tom abaixo sobre papel, para o botão não gritar. */
+    --c-marca: 26 82 146;
+    /* Sobre papel é o azul escuro que se lê, ao contrário do tema de noite. */
+    --c-marca-tinta: 26 82 146;
+    /* Mais escuro sobre papel, pela mesma razão do verde e do vermelho. */
+    --c-warn: 146 96 8;
 
     --glow-1: rgba(99, 102, 241, 0.06);
-    --glow-2: rgba(15, 122, 69, 0.05);
+    --glow-2: rgba(26, 82, 146, 0.06);
     --selection: rgba(23, 22, 26, 0.14);
     --select-bg: #ffffff;
     --select-fg: #17161a;
@@ -56,10 +85,25 @@
     --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235d5b55' stroke-width='1.5' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
 
+  /*
+   * Cortar o que sai pelo lado, sem partir o `position: sticky`.
+   *
+   * `overflow-x: hidden` obriga o outro eixo a `auto`, e a partir daí o
+   * `html` passa a ser ele próprio um contentor de scroll: tudo o que é
+   * `sticky` lá dentro deixa de colar e limita-se a passar de raspão. Custou
+   * uma secção inteira a aparecer em branco a meio do rolo até se perceber
+   * porquê. `overflow-x: clip` corta na mesma e não cria contentor nenhum.
+   */
   html,
   body {
     max-width: 100vw;
     overflow-x: hidden;
+  }
+  @supports (overflow: clip) {
+    html,
+    body {
+      overflow-x: clip;
+    }
   }
 
   body {
@@ -104,6 +148,147 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * Modo privacidade: os montantes em euros ficam tapados por três pontos.
+   *
+   * **Pontos e não desfoque.** Um valor desfocado ainda deixa ler a ordem de
+   * grandeza — quantos dígitos tem, se é positivo ou negativo — e num ecrã
+   * gravado isso chega para se perceber de quanto se fala. Os pontos não dizem
+   * nada, e lêem-se como uma decisão, não como uma avaria.
+   *
+   * A caixa é a do valor original (o texto fica transparente, não desaparece):
+   * assim nada salta de sítio ao ligar e desligar, que é o que faz isto poder
+   * ser usado a meio de uma gravação.
+   */
+  html[data-privado="1"] .dinheiro {
+    position: relative;
+    color: transparent;
+    /* Um valor tapado não se seleciona nem se copia por engano. */
+    user-select: none;
+    /* Larguras mínimas para o "•••" não ficar apertado num valor curto. */
+    min-width: 3.5ch;
+    display: inline-block;
+  }
+
+  html[data-privado="1"] .dinheiro::after {
+    content: "•••";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    /* `rgb(...)` e não `var(...)` à seca: as variáveis desta folha guardam
+       canais ("163 162 156"), não cores. Sem o `rgb`, a cor era inválida, os
+       pontos herdavam o `transparent` do pai e o valor ficava só um buraco —
+       que se lê como avaria e não como uma decisão. */
+    color: rgb(var(--c-fg-muted));
+    letter-spacing: 0.1em;
+  }
+
+  /*
+   * Fichas da landing: superfícies elevadas e lavagens de fundo.
+   *
+   * A landing deixou de separar blocos com linhas. O contorno de um cartão
+   * passa a viver no `box-shadow` e não numa `border`: fica fora da caixa de
+   * layout (não empurra nada) e pode ser bem mais fraco do que o `--c-hair`,
+   * que é o que dava à página o aspeto de folha quadriculada.
+   */
+  :root {
+    --card-fill: rgba(255, 255, 255, 0.024);
+    --card-ring: rgba(255, 255, 255, 0.07);
+    --card-sheen: rgba(255, 255, 255, 0.05);
+    --shadow-card:
+      0 1px 0 0 rgba(255, 255, 255, 0.045) inset,
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 14px 30px -20px rgba(0, 0, 0, 0.95);
+    --shadow-card-hi:
+      0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+      0 2px 5px rgba(0, 0, 0, 0.5),
+      0 30px 60px -28px rgba(0, 0, 0, 1);
+    --shadow-device:
+      0 2px 6px rgba(0, 0, 0, 0.5),
+      0 40px 80px -40px rgba(0, 0, 0, 1);
+
+    /*
+     * A carcaça dos aparelhos das capturas.
+     *
+     * Escura nos dois temas, porque é o que um telemóvel e a barra de um
+     * browser são. Vive aqui, e não solta no componente, pela mesma razão que
+     * todo o resto da marca vive aqui: uma cor escrita à mão dentro de um
+     * ficheiro de React é uma cor que ninguém encontra quando a marca mudar.
+     */
+    --aparelho-topo: #3a3a40;
+    --aparelho-fundo: #17161a;
+    --aparelho-barra-topo: #2a2a30;
+    --aparelho-barra-fundo: #1d1d22;
+    --aparelho-fio: rgba(255, 255, 255, 0.06);
+  }
+
+  html[data-theme="light"] {
+    --card-fill: rgb(255 255 255);
+    --card-ring: rgba(23, 22, 26, 0.055);
+    --card-sheen: rgba(255, 255, 255, 0.9);
+    /* Sombra quente (23 22 26), nunca preta: sobre papel, o preto suja. */
+    --shadow-card:
+      0 1px 1px rgba(23, 22, 26, 0.04),
+      0 6px 16px -8px rgba(23, 22, 26, 0.1),
+      0 22px 44px -26px rgba(23, 22, 26, 0.16);
+    --shadow-card-hi:
+      0 1px 1px rgba(23, 22, 26, 0.05),
+      0 12px 26px -10px rgba(23, 22, 26, 0.14),
+      0 36px 64px -32px rgba(23, 22, 26, 0.22);
+    --shadow-device:
+      0 4px 10px rgba(23, 22, 26, 0.08),
+      0 40px 80px -36px rgba(23, 22, 26, 0.3);
+  }
+
+  /*
+   * O fundo respira, muito devagar.
+   *
+   * Um gradiente absolutamente parado é metade da sensação de coisa estanque.
+   * A amplitude é de 2,5% em quarenta segundos: se o ciclo se notar, está mal,
+   * e é a primeira coisa a cair se der solavancos em Android.
+   */
+  @keyframes drift {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(-1.5%, 1%, 0) scale(1.025);
+    }
+  }
+
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
+    animation: drift 40s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /*
+   * Entrada de página, dentro da app.
+   *
+   * O App Router mantém o layout e troca só o conteúdo, por isso sem uma
+   * chave por rota não há transição nenhuma: a página seguinte aparece de
+   * repente, e é isso que dá a sensação de ecrã estático a piscar. Com a
+   * chave, cada navegação sobe seis píxeis. MUITO curto de propósito: o
+   * `both` esconde o conteúdo até a animação acabar, ou seja, isto é tempo
+   * somado DEPOIS de a página já ter chegado — e quem regista despesas passa
+   * por aqui dezenas de vezes ao dia. A 380ms lia-se como app lenta.
+   */
+  @keyframes page-in {
+    from {
+      opacity: 0.01;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .page-in {
+    animation: page-in 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
 }
 
 @layer components {
@@ -111,8 +296,36 @@
     @apply font-mono text-[11px] uppercase tracking-[0.18em] text-fg-faint;
   }
 
+  /*
+   * Cartão. O contorno vive na sombra, não numa borda.
+   *
+   * Com `border`, um ecrã com oito cartões desenha oito retângulos a cheio e a
+   * app lê-se como uma folha quadriculada. No `box-shadow` o fio fica fora da
+   * caixa de layout (não empurra nada, não soma um píxel a cada lado) e pode
+   * ser mais fraco, porque a sombra por baixo já separa o cartão do fundo.
+   */
   .card {
-    @apply rounded-2xl border border-hair bg-panel/80 backdrop-blur-sm;
+    @apply rounded-2xl bg-panel/80 backdrop-blur-sm;
+    box-shadow: var(--shadow-card), 0 0 0 1px var(--card-ring);
+  }
+
+  /*
+   * Menus suspensos: a mesma superfície, e sem fios lá dentro.
+   *
+   * Separar as opções de um menu com linhas era o que mais depressa dava à app
+   * o ar de formulário antigo. O que separa passa a ser o ar à volta e o
+   * realce ao passar por cima.
+   */
+  .menu {
+    @apply overflow-hidden rounded-xl bg-panel p-1;
+    box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+  }
+  .menu-item {
+    @apply flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg-muted transition-colors duration-150 hover:bg-panel2 hover:text-fg;
+  }
+  /* Cabeçalho de um menu (quem está com sessão iniciada, por exemplo). */
+  .menu-head {
+    @apply flex items-center gap-2 rounded-lg px-3 pb-2 pt-2 text-sm text-fg-muted;
   }
 
   .btn {
@@ -120,6 +333,25 @@
   }
   .btn-primary {
     @apply btn bg-fg text-bg hover:opacity-90 active:scale-[0.98];
+  }
+  /*
+   * O botão principal da landing leva a cor da marca, não o branco.
+   *
+   * A página inteira era a preto e branco, com o verde e o vermelho guardados
+   * para os números. Lia-se séria e lia-se apagada: sem uma cor a dizer "é
+   * aqui", o olho não tem para onde ir. É o mesmo verde de quem recebe dentro
+   * da app, por isso não se está a inventar uma cor de marca nenhuma.
+   *
+   * Fica só neste botão. Uma cor que aparece em todo o lado deixa de apontar
+   * para alguma coisa.
+   */
+  .btn-marca {
+    @apply btn font-semibold active:scale-[0.98];
+    background: rgb(var(--c-marca));
+    color: rgb(var(--c-marca-fg));
+  }
+  .btn-marca:hover {
+    filter: brightness(1.08);
   }
   .btn-secondary {
     @apply btn border border-hair bg-transparent text-fg hover:border-fg/30 hover:bg-panel2 active:scale-[0.98];
@@ -148,9 +380,705 @@
     @apply border-hair;
   }
 
-  /* Linha de despesa: estilo lista editorial (hairline em vez de cartões pesados). */
+  /*
+   * Linha de despesa: estilo lista editorial (hairline em vez de cartões
+   * pesados). O fio fica: numa lista densa de valores, é ele que diz onde
+   * acaba uma linha e começa a outra, e isso é anatomia da lista, não uma
+   * divisória entre blocos. Ganha realce ao passar por cima, para a lista
+   * responder ao rato em vez de ficar um bloco morto.
+   */
   .row {
-    @apply flex items-center gap-4 border-b border-hair2 py-3.5 transition-colors;
+    @apply -mx-2 flex items-center gap-4 rounded-lg border-b border-hair2 px-2 py-3.5 transition-colors duration-150;
+  }
+  @media (hover: hover) {
+    .row:hover {
+      background: rgb(var(--c-panel2) / 0.45);
+    }
+  }
+
+  /* =====================================================================
+   * Landing
+   *
+   * Regra desta página: uma linha só existe se significar sequência, se
+   * estiver a desenhar-se, ou se for anatomia de um componente (moldura de
+   * aparelho, campo de formulário, linha de despesa dentro de um ecrã).
+   * Divisórias estáticas entre blocos, nenhuma. Dentro da app não se aplica.
+   * ===================================================================== */
+
+  .surface {
+    @apply relative rounded-2xl;
+    background: var(--card-fill);
+    box-shadow: var(--shadow-card), 0 0 0 1px var(--card-ring);
+    transition:
+      box-shadow 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Brilho de topo, só ao passar por cima. */
+  .surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 240ms ease;
+    background: radial-gradient(120% 90% at 50% -20%, var(--card-sheen), transparent 62%);
+  }
+
+  /*
+   * O `hover: hover` não é opcional: sem ele o cartão fica levantado depois de
+   * um toque no telemóvel, e parece avariado.
+   */
+  @media (hover: hover) {
+    .surface-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+    }
+    .surface-lift:hover::after {
+      opacity: 1;
+    }
+  }
+
+  /*
+   * Mudança de fundo sem aresta. O `inset` negativo põe a transição FORA da
+   * secção, por isso não há nenhum sítio onde se possa ver uma linha.
+   * O `isolate` no elemento é obrigatório: senão este `z-index: -1` compete
+   * com o do `body::before` e a lavagem desaparece.
+   */
+  .wash::before {
+    content: "";
+    position: absolute;
+    inset: -6rem 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgb(var(--c-panel) / 0.55) 16%,
+      rgb(var(--c-panel) / 0.55) 84%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * O interior das molduras mostra sempre O CONTRÁRIO do tema da página.
+   *
+   * Página escura, ecrã claro. Página clara, ecrã escuro. É o que dá contraste
+   * máximo nos dois casos: escuro sobre escuro é uma mancha que se confunde com
+   * a página, e branco sobre papel é um retângulo a flutuar.
+   *
+   * Isto tem de bater certo com as capturas, que são tiradas nos dois temas e
+   * trocadas pelas mesmas regras (ver `scripts/shots.mjs` e `[data-shot]` mais
+   * abaixo). Se as duas coisas se desencontrarem, fica uma orla da cor errada à
+   * volta da imagem.
+   */
+  .screen {
+    color-scheme: light;
+    --c-bg: 250 248 244;
+    --c-panel: 255 255 255;
+    --c-panel2: 241 237 229;
+    --c-hair: rgba(23, 22, 26, 0.12);
+    --c-hair2: rgba(23, 22, 26, 0.07);
+    --c-fg: 23 22 26;
+    --c-fg-muted: 93 91 85;
+    --c-fg-faint: 138 136 127;
+    --c-credit: 15 122 69;
+    --c-debt: 192 52 44;
+    --c-marca-tinta: 26 82 146;
+    background: rgb(var(--c-bg));
+    color: rgb(var(--c-fg));
+  }
+
+  html[data-theme="light"] .screen {
+    color-scheme: dark;
+    --c-bg: 8 8 10;
+    --c-panel: 16 16 18;
+    --c-panel2: 22 22 26;
+    --c-hair: rgba(255, 255, 255, 0.09);
+    --c-hair2: rgba(255, 255, 255, 0.06);
+    --c-fg: 243 242 238;
+    --c-fg-muted: 163 162 156;
+    --c-fg-faint: 109 108 103;
+    --c-credit: 98 209 150;
+    --c-debt: 240 116 111;
+    --c-marca-tinta: 122 178 235;
+  }
+
+  /*
+   * A captura certa para o tema em que a página está.
+   *
+   * `claro` e `escuro` dizem respeito ao tema DA CAPTURA, não ao da página: a
+   * clara aparece na página escura, e vice-versa. A que não se vê fica em
+   * `display: none` e com `loading="lazy"`, e o browser não a chega a
+   * transferir. Duplica o peso no disco, não o peso de quem visita.
+   */
+  [data-shot="escuro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="claro"] {
+    display: none;
+  }
+  html[data-theme="light"] [data-shot="escuro"] {
+    display: block;
+  }
+
+  /*
+   * Cabeçalho colado ao topo, na landing e na app: nasce transparente e ganha
+   * fundo ao sair do topo. O que o separa do conteúdo é sombra, nunca uma
+   * borda. Bónus: no primeiro pintar não há `backdrop-filter` nenhum, que é
+   * caro em Android.
+   */
+  [data-sticky] {
+    transition:
+      background 260ms ease,
+      box-shadow 260ms ease,
+      backdrop-filter 260ms ease;
+  }
+  :root[data-scrolled] header[data-sticky] {
+    background: rgb(var(--c-bg) / 0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    box-shadow: 0 12px 30px -22px rgba(0, 0, 0, 0.85);
+  }
+  /* A barra de baixo faz o mesmo, com a sombra a subir em vez de descer. */
+  nav[data-sticky] {
+    box-shadow: 0 -12px 30px -22px rgba(0, 0, 0, 0.85);
+  }
+
+  /*
+   * Tamanhos que contam com a ALTURA do ecrã, não só com a largura.
+   *
+   * Este foi o erro: a página foi desenhada num 1440x900 e os pontos de
+   * corte do Tailwind só olham para a largura. Um portátil de 1366x768, ou um
+   * 1920 com o escalonamento do Windows a 150% (que dá 1280x720 de CSS),
+   * tem a mesma largura e menos 130 a 180 píxeis de altura. O telemóvel do
+   * herói passava a ocupar 96% do ecrã: a pessoa abre a página e vê um
+   * aparelho gigante, sem contexto nenhum à volta.
+   *
+   * A regra passa a ser: nenhuma peça de produto passa de uma fatia da altura
+   * disponível. O `min()` escolhe sozinho, sem pontos de corte, e por isso
+   * também acerta nos tamanhos que ninguém testou.
+   */
+
+  /* Telemóvel: 390/844 de rácio, ou seja 0,462 de largura por altura. */
+  .peca-telemovel {
+    max-width: min(20rem, 62vh * 0.462);
+  }
+
+  /* Moldura de browser: 1480/924, ou seja 1,6 de largura por altura. */
+  .peca-browser {
+    max-width: min(100%, 52vh * 1.6);
+  }
+
+  /* O telemóvel dentro de uma cena, mais pequeno que o do herói. */
+  .peca-telemovel-cena {
+    max-width: min(17rem, 52vh * 0.462);
+  }
+
+  /*
+   * O brilho por trás do produto.
+   *
+   * A página era monocromática e lia-se séria, mas também apagada. O verde já
+   * é a cor da marca dentro da app (é a cor de quem recebe); aqui sai dos
+   * números e passa a iluminar o produto por trás. Um só, no herói, e
+   * suficientemente fraco para não competir com o ecrã que está à frente.
+   */
+  .brilho::before {
+    content: "";
+    position: absolute;
+    inset: -18% -12%;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: 50%;
+    background: radial-gradient(
+      55% 45% at 50% 45%,
+      rgb(var(--c-marca) / 0.26),
+      transparent 70%
+    );
+    filter: blur(28px);
+  }
+  html[data-theme="light"] .brilho::before {
+    background: radial-gradient(
+      55% 45% at 50% 45%,
+      rgb(var(--c-marca) / 0.18),
+      transparent 70%
+    );
+  }
+
+  /*
+   * Deslocamento ao scroll, feito pelo browser e não por JavaScript.
+   *
+   * O `animation-timeline: view()` corre fora da linha principal, por isso não
+   * dá solavancos, e onde não existe simplesmente não acontece nada: a peça
+   * fica quieta e a página continua igual. É a única forma de parallax que
+   * vale a pena, porque não obriga a manter um segundo caminho em JavaScript.
+   */
+  @supports (animation-timeline: view()) {
+    /* `pointer: fine` além da largura: um tablet deitado tem 1024px e continua
+       a ser um dedo, e animação presa ao scroll num ecrã de toque luta com o
+       scroll do próprio browser. */
+    @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) and (pointer: fine) {
+      @keyframes flutuar {
+        from {
+          transform: translateY(2.2rem);
+        }
+        to {
+          transform: translateY(-2.2rem);
+        }
+      }
+      .flutua {
+        animation: flutuar linear both;
+        animation-timeline: view();
+        animation-range: entry 10% exit 90%;
+      }
+    }
+  }
+
+  /*
+   * As frases que se ouvem, num anel que roda com o scroll.
+   *
+   * Em lista, as seis frases eram uma parede de texto: lia-se as duas
+   * primeiras e saltava-se o resto. Passam a estar dispostas em círculo, e é o
+   * scroll que traz cada uma à frente.
+   *
+   * **A lista continua a ser o que está escrito no HTML.** O efeito é uma
+   * camada por cima e tem duas formas: o anel em ecrã largo, e um baralho de
+   * cartas em ecrã estreito — no telemóvel não há espaço para um círculo com
+   * perspetiva sem o texto encolher até deixar de se ler. Ambas exigem suporte
+   * a linhas de tempo de scroll e ninguém a pedir menos movimento. Fora disso
+   * lê-se a lista de sempre, que é legível e não depende de nada. Uma secção
+   * onde cinco de seis frases só aparecem se o browser souber animar com o
+   * scroll seria uma secção que esconde conteúdo.
+   *
+   * O espaçamento da lista vive aqui e não em classes do Tailwind de propósito:
+   * as utilidades saem depois na folha e ganhavam a `.anel`, e uma margem numa
+   * frase com `inset: 0` não a afasta da vizinha, encolhe-a dentro do anel.
+   */
+  .anel {
+    margin-top: 3rem;
+  }
+  .anel > li + li {
+    margin-top: 2.25rem;
+  }
+
+  @supports (animation-timeline: view()) {
+    /*
+     * A altura entra na condição a par da largura. O palco é um ecrã inteiro
+     * com o título e o anel lá dentro: num ecrã mesmo baixo, o cartão da
+     * frente ia bater no parágrafo de cima. Verificado a 640 de altura com
+     * folga; o limite é a rede de segurança para baixo disso.
+     *
+     * O `pointer: fine` não é sobre o tamanho do ecrã, é sobre o 3D. Este anel
+     * vive de `preserve-3d` com `backface-visibility`, e há browsers de
+     * Android que achatam o primeiro e enganam-se no segundo — as costas das
+     * frases de trás apareciam escritas ao contrário. Um tablet grande passa o
+     * teste da largura e chumbava o do 3D. Com o ponteiro na condição, quem
+     * toca no ecrã fica com o baralho, que faz o mesmo sem depender do GPU.
+     */
+    @media (prefers-reduced-motion: no-preference) and (pointer: fine) and (min-width: 1024px) and (min-height: 600px) {
+      .anel-cena {
+        /* Alto de propósito: é este comprimento que dá o curso ao scroll.
+           Seis paragens em 300vh dá meio ecrã de rolo por frase, que é o que
+           deixa ler uma antes de a seguinte chegar. */
+        height: 320vh;
+        view-timeline-name: --anel;
+        view-timeline-axis: block;
+      }
+
+      .anel-palco {
+        position: sticky;
+        top: 0;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        /* Fundo suficiente para a frase da frente crescer sem deformar. Com
+           perspetiva curta o anel parecia um leque a abanar. */
+        perspective: 1800px;
+        perspective-origin: 50% 45%;
+      }
+
+      .anel {
+        /*
+         * As seis no mesmo sítio, empilhadas pela grelha e não por
+         * `position: absolute`. A diferença não é de estilo: com `inset: 0` a
+         * altura dos cartões era a da caixa, e a caixa tinha um número fixo lá
+         * escrito; assim a altura passa a ser a da frase mais alta. O texto
+         * deixa de comer a margem interior e ninguém tem de adivinhar 14rem.
+         */
+        display: grid;
+        /* Em anel não há coluna, logo não há espaçamento de coluna. O centro
+           tem de bater certo com o ponto de fuga do palco, senão o anel roda
+           torto e a frase da frente aparece de lado. */
+        margin: 0 auto;
+        /*
+         * Raio e largura andam juntos: com seis frases, cada uma tem 60 graus
+         * do círculo, e a corda desse arco mede exatamente o raio. Daí a
+         * largura ser o raio menos a folga entre vizinhas. Mexer num sem mexer
+         * no outro dá cartões sobrepostos ou um anel com buracos.
+         *
+         * O raio é fixo de propósito. Quando era `min(27rem, 40vw)`, a largura
+         * do cartão seguia a janela e a altura não, e o cartão mudava de forma
+         * entre os 1024 e os 1080 de largura — o mesmo desenho com dois
+         * feitios, que é o defeito que esta secção existe para não ter.
+         */
+        --anel-raio: 27rem;
+        /*
+         * Quanto se apagam as frases que não estão de frente. Vive no anel e
+         * não em cada frase de propósito: herda-se para as seis, e uma
+         * declaração na própria frase ganhava sempre à do tema por ser mais
+         * específica — o claro nunca chegava a aplicar-se.
+         *
+         * Sobre papel apaga-se mais. O mesmo valor dá resultados opostos nos
+         * dois temas: texto claro sobre fundo escuro desaparece, texto quase
+         * preto sobre papel continua a ler-se — e volta o defeito que isto veio
+         * corrigir, com as frases de lado a parecerem mal formatadas em vez de
+         * estarem ao longe.
+         */
+        --anel-apagado: 0.14;
+        width: calc(var(--anel-raio) - 1.5rem);
+        transform-style: preserve-3d;
+        animation: girar-anel linear both;
+        animation-timeline: --anel;
+        /* `contain` = enquanto a secção cobre o ecrã, que é exatamente o troço
+           em que o palco está colado e há mesmo curso para girar. */
+        animation-range: contain 0% contain 100%;
+      }
+
+      /*
+       * Roda aos saltos, não a rodar sempre.
+       *
+       * Cada frase fica um bocado de frente (o patamar) e só depois é que o
+       * anel gira para a seguinte. A rodar de forma contínua não havia onde
+       * pousar os olhos, que é o defeito de todos os carrosséis.
+       */
+      @keyframes girar-anel {
+        0%,
+        8% {
+          transform: rotateY(0deg);
+        }
+        18%,
+        26% {
+          transform: rotateY(-60deg);
+        }
+        36%,
+        44% {
+          transform: rotateY(-120deg);
+        }
+        54%,
+        62% {
+          transform: rotateY(-180deg);
+        }
+        72%,
+        80% {
+          transform: rotateY(-240deg);
+        }
+        90%,
+        100% {
+          transform: rotateY(-300deg);
+        }
+      }
+
+      .anel > li + li {
+        margin-top: 0;
+      }
+
+      /* O anel é centrado à força (o ponto de fuga manda), e um título
+         encostado à esquerda por cima dele ficava a puxar para o lado. */
+      .anel-cabeca {
+        text-align: center;
+      }
+      .anel-cabeca > * {
+        margin-inline: auto;
+      }
+
+      .anel-frase {
+        /* Todas na mesma célula: é isto que as põe no mesmo sítio e, ao mesmo
+           tempo, dá à grelha a altura da mais alta. */
+        grid-area: 1 / 1;
+        display: grid;
+        align-content: center;
+        gap: 0.75rem;
+        padding: 2rem 2.25rem;
+        border-radius: 1.25rem;
+        background: var(--card-fill);
+        box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+        backdrop-filter: blur(10px);
+        /* Cada uma no seu lugar do círculo, virada para fora. */
+        transform: rotateY(calc(var(--i) * 60deg)) translateZ(var(--anel-raio));
+        /* Sem isto viam-se as costas das três de trás, escritas ao contrário. */
+        backface-visibility: hidden;
+
+        /*
+         * **Só a frase da frente é que se lê.**
+         *
+         * As duas vizinhas estão a 60 graus e a perspetiva encolhe-lhes o
+         * texto na horizontal. À distância a que ficavam — legíveis, mas
+         * espremidas — não se liam como estando de lado: liam-se como texto
+         * mal formatado, e o defeito aparente era da tipografia e não do
+         * ângulo. Uma peça que parece partida chama mais atenção do que a
+         * frase que está mesmo a ser mostrada.
+         *
+         * Apagá-las resolve as duas coisas: deixam de competir com a da
+         * frente e passam a ler-se como o que são, profundidade. Não se
+         * escondem de todo (`visibility` ou `opacity: 0`) porque o anel
+         * perdia o volume e ficava um cartão a aparecer e a desaparecer no
+         * escuro.
+         *
+         * Cada uma tem a sua série de fotogramas porque o destaque de cada
+         * frase acontece num troço diferente do mesmo rolo — a de índice `i`
+         * está de frente entre os 18i% e os 18i+8%, que são as mesmas paragens
+         * do `girar-anel` aqui em cima. Mexer numa obriga a mexer na outra.
+         *
+         * Os desvanecimentos **sobrepõem-se de propósito**. Com fades curtos,
+         * a que saía já estava apagada quando a seguinte começava a acender, e
+         * a meio de cada passagem o palco ficava um instante às escuras — um
+         * pisca-pisca a cada frase. Agora cruzam-se a meio caminho.
+         */
+        animation: anel-destaque-0 linear both;
+        animation-timeline: --anel;
+        animation-range: contain 0% contain 100%;
+      }
+
+      @keyframes anel-destaque-0 {
+        0%,
+        8% {
+          opacity: 1;
+        }
+        17%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-1 {
+        0%,
+        9% {
+          opacity: var(--anel-apagado);
+        }
+        18%,
+        26% {
+          opacity: 1;
+        }
+        35%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-2 {
+        0%,
+        27% {
+          opacity: var(--anel-apagado);
+        }
+        36%,
+        44% {
+          opacity: 1;
+        }
+        53%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-3 {
+        0%,
+        45% {
+          opacity: var(--anel-apagado);
+        }
+        54%,
+        62% {
+          opacity: 1;
+        }
+        71%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-4 {
+        0%,
+        63% {
+          opacity: var(--anel-apagado);
+        }
+        72%,
+        80% {
+          opacity: 1;
+        }
+        89%,
+        100% {
+          opacity: var(--anel-apagado);
+        }
+      }
+
+      @keyframes anel-destaque-5 {
+        0%,
+        81% {
+          opacity: var(--anel-apagado);
+        }
+        90%,
+        98% {
+          opacity: 1;
+        }
+      }
+
+      /*
+       * Sobre papel apaga-se mais.
+       *
+       * O mesmo 0,14 dá resultados opostos nos dois temas: texto claro sobre
+       * fundo escuro desaparece, texto quase preto sobre papel continua a
+       * ler-se — e volta o defeito que isto veio corrigir, com as frases de
+       * lado a parecerem mal formatadas em vez de estarem ao longe.
+       */
+      html[data-theme="light"] .anel {
+        --anel-apagado: 0.06;
+      }
+
+      .anel-frase:nth-child(1) {
+        animation-name: anel-destaque-0;
+      }
+      .anel-frase:nth-child(2) {
+        animation-name: anel-destaque-1;
+      }
+      .anel-frase:nth-child(3) {
+        animation-name: anel-destaque-2;
+      }
+      .anel-frase:nth-child(4) {
+        animation-name: anel-destaque-3;
+      }
+      .anel-frase:nth-child(5) {
+        animation-name: anel-destaque-4;
+      }
+      .anel-frase:nth-child(6) {
+        animation-name: anel-destaque-5;
+      }
+
+      .anel-frase-texto {
+        font-size: 1.6rem;
+        line-height: 1.15;
+      }
+    }
+
+    /*
+     * A versão do telemóvel: as mesmas paragens, sem anel.
+     *
+     * As frases ficam empilhadas no mesmo sítio e é o scroll que troca uma
+     * pela seguinte, com um fundido curto na passagem. A altura mínima é a
+     * rede de segurança dos telemóveis em paisagem, onde o cartão não cabia
+     * inteiro com o título por cima.
+     *
+     * O `pointer: coarse` traz para aqui os ecrãs largos de toque, que o anel
+     * já não quer por causa do 3D. As duas condições são exclusivas uma da
+     * outra — o anel pede ponteiro fino E 1024 para cima, este pede estreito
+     * OU toque — por isso nunca há um viewport onde as duas peguem.
+     */
+    @media (prefers-reduced-motion: no-preference) and ((max-width: 1023px) or (pointer: coarse)) and (min-height: 560px) {
+      .anel-cena {
+        /* O mesmo curso do anel: meio ecrã de rolo por frase. */
+        height: 320vh;
+        view-timeline-name: --anel;
+        view-timeline-axis: block;
+      }
+
+      .anel-palco {
+        position: sticky;
+        top: 0;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        /* O svh desconta a barra do browser que aparece e desaparece; com vh
+           o fundo do cartão ficava escondido atrás dela. */
+        height: 100svh;
+      }
+
+      .anel {
+        /*
+         * As seis no mesmo sítio, pela grelha. A altura do baralho passa a ser
+         * a do cartão mais alto e mais nada.
+         *
+         * Era `min(24rem, 58svh)`: a altura vinha da janela e a largura vinha
+         * do texto, dois eixos a decidir cada um o seu, e o cartão mudava de
+         * feitio de telemóvel para telemóvel. Num ecrã de 560 de altura a
+         * conta dava 325px e o fundo do cartão ficava 27px por baixo da borda
+         * — cortado, exatamente onde a rede de segurança devia ter apanhado.
+         */
+        display: grid;
+        margin-top: 2.5rem;
+        /* Num tablet o cartão chegava aos 672px de largura e ficava uma
+           tarjeta baixa e comprida. O texto não precisa de tanta linha. */
+        max-width: 34rem;
+        margin-inline: auto;
+      }
+
+      .anel > li + li {
+        margin-top: 0;
+      }
+
+      .anel-frase {
+        grid-area: 1 / 1;
+        display: grid;
+        align-content: center;
+        padding: 1.75rem 1.5rem;
+        border-radius: 1.25rem;
+        background: var(--card-fill);
+        box-shadow: var(--shadow-card-hi), 0 0 0 1px var(--card-ring);
+        opacity: 0;
+        transform: translateY(1.25rem);
+        animation: trocar-frase linear both;
+        animation-timeline: --anel;
+        /*
+         * A janela de cada frase: seis janelas de 20% com arranque a cada
+         * 16%, o que deixa 4% de sobreposição — o tempo do fundido entre a
+         * que sai e a que entra. Mexer num número sem mexer no outro ou abre
+         * buracos sem frase nenhuma ou empilha duas por cima uma da outra.
+         */
+        animation-range: contain calc(var(--i) * 16%) contain
+          calc(var(--i) * 16% + 20%);
+      }
+
+      /* A última frase fica, como no anel: com a janela esticada para lá do
+         fim, os 100% do curso apanham-na a meio do patamar, e ela sai do ecrã
+         agarrada à secção em vez de desaparecer antes dela. */
+      .anel-frase:last-child {
+        animation-range: contain 80% contain 120%;
+      }
+
+      /* O mesmo patamar do anel: cada frase passa quieta a maior parte da
+         sua janela, e a troca acontece nas pontas. */
+      @keyframes trocar-frase {
+        0% {
+          opacity: 0;
+          transform: translateY(1.25rem);
+        }
+        20%,
+        80% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-1.25rem);
+        }
+      }
+    }
+  }
+
+  /* Traço que se desenha ao lado da sobrancelha: acento, não divisória. */
+  .eyebrow-tick::before {
+    content: "";
+    display: inline-block;
+    vertical-align: middle;
+    width: 20px;
+    height: 1px;
+    margin-right: 0.6rem;
+    background: currentColor;
+    opacity: 0.5;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+  }
+  [data-shown] .eyebrow-tick::before,
+  [data-shown].eyebrow-tick::before {
+    transform: scaleX(1);
   }
 }
 
@@ -160,6 +1088,81 @@
   }
   .text-balance {
     text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/*
+ * Revelação ao scroll.
+ *
+ * Uma vez e nunca mais: re-animar ao subir é das coisas mais irritantes que
+ * uma landing faz. A cascata trava ao quarto item, senão o oitavo cartão chega
+ * meio segundo depois do primeiro e a página parece estar a carregar.
+ *
+ * O estado de partida é invisível, o que traz um risco conhecido: sem
+ * JavaScript ficava tudo escondido. Por isso a página traz um <noscript> que
+ * anula isto, e o observador marca tudo se o IntersectionObserver não existir.
+ */
+[data-reveal],
+[data-reveal-group] > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-reveal][data-shown],
+[data-reveal-group][data-shown] > * {
+  opacity: 1;
+  transform: none;
+}
+
+[data-reveal-group][data-shown] > *:nth-child(2) {
+  transition-delay: 70ms;
+}
+[data-reveal-group][data-shown] > *:nth-child(3) {
+  transition-delay: 140ms;
+}
+[data-reveal-group][data-shown] > *:nth-child(n + 4) {
+  transition-delay: 210ms;
+}
+
+/*
+ * O trilho do "Como funciona" desenha-se: é a única linha animada da página, e
+ * está lá porque mede sequência (passo 1 → 4), não porque separa nada.
+ */
+.track {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1) 120ms;
+}
+@media (max-width: 1023px) {
+  .track {
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+}
+[data-shown] .track {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sem movimento, mas nada pode ficar escondido. */
+  [data-reveal],
+  [data-reveal-group] > *,
+  .track {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  body:has([data-landing])::before,
+  body:has([data-app])::before {
+    animation: none !important;
+  }
+  .page-in {
+    animation: none !important;
   }
 }
 

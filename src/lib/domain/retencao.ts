@@ -27,6 +27,11 @@
  *    a pessoa voltou, não está abandonado.
  * 4. **O aviso caduca.** Quem foi avisado e voltou não fica com um aviso pendurado
  *    à espera — a contagem recomeça do zero.
+ * 5. **Já congelado não é para congelar outra vez.** Sem esta distinção, um cron
+ *    diário decidia `congelar` todos os dias sobre o mesmo ambiente: reescrevia a
+ *    data do congelamento, e a data deixava de dizer quando aconteceu. Passar a
+ *    pagar também descongela — quem paga não fica com o ambiente bloqueado à
+ *    espera de voltar a entrar.
  *
  * Lógica pura, sem acesso a dados. É deliberado: o que decide bloquear o acesso
  * de alguém aos seus dados tem de ser legível sem base de dados à frente.
@@ -45,7 +50,11 @@ export type RetentionState =
   /** Está perto do fim e ainda não foi avisado: enviar aviso. */
   | "avisar"
   /** Passou o prazo: passa a só de leitura. Os dados ficam. */
-  | "congelar";
+  | "congelar"
+  /** Já está congelado e assim fica. Não se volta a congelar o que já congelou. */
+  | "congelado"
+  /** Está congelado mas voltou a haver vida: destrancar. */
+  | "descongelar";
 
 export interface RetentionInput {
   plan: SpacePlan | undefined;
@@ -55,6 +64,8 @@ export interface RetentionInput {
   createdAt: string;
   /** Quando se avisou, se se avisou. */
   warnedAt: string | null;
+  /** Quando congelou, se está congelado. `null` = não está. */
+  frozenAt: string | null;
   /** Hoje ("AAAA-MM-DD"). */
   today: string;
 }
@@ -81,10 +92,14 @@ function diasEntre(de: string, ate: string): number {
  * torna impossível apagá-lo por um erro na aritmética das datas.
  */
 export function retentionVerdict(input: RetentionInput): RetentionVerdict {
-  const { plan, lastActivity, createdAt, warnedAt, today } = input;
+  const { plan, lastActivity, createdAt, warnedAt, frozenAt, today } = input;
 
   // Sem excepções e sem depender de mais nada: quem tem plano completo fica fora.
   if ((plan ?? "free") === "full") {
+    // Com uma excepção que só existe a favor de quem paga: um ambiente que
+    // estava congelado e passou a completo descongela. Ficar bloqueado depois
+    // de pagar era o pior desfecho possível desta regra.
+    if (frozenAt) return { state: "descongelar", daysInactive: 0, daysLeft: RETENTION_DAYS };
     return { state: "ativo", daysInactive: 0, daysLeft: RETENTION_DAYS };
   }
 
@@ -97,6 +112,17 @@ export function retentionVerdict(input: RetentionInput): RetentionVerdict {
   // Um aviso enviado antes da última atividade já não vale: a pessoa voltou, a
   // contagem recomeçou, e apagar com base num aviso velho seria apagar sem aviso.
   const avisoValido = Boolean(warnedAt && warnedAt.slice(0, 10) >= desde.slice(0, 10));
+
+  if (frozenAt) {
+    // Voltou a haver vida depois do congelamento: destranca. É a regra 3 a
+    // funcionar sem obrigar a pessoa a pedir nada a ninguém.
+    if (desde.slice(0, 10) > frozenAt.slice(0, 10)) {
+      return { state: "descongelar", daysInactive, daysLeft };
+    }
+    // Já está congelado e continua parado: não se faz nada. Voltar a congelar
+    // reescrevia a data e o `frozen_at` deixava de dizer quando aconteceu.
+    return { state: "congelado", daysInactive, daysLeft };
+  }
 
   if (daysInactive >= RETENTION_DAYS) {
     // Congela mesmo sem aviso válido. É a diferença que faz congelar em vez de

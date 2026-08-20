@@ -7,14 +7,16 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { stableUid } from "@/lib/domain";
-import type { Expense, Settlement, ClassificationRule, Split } from "@/lib/domain";
+import { stableUid, ticketAberto } from "@/lib/domain";
+import type { Expense, Settlement, ClassificationRule, Split, TicketStatus, EtapaAvaliacao } from "@/lib/domain";
 import { normalizeText } from "@/lib/domain";
 import type {
   AddMemberInput,
   AppUser,
   Category,
   ContactMessage,
+  RetentionRow,
+  WaitlistEntry,
   CreateCategoryInput,
   CreateContactInput,
   CreateExpenseInput,
@@ -30,8 +32,25 @@ import type {
   StoredQuote,
   CreateAssetInput,
   CreateAssetTradeInput,
+  CreateNetWorthSnapshot,
+  NetWorthSnapshotRow,
+  AssetAttachment,
+  CreateAssetAttachment,
+  Ticket,
+  TicketMessage,
+  StoredAssetSplit,
+  CreateAssetSplitInput,
+  StoredValuation,
+  CreateValuationInput,
+  UpdateValuationInput,
+  ValuationEstudo,
+  ValuationAttachment,
+  CreateValuationAttachment,
+  CreateTicketInput,
+  CreateTicketMessageInput,
   Income,
   CreateIncomeInput,
+  UpdateIncomeInput,
   Membership,
   PlatformStats,
   ReminderFrequency,
@@ -48,10 +67,15 @@ import type {
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
+  seedAssets,
+  seedAssetTrades,
   seedExpenses,
+  seedIncomes,
+  seedQuotes,
   seedSettlements,
   seedSpaces,
   seedMembers,
+  seedPasswords,
 } from "./seed-data";
 
 interface Store {
@@ -71,10 +95,27 @@ interface Store {
   spendingGoals: SpendingGoal[];
   assets: Asset[];
   assetTrades: AssetTrade[];
+  netWorthSnapshots: NetWorthSnapshotRow[];
+  assetAttachments: AssetAttachment[];
+  assetSplits: StoredAssetSplit[];
+  valuations: StoredValuation[];
+  valuationAttachments: ValuationAttachment[];
+  tickets: Ticket[];
+  ticketMessages: TicketMessage[];
   quotes: Record<string, StoredQuote[]>;
   quoteCurrencies: Record<string, string>;
   income: Income[];
   resetTokens: { userId: string; tokenHash: string; expiresAt: string; usedAt?: string }[];
+  memberInvites: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+    acceptedAt?: string;
+  }[];
+  waitlist: WaitlistEntry[];
 }
 
 // Singleton persistente entre pedidos no mesmo processo (dev).
@@ -82,6 +123,9 @@ const globalForStore = globalThis as unknown as { __financasStore?: Store };
 
 function getStore(): Store {
   if (!globalForStore.__financasStore) {
+    // As cotações de exemplo são partilhadas por símbolo (não pertencem a
+    // nenhum ambiente), por isso entram já na forma indexada que o store usa.
+    const quoteSeries = seedQuotes();
     globalForStore.__financasStore = {
       spaces: seedSpaces(),
       members: seedMembers(),
@@ -89,7 +133,7 @@ function getStore(): Store {
       settlements: seedSettlements(),
       categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, spaceId: null })),
       rules: DEFAULT_RULES,
-      passwords: {},
+      passwords: seedPasswords(),
       contacts: [],
       recurring: [],
       appUsers: [],
@@ -97,12 +141,24 @@ function getStore(): Store {
       importTemplates: [],
       importReminders: [],
       spendingGoals: [],
-      assets: [],
-      assetTrades: [],
-      quotes: {},
-      quoteCurrencies: {},
-      income: [],
+      // Semeados: sem eles, metade dos ecrãs abre vazia e não há capturas para
+      // a landing. As coleções que ficam a zero são as que ainda não têm
+      // exemplo escrito.
+      assets: seedAssets(),
+      assetTrades: seedAssetTrades(),
+      netWorthSnapshots: [],
+      assetAttachments: [],
+      assetSplits: [],
+      valuations: [],
+      valuationAttachments: [],
+      tickets: [],
+      ticketMessages: [],
+      quotes: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.quotes])),
+      quoteCurrencies: Object.fromEntries(quoteSeries.map((s) => [s.symbol, s.currency])),
+      income: seedIncomes(),
       resetTokens: [],
+      memberInvites: [],
+      waitlist: [],
     };
   }
   return globalForStore.__financasStore;
@@ -113,6 +169,18 @@ function canView(e: Expense, viewerId: string): boolean {
   if (e.kind === "shared") return true;
   if (e.ownerId === viewerId) return true;
   return e.visibleToPartner === true;
+}
+
+/**
+ * Uma despesa pelo id, mas só se for mesmo daquele ambiente.
+ *
+ * Procurar só pelo id deixava qualquer id chegar a qualquer ambiente. O mock
+ * aplica a mesma regra que o Supabase para não haver um backend mais permissivo
+ * do que o outro: se os testes correm contra o mock, é o mock que tem de
+ * apanhar o engano.
+ */
+function findExpense(id: string, spaceId: string): Expense | undefined {
+  return getStore().expenses.find((x) => x.id === id && (x.spaceId ?? "casa") === spaceId);
 }
 
 export class MockRepository implements Repository {
@@ -175,6 +243,7 @@ export class MockRepository implements Repository {
       name: input.name,
       linkedUserId: input.linkedUserId ?? null,
       email: input.email ?? null,
+      participatesFrom: input.participatesFrom ?? null,
     };
     getStore().members.push(member);
     return member;
@@ -187,6 +256,7 @@ export class MockRepository implements Repository {
     if (patch.email !== undefined) m.email = patch.email;
     if (patch.role !== undefined) m.role = patch.role;
     if (patch.linkedUserId !== undefined) m.linkedUserId = patch.linkedUserId;
+    if (patch.participatesFrom !== undefined) m.participatesFrom = patch.participatesFrom;
   }
 
   async deleteMember(id: string, spaceId: string): Promise<void> {
@@ -194,13 +264,17 @@ export class MockRepository implements Repository {
     store.members = store.members.filter((m) => !(m.id === id && m.spaceId === spaceId));
   }
 
-  async countMemberActivity(memberId: string): Promise<number> {
+  async countMemberActivity(memberId: string, spaceId: string): Promise<number> {
     const store = getStore();
     const exp = store.expenses.filter(
-      (e) => !e.deletedAt && (e.payerId === memberId || e.ownerId === memberId),
+      (e) =>
+        e.spaceId === spaceId &&
+        !e.deletedAt &&
+        (e.payerId === memberId || e.ownerId === memberId),
     ).length;
     const set = store.settlements.filter(
-      (s) => s.fromUserId === memberId || s.toUserId === memberId,
+      (s) =>
+        s.spaceId === spaceId && (s.fromUserId === memberId || s.toUserId === memberId),
     ).length;
     return exp + set;
   }
@@ -222,8 +296,8 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
   }
 
-  async getExpense(id: string, viewerId: string): Promise<Expense | null> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async getExpense(id: string, spaceId: string, viewerId: string): Promise<Expense | null> {
+    const e = findExpense(id, spaceId);
     if (!e || !canView(e, viewerId)) return null;
     return e;
   }
@@ -274,8 +348,12 @@ export class MockRepository implements Repository {
     return expense;
   }
 
-  async updateExpense(id: string, input: import("./repository").UpdateExpenseInput): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async updateExpense(
+    id: string,
+    spaceId: string,
+    input: import("./repository").UpdateExpenseInput,
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (!e) return;
     e.description = input.description;
     e.amountCents = input.amountCents;
@@ -289,13 +367,13 @@ export class MockRepository implements Repository {
     e.updatedAt = new Date().toISOString();
   }
 
-  async setReceiptPath(id: string, path: string | null): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setReceiptPath(id: string, spaceId: string, path: string | null): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) e.receiptPath = path;
   }
 
-  async softDeleteExpense(id: string, _actorId: string): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async softDeleteExpense(id: string, spaceId: string, _actorId: string): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.deletedAt = new Date().toISOString();
       e.updatedAt = e.deletedAt;
@@ -326,8 +404,8 @@ export class MockRepository implements Repository {
     }
   }
 
-  async confirmExpense(id: string, amountCents: number): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async confirmExpense(id: string, spaceId: string, amountCents: number): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.amountCents = amountCents;
       e.status = "confirmed";
@@ -387,20 +465,33 @@ export class MockRepository implements Repository {
     store.recurring = store.recurring.filter((r) => !(r.id === id && r.spaceId === spaceId));
   }
 
-  async recurringExpenseExists(recurringId: string, transactionDate: string): Promise<boolean> {
+  async recurringExpenseExists(
+    recurringId: string,
+    spaceId: string,
+    transactionDate: string,
+  ): Promise<boolean> {
     return getStore().expenses.some(
-      (e) => e.recurringId === recurringId && e.transactionDate === transactionDate && !e.deletedAt,
+      (e) =>
+        e.recurringId === recurringId &&
+        e.spaceId === spaceId &&
+        e.transactionDate === transactionDate &&
+        !e.deletedAt,
     );
   }
 
   async updateExpensesForRecurring(
     recurringId: string,
+    spaceId: string,
     patch: { description: string; categoryId: string | null; payerId: string; split: Split },
     amount?: { cents: number; onlyPending: boolean },
   ): Promise<void> {
     const now = new Date().toISOString();
     for (const e of getStore().expenses) {
-      if (e.recurringId !== recurringId || e.deletedAt) continue;
+      // O mock aplica a MESMA regra da produção. Um backend mais permissivo do
+      // que o real esconde exactamente o engano que os testes procuram.
+      if (e.recurringId !== recurringId || (e.spaceId ?? "casa") !== spaceId || e.deletedAt) {
+        continue;
+      }
       e.description = patch.description;
       e.categoryId = patch.categoryId;
       e.payerId = patch.payerId;
@@ -489,7 +580,9 @@ export class MockRepository implements Repository {
 
   async createAppUser(input: AppUser): Promise<void> {
     const store = getStore();
-    if (!store.appUsers.some((u) => u.id === input.id)) store.appUsers.push({ ...input });
+    if (!store.appUsers.some((u) => u.id === input.id)) {
+      store.appUsers.push({ createdAt: new Date().toISOString(), ...input });
+    }
   }
 
   async deleteAppUser(id: string): Promise<void> {
@@ -498,8 +591,12 @@ export class MockRepository implements Repository {
     delete store.passwords[id];
   }
 
-  async setExpenseApproval(id: string, status: "approved" | "rejected"): Promise<void> {
-    const e = getStore().expenses.find((x) => x.id === id);
+  async setExpenseApproval(
+    id: string,
+    spaceId: string,
+    status: "approved" | "rejected",
+  ): Promise<void> {
+    const e = findExpense(id, spaceId);
     if (e) {
       e.approvalStatus = status === "approved" ? null : "rejected";
       e.updatedAt = new Date().toISOString();
@@ -523,6 +620,92 @@ export class MockRepository implements Repository {
   async renameSpace(spaceId: string, name: string): Promise<void> {
     const s = getStore().spaces.find((x) => x.id === spaceId);
     if (s) s.name = name;
+  }
+
+  async touchSpaceActivity(spaceId: string, atISO: string): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.lastActivityAt = atISO;
+  }
+
+  async listSpacesForRetention(): Promise<RetentionRow[]> {
+    const store = getStore();
+    return store.spaces
+      // O mesmo filtro do Supabase: os completos nem chegam a ser avaliados.
+      .filter((s) => (s.plan ?? "free") !== "full")
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        plan: s.plan ?? "free",
+        createdAt: s.createdAt,
+        lastActivityAt: s.lastActivityAt ?? null,
+        retentionWarnedAt: s.retentionWarnedAt ?? null,
+        frozenAt: s.frozenAt ?? null,
+        emails: [
+          ...new Set(
+            store.members
+              .filter((m) => m.spaceId === s.id && m.email)
+              .map((m) => m.email as string),
+          ),
+        ],
+      }));
+  }
+
+  async markRetentionWarned(spaceId: string, atISO: string): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.retentionWarnedAt = atISO;
+  }
+
+  async setSpaceFrozen(spaceId: string, atISO: string | null): Promise<void> {
+    const s = getStore().spaces.find((x) => x.id === spaceId);
+    if (s) s.frozenAt = atISO;
+  }
+
+  private tentativas = new Map<string, { inicio: number; contagem: number }>();
+
+  // A mesma semântica da função SQL: janela fixa, incremento e decisão juntos.
+  async registarTentativa(chave: string, janelaMs: number, tecto: number): Promise<boolean> {
+    const agora = Date.now();
+    const atual = this.tentativas.get(chave);
+    if (!atual || atual.inicio < agora - janelaMs) {
+      this.tentativas.set(chave, { inicio: agora, contagem: 1 });
+      return 1 <= tecto;
+    }
+    atual.contagem += 1;
+    return atual.contagem <= tecto;
+  }
+
+  async countAppUsersCreatedOn(day: string): Promise<number> {
+    return getStore().appUsers.filter((u) => (u.createdAt ?? "").slice(0, 10) === day).length;
+  }
+
+  async addToWaitlist(input: {
+    email: string;
+    name?: string | null;
+    consent: boolean;
+    source?: string | null;
+  }): Promise<void> {
+    const store = getStore();
+    const email = input.email.trim().toLowerCase();
+    // Insistir não faz subir: quem já lá está fica onde estava.
+    if (store.waitlist.some((w) => w.email === email)) return;
+    store.waitlist.push({
+      email,
+      name: input.name?.trim() || null,
+      consent: input.consent,
+      source: input.source ?? null,
+      createdAt: new Date().toISOString(),
+      invitedAt: null,
+    });
+  }
+
+  async listWaitlist(): Promise<WaitlistEntry[]> {
+    return [...getStore().waitlist];
+  }
+
+  async markWaitlistInvited(email: string, atISO: string): Promise<void> {
+    const e = email.trim().toLowerCase();
+    const w = getStore().waitlist.find((x) => x.email === e);
+    if (w) w.invitedAt = atISO;
   }
 
   async listAppUsers(): Promise<AppUser[]> {
@@ -647,6 +830,9 @@ export class MockRepository implements Repository {
 
     return {
       accountCount: store.appUsers.length,
+      // O mock não guarda `createdAt` em tudo o que serviria de evento, e uma
+      // curva construída sobre metade dos dados seria pior do que não a ter.
+      crescimento: null,
       spaceCount: spaces.length,
       expenseCount: store.expenses.filter((e) => !e.deletedAt).length,
       activeSpaces: spaces.filter((s) => s.lastActivity !== null && s.lastActivity >= cutoff).length,
@@ -696,7 +882,83 @@ export class MockRepository implements Repository {
   }
 
   async listAssets(spaceId: string): Promise<Asset[]> {
-    return getStore().assets.filter((a) => a.spaceId === spaceId);
+    // A mesma regra do Supabase: a ordem escolhida à mão primeiro, e quem nunca
+    // foi mexido fica por ordem de criação. Um mock mais permissivo do que a
+    // produção esconde exatamente os enganos que os testes procuram.
+    const doAmbiente = getStore().assets.filter((a) => a.spaceId === spaceId);
+    return doAmbiente
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => {
+        const ax = x.a.sortOrder ?? null;
+        const ay = y.a.sortOrder ?? null;
+        if (ax !== null && ay !== null) return ax - ay || x.i - y.i;
+        if (ax !== null) return -1;
+        if (ay !== null) return 1;
+        return x.i - y.i;
+      })
+      .map((x) => x.a);
+  }
+
+  async listNetWorthSnapshots(spaceId: string): Promise<NetWorthSnapshotRow[]> {
+    return getStore()
+      .netWorthSnapshots.filter((s) => s.spaceId === spaceId)
+      .sort((a, b) => (a.onDate < b.onDate ? -1 : a.onDate > b.onDate ? 1 : 0));
+  }
+
+  async saveNetWorthSnapshot(input: CreateNetWorthSnapshot): Promise<void> {
+    const store = getStore();
+    // Uma por dia e por ambiente: a do dia substitui a anterior.
+    const i = store.netWorthSnapshots.findIndex(
+      (s) => s.spaceId === input.spaceId && s.onDate === input.onDate,
+    );
+    const row: NetWorthSnapshotRow = { id: i >= 0 ? store.netWorthSnapshots[i]!.id : randomUUID(), ...input };
+    if (i >= 0) store.netWorthSnapshots[i] = row;
+    else store.netWorthSnapshots.push(row);
+  }
+
+  async listAssetAttachments(spaceId: string, assetId?: string): Promise<AssetAttachment[]> {
+    return getStore().assetAttachments.filter(
+      (a) => a.spaceId === spaceId && (!assetId || a.assetId === assetId),
+    );
+  }
+
+  async getAssetAttachment(id: string, spaceId: string): Promise<AssetAttachment | null> {
+    // A mesma regra da produção: o ambiente entra na procura, não numa
+    // comparação a seguir.
+    return getStore().assetAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null;
+  }
+
+  async createAssetAttachment(input: CreateAssetAttachment): Promise<void> {
+    getStore().assetAttachments.push({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  async markAssetAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments[i] = { ...store.assetAttachments[i]!, status: "pronto" };
+  }
+
+  async moveAssetAttachments(
+    fromAssetId: string,
+    toAssetId: string,
+    spaceId: string,
+  ): Promise<number> {
+    let mexidos = 0;
+    for (const a of getStore().assetAttachments) {
+      // Filtra pelo ambiente tal como o Supabase: um mock mais permissivo do
+      // que a produção esconde o engano que os testes procuram.
+      if (a.assetId === fromAssetId && a.spaceId === spaceId) {
+        a.assetId = toAssetId;
+        mexidos += 1;
+      }
+    }
+    return mexidos;
+  }
+
+  async deleteAssetAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    const i = store.assetAttachments.findIndex((a) => a.id === id && a.spaceId === spaceId);
+    if (i >= 0) store.assetAttachments.splice(i, 1);
   }
 
   async createAsset(input: CreateAssetInput): Promise<Asset> {
@@ -741,6 +1003,41 @@ export class MockRepository implements Repository {
     store.assetTrades = store.assetTrades.filter((t) => !(t.id === id && t.spaceId === spaceId));
   }
 
+  async updateAssetTrade(
+    id: string,
+    spaceId: string,
+    patch: Partial<CreateAssetTradeInput>,
+  ): Promise<void> {
+    const store = getStore();
+    const i = store.assetTrades.findIndex((t) => t.id === id && t.spaceId === spaceId);
+    if (i < 0) return;
+    store.assetTrades[i] = { ...store.assetTrades[i]!, ...patch };
+  }
+
+  /**
+   * Lê o armazém directamente, e **não** por `listQuotes` símbolo a símbolo.
+   *
+   * Não é preciosismo: em produção isto é uma consulta só, e um mock que faça N
+   * leituras por baixo mede outra coisa — um teste que conte viagens à base de
+   * dados passaria a contar as do mock em vez das do código.
+   */
+  async listQuotesFor(
+    symbols: readonly string[],
+    fromDate?: string,
+  ): Promise<Map<string, StoredQuote[]>> {
+    const fora = new Map<string, StoredQuote[]>();
+    const todas = getStore().quotes;
+    for (const s of new Set(symbols.map((x) => x.trim().toLowerCase()).filter(Boolean))) {
+      fora.set(
+        s,
+        (todas[s] ?? [])
+          .filter((q) => !fromDate || q.date >= fromDate)
+          .sort((a, b) => (a.date < b.date ? -1 : 1)),
+      );
+    }
+    return fora;
+  }
+
   async listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]> {
     const all = getStore().quotes[symbol] ?? [];
     return all
@@ -751,6 +1048,25 @@ export class MockRepository implements Repository {
   async latestQuote(symbol: string): Promise<StoredQuote | null> {
     const all = await this.listQuotes(symbol);
     return all.length > 0 ? all[all.length - 1]! : null;
+  }
+
+  async latestQuotesFor(
+    symbols: readonly string[],
+  ): Promise<Map<string, { date: string; closeCents: number; currency: string }>> {
+    const fora = new Map<string, { date: string; closeCents: number; currency: string }>();
+    const store = getStore();
+    for (const bruto of symbols) {
+      const s = bruto.trim().toLowerCase();
+      const lista = store.quotes[s];
+      if (!lista || lista.length === 0) continue;
+      const ultima = lista[lista.length - 1]!;
+      fora.set(s, {
+        date: ultima.date,
+        closeCents: ultima.closeCents,
+        currency: store.quoteCurrencies?.[s] ?? "EUR",
+      });
+    }
+    return fora;
   }
 
   async quoteCurrency(symbol: string): Promise<string | null> {
@@ -767,6 +1083,37 @@ export class MockRepository implements Repository {
 
   async listAllAssetSymbols(): Promise<string[]> {
     return [...new Set(getStore().assets.map((a) => a.symbol).filter((s): s is string => Boolean(s)))];
+  }
+
+  private membroPleno(spaceId: string, userId: string): boolean {
+    const m = getStore().members.find(
+      (x) => x.spaceId === spaceId && x.linkedUserId === userId,
+    );
+    return Boolean(m) && (m!.role ?? "full") !== "submitter";
+  }
+
+  async getAssetLogoDomain(assetId: string, userId: string): Promise<string | null> {
+    const a = getStore().assets.find((x) => x.id === assetId);
+    if (!a?.logoDomain) return null;
+    // A mesma regra do Supabase: sem pertença plena, nada — nem a confirmação
+    // de que o bem existe.
+    return this.membroPleno(a.spaceId, userId) ? a.logoDomain : null;
+  }
+
+  async getValuationLogoDomain(valuationId: string, userId: string): Promise<string | null> {
+    const v = getStore().valuations.find((x) => x.id === valuationId);
+    if (!v?.logoDomain) return null;
+    return this.membroPleno(v.spaceId, userId) ? v.logoDomain : null;
+  }
+
+  async listSpacesComInvestimentos(): Promise<string[]> {
+    return [
+      ...new Set(
+        getStore()
+          .assets.filter((a) => a.kind === "investimento")
+          .map((a) => a.spaceId),
+      ),
+    ];
   }
 
   async latestQuoteDate(symbol: string): Promise<string | null> {
@@ -810,6 +1157,57 @@ export class MockRepository implements Repository {
     return { userId: t.userId };
   }
 
+  async createMemberInvite(input: {
+    spaceId: string;
+    memberId: string;
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: string;
+  }): Promise<void> {
+    const store = getStore();
+    // Convidar outra vez substitui: dois convites vivos para o mesmo
+    // participante seriam duas ligações válidas a apontar para o mesmo sítio.
+    store.memberInvites = store.memberInvites.filter(
+      (i) => !(i.memberId === input.memberId && i.spaceId === input.spaceId && !i.acceptedAt),
+    );
+    store.memberInvites.push({ ...input });
+  }
+
+  async peekMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const i = getStore().memberInvites.find(
+      (x) => x.tokenHash === tokenHash && !x.acceptedAt && x.expiresAt > new Date().toISOString(),
+    );
+    return i ? { spaceId: i.spaceId, memberId: i.memberId, email: i.email } : null;
+  }
+
+  async acceptMemberInvite(
+    tokenHash: string,
+  ): Promise<{ spaceId: string; memberId: string; email: string } | null> {
+    const i = getStore().memberInvites.find(
+      (x) => x.tokenHash === tokenHash && !x.acceptedAt && x.expiresAt > new Date().toISOString(),
+    );
+    if (!i) return null;
+    i.acceptedAt = new Date().toISOString();
+    return { spaceId: i.spaceId, memberId: i.memberId, email: i.email };
+  }
+
+  async deleteMemberInvites(memberId: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.memberInvites = store.memberInvites.filter(
+      (i) => !(i.memberId === memberId && i.spaceId === spaceId),
+    );
+  }
+
+  async listMemberInvites(spaceId: string): Promise<{ memberId: string; email: string }[]> {
+    const agora = new Date().toISOString();
+    return getStore()
+      .memberInvites.filter((i) => i.spaceId === spaceId && !i.acceptedAt && i.expiresAt > agora)
+      .map((i) => ({ memberId: i.memberId, email: i.email }));
+  }
+
   async listIncome(spaceId: string): Promise<Income[]> {
     return getStore()
       .income.filter((i) => i.spaceId === spaceId)
@@ -820,6 +1218,19 @@ export class MockRepository implements Repository {
     const entry: Income = { ...input, id: `inc_${randomUUID()}` };
     getStore().income.push(entry);
     return entry;
+  }
+
+  async updateIncome(id: string, spaceId: string, patch: UpdateIncomeInput): Promise<void> {
+    const i = getStore().income.find((x) => x.id === id && x.spaceId === spaceId);
+    // Sem o ambiente certo não se corrige nada, como na produção. Um mock mais
+    // permissivo esconde exactamente o engano que os testes procuram.
+    if (!i) return;
+    if (patch.kind !== undefined) i.kind = patch.kind;
+    if (patch.description !== undefined) i.description = patch.description;
+    if (patch.amountCents !== undefined) i.amountCents = patch.amountCents;
+    if (patch.date !== undefined) i.date = patch.date;
+    if (patch.recurring !== undefined) i.recurring = patch.recurring;
+    if (patch.notes !== undefined) i.notes = patch.notes;
   }
 
   async deleteIncome(id: string, spaceId: string): Promise<void> {
@@ -883,6 +1294,275 @@ export class MockRepository implements Repository {
       archivedAt: null,
       notes: null,
     });
+  }
+
+  // ---- Desdobramentos ---------------------------------------------------
+
+  async listAssetSplits(spaceId: string, assetId?: string): Promise<StoredAssetSplit[]> {
+    return getStore()
+      .assetSplits.filter(
+        (s) => s.spaceId === spaceId && (assetId ? s.assetId === assetId : true),
+      )
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  async createAssetSplit(input: CreateAssetSplitInput): Promise<void> {
+    const store = getStore();
+    // O mesmo ativo não desdobra duas vezes no mesmo dia — o índice único da
+    // migração diz o mesmo, e o mock aplica a mesma regra para não ser mais
+    // permissivo do que a produção.
+    const jaHa = store.assetSplits.some(
+      (s) => s.assetId === input.assetId && s.date === input.date,
+    );
+    if (jaHa) throw new Error("Já há um desdobramento nesse dia para este ativo.");
+    store.assetSplits.push({
+      id: `spl_${randomUUID()}`,
+      spaceId: input.spaceId,
+      assetId: input.assetId,
+      date: input.date,
+      ratio: input.ratio,
+      notes: input.notes ?? null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteAssetSplit(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.assetSplits = store.assetSplits.filter(
+      (s) => !(s.id === id && s.spaceId === spaceId),
+    );
+  }
+
+  // ---- Avaliações -------------------------------------------------------
+
+  async listValuations(spaceId: string): Promise<StoredValuation[]> {
+    return getStore()
+      .valuations.filter((v) => v.spaceId === spaceId)
+      .sort((a, b) => (a.studyDate < b.studyDate ? 1 : a.studyDate > b.studyDate ? -1 : 0));
+  }
+
+  async createValuation(input: CreateValuationInput): Promise<string> {
+    const id = `val_${randomUUID()}`;
+    const e = input.estudo ?? null;
+    getStore().valuations.push({
+      id,
+      spaceId: input.spaceId,
+      symbol: input.symbol,
+      name: input.name,
+      stage: input.stage,
+      studyDate: input.studyDate,
+      valuedAt: e?.valuedAt ?? null,
+      logoDomain: input.logoDomain ?? null,
+      fcfCents: e?.fcfCents ?? null,
+      shares: e?.shares ?? null,
+      netDebtCents: e?.netDebtCents ?? null,
+      discountPct: e?.discountPct ?? null,
+      perpetualPct: e?.perpetualPct ?? null,
+      years: e?.years ?? null,
+      marginPct: e?.marginPct ?? null,
+      scenarios: e?.scenarios ?? null,
+      weightedPriceCents: e?.weightedPriceCents ?? null,
+      priceAtStudyCents: e?.priceAtStudyCents ?? null,
+      upsidePct: e?.upsidePct ?? null,
+      sector: e?.sector ?? null,
+      rocePct: e?.rocePct ?? null,
+      margemOperacionalPct: e?.margemOperacionalPct ?? null,
+      margemFcfPct: e?.margemFcfPct ?? null,
+      crescimentoFcfPct: e?.crescimentoFcfPct ?? null,
+      notes: input.notes,
+      aiSummary: null,
+      aiSummaryAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  async updateValuation(id: string, spaceId: string, patch: UpdateValuationInput): Promise<void> {
+    // Filtra pelo ambiente tal como o Supabase. Um mock mais permissivo do que
+    // a produção esconde exactamente o engano que os testes procuram.
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!v) return;
+    if (patch.stage !== undefined) v.stage = patch.stage;
+    if (patch.name !== undefined) v.name = patch.name;
+    if (patch.symbol !== undefined) v.symbol = patch.symbol;
+    if (patch.notes !== undefined) v.notes = patch.notes;
+    if (patch.logoDomain !== undefined) v.logoDomain = patch.logoDomain;
+    if (patch.aiSummary !== undefined) {
+      v.aiSummary = patch.aiSummary;
+      v.aiSummaryAt = patch.aiSummary === null ? null : new Date().toISOString();
+    }
+  }
+
+  async setValuationEstudo(id: string, spaceId: string, e: ValuationEstudo): Promise<void> {
+    const v = getStore().valuations.find((x) => x.id === id && x.spaceId === spaceId);
+    if (!v) return;
+    Object.assign(v, {
+      fcfCents: e.fcfCents,
+      shares: e.shares,
+      netDebtCents: e.netDebtCents,
+      discountPct: e.discountPct,
+      perpetualPct: e.perpetualPct,
+      years: e.years,
+      marginPct: e.marginPct,
+      scenarios: e.scenarios,
+      weightedPriceCents: e.weightedPriceCents,
+      priceAtStudyCents: e.priceAtStudyCents,
+      upsidePct: e.upsidePct,
+      valuedAt: e.valuedAt,
+      // Só o que vem: um estudo refeito à mão não apaga os rácios que a fonte
+      // já tinha dado. Mesma regra da produção.
+      ...(e.sector !== undefined ? { sector: e.sector } : {}),
+      ...(e.rocePct !== undefined ? { rocePct: e.rocePct } : {}),
+      ...(e.margemOperacionalPct !== undefined
+        ? { margemOperacionalPct: e.margemOperacionalPct }
+        : {}),
+      ...(e.margemFcfPct !== undefined ? { margemFcfPct: e.margemFcfPct } : {}),
+      ...(e.crescimentoFcfPct !== undefined ? { crescimentoFcfPct: e.crescimentoFcfPct } : {}),
+    });
+  }
+
+  async deleteValuation(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuations = store.valuations.filter((v) => !(v.id === id && v.spaceId === spaceId));
+    // O `on delete cascade` da migração leva os anexos; o mock aplica a mesma
+    // regra, senão ficavam anexos de uma avaliação que já não existe.
+    store.valuationAttachments = store.valuationAttachments.filter((a) => a.valuationId !== id);
+  }
+
+  // ---- Anexos de uma avaliação -------------------------------------------
+
+  async listValuationAttachments(
+    spaceId: string,
+    valuationId?: string,
+  ): Promise<ValuationAttachment[]> {
+    return getStore().valuationAttachments.filter(
+      (a) => a.spaceId === spaceId && (valuationId ? a.valuationId === valuationId : true),
+    );
+  }
+
+  async getValuationAttachment(id: string, spaceId: string): Promise<ValuationAttachment | null> {
+    return (
+      getStore().valuationAttachments.find((a) => a.id === id && a.spaceId === spaceId) ?? null
+    );
+  }
+
+  async createValuationAttachment(input: CreateValuationAttachment): Promise<void> {
+    getStore().valuationAttachments.push({
+      ...input,
+      extractedText: null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async markValuationAttachmentReady(id: string, spaceId: string): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.status = "pronto";
+  }
+
+  async setValuationAttachmentText(
+    id: string,
+    spaceId: string,
+    texto: string | null,
+  ): Promise<void> {
+    const a = getStore().valuationAttachments.find((x) => x.id === id && x.spaceId === spaceId);
+    if (a) a.extractedText = texto;
+  }
+
+  async deleteValuationAttachment(id: string, spaceId: string): Promise<void> {
+    const store = getStore();
+    store.valuationAttachments = store.valuationAttachments.filter(
+      (a) => !(a.id === id && a.spaceId === spaceId),
+    );
+  }
+
+  // ---- Pedidos de ajuda -------------------------------------------------
+  //
+  // Duas leituras com nomes diferentes, tal como no Supabase. O mock aplica a
+  // MESMA regra de propósito: um backend mais permissivo do que o outro
+  // esconde exactamente o engano que os testes procuram.
+
+  async createTicket(input: CreateTicketInput): Promise<string> {
+    const store = getStore();
+    const id = `tkt_${randomUUID()}`;
+    const agora = new Date().toISOString();
+    store.tickets.unshift({
+      id,
+      spaceId: input.spaceId,
+      createdBy: input.createdBy,
+      subject: input.subject,
+      status: "novo",
+      createdAt: agora,
+      updatedAt: agora,
+    });
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: id,
+      authorId: input.createdBy,
+      body: input.body,
+      internal: false,
+      createdAt: agora,
+    });
+    return id;
+  }
+
+  async listTicketsDoUtilizador(userId: string): Promise<Ticket[]> {
+    return getStore()
+      .tickets.filter((t) => t.createdBy === userId)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async listTicketsTodos(): Promise<Ticket[]> {
+    return [...getStore().tickets].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async getTicketDoUtilizador(id: string, userId: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id && t.createdBy === userId) ?? null;
+  }
+
+  async getTicket(id: string): Promise<Ticket | null> {
+    return getStore().tickets.find((t) => t.id === id) ?? null;
+  }
+
+  async listTicketMessagesPublicas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId && !m.internal)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async listTicketMessagesTodas(ticketId: string): Promise<TicketMessage[]> {
+    return getStore()
+      .ticketMessages.filter((m) => m.ticketId === ticketId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async addTicketMessage(input: CreateTicketMessageInput): Promise<void> {
+    const store = getStore();
+    const agora = new Date().toISOString();
+    store.ticketMessages.push({
+      id: `tkm_${randomUUID()}`,
+      ticketId: input.ticketId,
+      authorId: input.authorId,
+      body: input.body,
+      internal: input.internal,
+      createdAt: agora,
+    });
+    // Uma nota interna não mexe no `updatedAt`: mexer denunciava a hora em
+    // que alguém escreveu uma coisa que o utilizador não pode ler.
+    if (!input.internal) {
+      const t = store.tickets.find((x) => x.id === input.ticketId);
+      if (t) t.updatedAt = agora;
+    }
+  }
+
+  async setTicketStatus(id: string, status: TicketStatus): Promise<void> {
+    const t = getStore().tickets.find((x) => x.id === id);
+    if (!t) return;
+    t.status = status;
+    t.updatedAt = new Date().toISOString();
+  }
+
+  async countTicketsAbertos(): Promise<number> {
+    return getStore().tickets.filter((t) => ticketAberto(t.status)).length;
   }
 
   async listContactMessages(): Promise<ContactMessage[]> {

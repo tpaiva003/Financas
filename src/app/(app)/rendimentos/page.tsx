@@ -26,10 +26,11 @@ export default async function RendimentosPage() {
   if (ctx.viewerRole === "submitter") redirect("/despesas");
 
   const repo = getRepository();
-  const income: Income[] = await repo.listIncome(ctx.space.id).catch(() => []);
-  const expenses = await repo
-    .listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId })
-    .catch(() => []);
+  // Juntas: nenhuma precisa da outra, e eram duas latências somadas.
+  const [income, expenses] = (await Promise.all([
+    repo.listIncome(ctx.space.id).catch(() => []),
+    repo.listExpenses({ spaceId: ctx.space.id, viewerId: ctx.viewerMemberId }).catch(() => []),
+  ])) as [Income[], Awaited<ReturnType<typeof repo.listExpenses>>];
 
   const month = new Date().toISOString().slice(0, 7);
   const monthExpenses = expenses
@@ -75,10 +76,10 @@ export default async function RendimentosPage() {
               {Math.round(rate.ratePct)}%
             </p>
             <p className="mt-2 text-sm text-fg-muted">
-              Entraram <span className="text-fg">{formatCents(rate.incomeCents)}</span>, saíram{" "}
-              <span className="text-fg">{formatCents(rate.expensesCents)}</span>, ficaram{" "}
+              Entraram <span className="text-fg"><span className="dinheiro">{formatCents(rate.incomeCents)}</span></span>, saíram{" "}
+              <span className="text-fg"><span className="dinheiro">{formatCents(rate.expensesCents)}</span></span>, ficaram{" "}
               <span className={rate.savedCents < 0 ? "text-debt" : "text-credit"}>
-                {formatCents(rate.savedCents)}
+                <span className="dinheiro">{formatCents(rate.savedCents)}</span>
               </span>
               .
             </p>
@@ -94,7 +95,7 @@ export default async function RendimentosPage() {
           <div className="mt-4 border-t border-hair pt-4">
             <p className="text-sm text-fg-muted">
               Rendimento passivo (juros, dividendos, rendas):{" "}
-              <span className="text-fg">{formatCents(rate.passiveIncomeCents)}</span>
+              <span className="text-fg"><span className="dinheiro">{formatCents(rate.passiveIncomeCents)}</span></span>
               {rate.passiveCoveragePct !== null ? (
                 <>
                   , que já paga{" "}
@@ -127,7 +128,7 @@ export default async function RendimentosPage() {
                       ) : null}
                     </span>
                     <span className="font-mono tnum text-fg-muted">
-                      {formatCents(k.amountCents)}
+                      <span className="dinheiro">{formatCents(k.amountCents)}</span>
                     </span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-panel2">
@@ -154,7 +155,8 @@ export default async function RendimentosPage() {
         ) : (
           <ul className="card divide-y divide-hair2 p-0">
             {income.slice(0, 40).map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+              <li key={i.id} className="px-5 py-3.5">
+                <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 truncate text-sm font-medium text-fg">
                     {i.description}
@@ -169,7 +171,7 @@ export default async function RendimentosPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm tnum text-credit">
-                    {formatCents(i.amountCents)}
+                    <span className="dinheiro">{formatCents(i.amountCents)}</span>
                   </span>
                   <form action={deleteIncomeAction}>
                     <input type="hidden" name="id" value={i.id} />
@@ -177,6 +179,25 @@ export default async function RendimentosPage() {
                       Remover
                     </button>
                   </form>
+                </div>
+                </div>
+
+                {/* A correção por baixo e não ao lado: numa linha só, num
+                    telemóvel, o valor e três botões espremem-se uns aos
+                    outros. Fechada por omissão — quem entra aqui vem quase
+                    sempre registar, não corrigir. */}
+                <div className="mt-1">
+                  <IncomeForm
+                    existente={{
+                      id: i.id,
+                      kind: i.kind,
+                      description: i.description,
+                      amountCents: i.amountCents,
+                      date: i.date,
+                      recurring: i.recurring,
+                      notes: i.notes ?? null,
+                    }}
+                  />
                 </div>
               </li>
             ))}

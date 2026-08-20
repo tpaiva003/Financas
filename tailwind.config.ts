@@ -19,6 +19,12 @@ const config: Config = {
         "fg-faint": "rgb(var(--c-fg-faint) / <alpha-value>)",
         credit: "rgb(var(--c-credit) / <alpha-value>)",
         debt: "rgb(var(--c-debt) / <alpha-value>)",
+        // Azul dos azulejos do Porto, a cor da marca. `marca` é o azul de
+        // fundo (botões); `marca-tinta` é o tom que se lê como texto, e muda
+        // conforme o tema. Ver o comentário no globals.css.
+        marca: "rgb(var(--c-marca) / <alpha-value>)",
+        "marca-tinta": "rgb(var(--c-marca-tinta) / <alpha-value>)",
+        warn: "rgb(var(--c-warn) / <alpha-value>)",
         accent: "rgb(var(--c-fg) / <alpha-value>)",
       },
       fontFamily: {

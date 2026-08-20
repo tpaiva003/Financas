@@ -5,9 +5,26 @@ import { getRepository } from "@/lib/data";
 import { AppNav } from "@/components/AppNav";
 import { SpaceSwitcher } from "@/components/SpaceSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PrivacyToggle } from "@/components/PrivacyToggle";
 import { SectionNav } from "@/components/SectionNav";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickAdd } from "@/components/QuickAdd";
+import { BottomLink } from "@/components/BottomLink";
+import { PageTransition } from "@/components/PageTransition";
+import { ScrollState } from "@/components/ScrollState";
+import { ChatDock } from "@/components/ChatDock";
+import { AvisoCongelado } from "@/components/AvisoCongelado";
+import { conversaAvailable } from "@/lib/services/ia-disponivel";
+
+/**
+ * Nada daqui para dentro entra num motor de busca. O middleware já manda um
+ * anónimo (crawler incluído) para o /login, mas o `noindex` é a instrução
+ * explícita — e é AQUI que ele vive desde que saiu do layout de raiz, onde
+ * escondia também a landing.
+ */
+export const metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getSpaceContext();
@@ -15,12 +32,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const admin = isAdmin(user.id);
   const isSubmitter = ctx.viewerRole === "submitter";
   const repo = getRepository();
-  const unreadMessages = admin ? await repo.countUnreadContactMessages() : 0;
-  const pendingApprovals = isSubmitter ? 0 : await repo.countPendingApprovals(ctx.space.id);
+  const [unreadMessages, pendingApprovals] = await Promise.all([
+    admin ? repo.countUnreadContactMessages() : 0,
+    isSubmitter ? 0 : repo.countPendingApprovals(ctx.space.id),
+  ]);
 
   return (
-    <div className="min-h-[100dvh]">
-      <header className="sticky top-0 z-20 border-b border-hair bg-bg/70 backdrop-blur-xl">
+    <div data-app className="min-h-[100svh]">
+      <ScrollState />
+      {/*
+        Sem borda: o cabeçalho ganha fundo e sombra quando a página sai do
+        topo, e no topo não há linha nenhuma a cortar o ecrã ao meio.
+      */}
+      <header data-sticky className="sticky top-0 z-20">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
           <div className="flex items-center gap-3">
             <Link
@@ -39,6 +63,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             ) : null}
           </div>
           <div className="flex items-center gap-2">
+            {/* Ao lado do tema: as duas são preferências do aparelho, e é
+                aqui que se procura "como é que isto se mostra". */}
+            <PrivacyToggle />
             <ThemeToggle />
             <AppNav
               userName={user.name}
@@ -51,18 +78,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl animate-fade-in px-5 pb-32 pt-7 sm:pb-14">
+      <main className="mx-auto max-w-3xl px-5 pb-32 pt-7 sm:pb-14">
         {/* Páginas da secção atual (ex.: Lista, Importar, Recorrentes). */}
         <div className="mb-6 empty:hidden">
           <SectionNav />
         </div>
-        {children}
+        {/* Antes do conteúdo, e não depois de se tentar gravar alguma coisa:
+            descobrir que está congelado por causa de um erro é descobrir tarde. */}
+        {ctx.congelado ? <AvisoCongelado podeReativar={!isSubmitter} /> : null}
+        {/* Anima a cada mudança de rota, e não só ao carregar a app. */}
+        <PageTransition>{children}</PageTransition>
       </main>
 
       <QuickAdd />
 
-      {/* Navegação inferior (mobile). */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
+      {/*
+        No layout de propósito: o layout não é remontado ao mudar de rota, e é
+        isso que faz a conversa sobreviver à navegação. Numa página, cada clique
+        no menu apagava tudo.
+
+        Os submitters não entram: só submetem despesas e não veem o património
+        nem o saldo, que é metade do que o resumo leva.
+      */}
+      {!isSubmitter && conversaAvailable() ? <ChatDock /> : null}
+
+      {/* Navegação inferior (mobile). Sombra a subir, em vez de uma borda. */}
+      <nav data-sticky className="fixed inset-x-0 bottom-0 z-20 bg-bg/80 pb-safe backdrop-blur-xl sm:hidden">
         <div className="mx-auto flex max-w-3xl items-stretch justify-around">
           {isSubmitter ? (
             <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
@@ -79,18 +120,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </nav>
     </div>
-  );
-}
-
-function BottomLink({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-1 flex-col items-center gap-1 py-2.5 text-fg-muted transition-colors hover:text-fg"
-    >
-      <span aria-hidden>{icon}</span>
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em]">{label}</span>
-    </Link>
   );
 }
 

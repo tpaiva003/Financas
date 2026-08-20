@@ -30,6 +30,54 @@ describe("monthLabel / previousMonth", () => {
 });
 
 describe("buildMonthComparison", () => {
+  it("um mês a meio não se compara com um mês anterior inteiro", () => {
+    /**
+     * A 10 de agosto, com 200 € gastos, o ecrã dizia "-75% vs julho" — porque
+     * punha 200 € contra os 800 € de julho **inteiro**. A queda não existe:
+     * faltam vinte dias de agosto para acontecer.
+     *
+     * É o mesmo erro que o `buildAverages` já não comete, e a página do "o mês
+     * comparado com o que é normal" promete precisamente que não o comete. O
+     * `reports-service` até já calculava o dia de corte certo — só não o
+     * passava a esta função.
+     */
+    const despesas = [
+      // Julho: 200 € nos primeiros dez dias, 600 € depois.
+      { amountCents: 10_000, transactionDate: "2026-07-03", categoryId: "c1" },
+      { amountCents: 10_000, transactionDate: "2026-07-09", categoryId: "c1" },
+      { amountCents: 60_000, transactionDate: "2026-07-25", categoryId: "c1" },
+      // Agosto, até ao dia 10: os mesmos 200 €.
+      { amountCents: 10_000, transactionDate: "2026-08-04", categoryId: "c1" },
+      { amountCents: 10_000, transactionDate: "2026-08-10", categoryId: "c1" },
+    ];
+
+    const r = buildMonthComparison(despesas, cats, 3, "previous", 10);
+
+    expect(r.partial).toBe(true);
+    expect(r.throughDay).toBe(10);
+    expect(r.currentTotalCents).toBe(20_000);
+    // Julho até ao dia 10, e não julho inteiro.
+    expect(r.baselineTotalCents).toBe(20_000);
+    expect(r.baselineDeltaCents).toBe(0);
+    expect(r.baselineDeltaPct).toBe(0);
+    // A categoria segue a mesma regra: senão a linha contradiz o total.
+    expect(r.categories[0]!.previousCents).toBe(20_000);
+  });
+
+  it("um mês fechado continua a comparar-se com o mês inteiro", () => {
+    const despesas = [
+      { amountCents: 10_000, transactionDate: "2026-07-03", categoryId: "c1" },
+      { amountCents: 60_000, transactionDate: "2026-07-25", categoryId: "c1" },
+      { amountCents: 10_000, transactionDate: "2026-08-04", categoryId: "c1" },
+    ];
+    // Sem dia de corte: agosto já acabou (ou não é o mês corrente).
+    const r = buildMonthComparison(despesas, cats, 3, "previous");
+
+    expect(r.partial).toBe(false);
+    expect(r.baselineTotalCents).toBe(70_000);
+  });
+
+
   it("devolve vazio sem despesas", () => {
     const r = buildMonthComparison([], cats);
     expect(r.currentMonth).toBeNull();

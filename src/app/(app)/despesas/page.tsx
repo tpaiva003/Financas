@@ -18,7 +18,18 @@ interface SearchParams {
   to?: string;
   status?: string;
   liquidadas?: string;
+  limite?: string;
 }
+
+/**
+ * Quantas despesas se DESENHAM de uma vez.
+ *
+ * A leitura continua completa (o saldo precisa dela, e é a mesma tabela), mas
+ * o payload que atravessa a rede para o browser e o DOM que ele hidrata
+ * cresciam com o histórico sem tecto — a página que piorava com o tempo. Com
+ * um corte e um «mostrar mais», a primeira pintura fica constante.
+ */
+const LIMITE_INICIAL = 150;
 
 function byDateDesc(a: Expense, b: Expense): number {
   if (a.transactionDate !== b.transactionDate) return a.transactionDate < b.transactionDate ? 1 : -1;
@@ -54,7 +65,6 @@ function dateHeader(iso: string): string {
 export default async function DespesasPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await getSpaceContext();
   const repo = getRepository();
-  const categories = await repo.listCategories(ctx.space.id);
   const nameOf = (id: string) => ctx.members.find((m) => m.id === id)?.name ?? id;
 
   const kind =
@@ -62,16 +72,21 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
       ? (searchParams.kind as ExpenseKind)
       : undefined;
 
-  let expenses = await repo.listExpenses({
-    spaceId: ctx.space.id,
-    viewerId: ctx.viewerMemberId,
-    query: searchParams.q,
-    categoryId: searchParams.categoryId,
-    payerId: searchParams.payerId,
-    kind,
-    from: searchParams.from,
-    to: searchParams.to,
-  });
+  // As categorias e as despesas não dependem uma da outra: vão juntas.
+  const [categories, lidas] = await Promise.all([
+    repo.listCategories(ctx.space.id),
+    repo.listExpenses({
+      spaceId: ctx.space.id,
+      viewerId: ctx.viewerMemberId,
+      query: searchParams.q,
+      categoryId: searchParams.categoryId,
+      payerId: searchParams.payerId,
+      kind,
+      from: searchParams.from,
+      to: searchParams.to,
+    }),
+  ]);
+  let expenses = lidas;
 
   if (searchParams.status === "pending") {
     expenses = expenses.filter((e) => e.status === "pending");
@@ -84,7 +99,13 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
 
   const openExpenses = expenses.filter((e) => !e.settledAt).sort(byDateDesc);
   const settledExpenses = expenses.filter((e) => e.settledAt).sort(byDateDesc);
-  const groups = groupByDate(openExpenses);
+
+  const limite = Math.max(
+    LIMITE_INICIAL,
+    Math.min(10_000, Number(searchParams.limite) || LIMITE_INICIAL),
+  );
+  const abertasEscondidas = Math.max(0, openExpenses.length - limite);
+  const groups = groupByDate(openExpenses.slice(0, limite));
 
   // As liquidadas ficam escondidas por omissão: já foram acertadas, só fazem
   // ruído. Ficam a um clique, sem sair da página.
@@ -95,6 +116,13 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
   const hideSettledHref = `/despesas${qs.toString() ? `?${qs}` : ""}`;
   qs.set("liquidadas", "1");
   const showSettledHref = `/despesas?${qs}`;
+
+  // O «mostrar mais»: o dobro, preservando os filtros e as liquidadas.
+  const qsMais = new URLSearchParams(
+    Object.entries(searchParams).filter(([k, v]) => v && k !== "limite") as [string, string][],
+  );
+  qsMais.set("limite", String(limite * 2));
+  const maisHref = `/despesas?${qsMais}`;
 
   return (
     <div className="space-y-7">
@@ -157,6 +185,20 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
             </div>
           )}
 
+          {/* O que ficou por desenhar diz-se sempre: um corte silencioso
+              lia-se como "não há mais". */}
+          {abertasEscondidas > 0 ? (
+            <p className="pt-2 text-center">
+              <Link
+                href={maisHref}
+                prefetch={false}
+                className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint transition-colors hover:text-fg-muted"
+              >
+                mais {abertasEscondidas} em aberto · mostrar mais
+              </Link>
+            </p>
+          ) : null}
+
           {settledExpenses.length > 0 ? (
             showSettled ? (
               <section className="mt-6">
@@ -172,7 +214,7 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
                   </Link>
                 </div>
                 <ul className="opacity-50">
-                  {settledExpenses.map((e) => (
+                  {settledExpenses.slice(0, limite).map((e) => (
                     <ExpenseRow
                       key={e.id}
                       expense={e}
@@ -182,6 +224,17 @@ export default async function DespesasPage({ searchParams }: { searchParams: Sea
                     />
                   ))}
                 </ul>
+                {settledExpenses.length > limite ? (
+                  <p className="pt-2 text-center">
+                    <Link
+                      href={maisHref}
+                      prefetch={false}
+                      className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint transition-colors hover:text-fg-muted"
+                    >
+                      mais {settledExpenses.length - limite} liquidada(s) · mostrar mais
+                    </Link>
+                  </p>
+                ) : null}
               </section>
             ) : (
               /* Já acertadas: fora de vista por omissão, a um clique de distância. */
