@@ -2951,3 +2951,97 @@ O gancho é a classe `dinheiro`, posta em todos os montantes desenhados. Um
 teste de leitura de código (`modo-privacidade.test.ts`) impede que um valor
 novo escape: um buraco na cortina só se descobre a projetar à frente de
 alguém, que é o pior sítio para o descobrir.
+
+### O que desliza na horizontal corta nos dois eixos
+Um separador aparecia com o anel de foco achatado num portátil e inteiro
+noutro. A máquina não era a causa: a barra dos separadores é um contentor com
+`overflow-x: auto`, e pedir scroll num eixo faz o outro deixar de ser
+`visible`. A partir daí o contentor corta em cima e em baixo, e o anel de foco
+— que o browser desenha FORA da caixa da pastilha — perdia os 2 px que lhe
+passavam. A barra tinha 4 px de folga em baixo e **zero em cima**.
+
+Só muda de máquina para máquina o quanto se nota, porque a escala do sistema
+desenha o anel mais fino ou mais gordo. Numa vê-se, noutra não, e a conversa
+começa por "no teu computador está bem".
+
+Passa a haver uma classe `.scroll-x` com a folga incluída, usada nas doze
+faixas que deslizam (separadores e tabelas largas): as tabelas tinham o mesmo
+problema com o halo dos campos lá dentro. A margem negativa fica só na
+horizontal — na vertical seis píxeis de padding a sério, que cresce com o zoom
+da mesma maneira que o anel.
+
+Medido, não visto: com o corte, o anel perdia 8 px numa captura a 4x; com a
+folga, a barra que corta desenha exactamente o mesmo que uma barra sem corte
+nenhum. Um teste de leitura de código proíbe `overflow-x-auto` à mão.
+
+### Tapar os euros não chegava: as unidades diziam o mesmo
+O modo privacidade tapava os montantes e deixava "125 un." à vista. Só que o
+preço de uma ação é público: quem visse as unidades ia ao telemóvel, multiplicava
+pela cotação e sabia exactamente quanto lá estava — e, com a percentagem de
+retorno que fica à vista de propósito, quanto se tinha ganho. A cortina não
+tapava nada a quem se desse ao trabalho de fazer uma multiplicação.
+
+**A troca: saem as unidades, ficam os preços por unidade.** Um preço por unidade
+não diz quanto se tem, porque lhe falta exactamente o número que passou a estar
+escondido. E é o que faz a app continuar a valer a pena mostrar: vê-se por
+quanto se comprou e por quanto está hoje, movimento a movimento, sem se ver de
+quanto se fala. A página de um ativo passa a ler-se "comprado a 130,35 €, hoje
+a 138,53 €", e cada linha de movimento mostra o preço a que se fez o negócio em
+vez das unidades.
+
+Três classes: `so-aberto` e `bloco-aberto` para o que sai, `so-privado` para o
+que entra no lugar, e `preco-un` para o dinheiro que fica à vista de propósito
+— a excepção à regra do `dinheiro`, escrita e não deduzida.
+
+**O balão do rato foi o único sítio onde o CSS não chegou.** O que vai dentro de
+um atributo não se troca com uma folha de estilo, e aquele dizia as unidades e o
+que valem hoje. Para esse caso há um `usePrivado()` (o estado do modo, a sério),
+usado só onde é mesmo preciso: o resto continua em CSS, que é o que permite a
+cortina aplicar-se antes de pintar.
+
+Um segundo teste de leitura de código apanha uma quantidade desenhada sem a
+marca — apanhou as oito que existiam.
+
+### Escolher empresas ou comprar o cabaz: a leitura que faltava
+A análise dizia a que setores a carteira está exposta e não dizia uma coisa mais
+simples: quanto dela é escolha de empresas e quanto é mercado comprado inteiro.
+São duas maneiras de investir com riscos diferentes, estavam misturadas na mesma
+lista, e a pergunta que interessa — "as minhas escolhas estão a bater o que eu
+teria sem escolher nada?" — não tinha resposta em lado nenhum.
+
+**O tipo vem da fonte e já vinha.** O `quoteType` do Yahoo chega no módulo
+`price`, que a app já pedia para saber o preço e a moeda, e estava a ser deitado
+fora. Não custa um pedido novo: custa ler o que já lá está.
+
+**Não se adivinha.** As duas adivinhas óbvias erram as duas: pelo nome falha nos
+fundos que não dizem que o são; pela ausência de setor falha nos ETF setoriais,
+que têm setor. Um investimento mal arrumado num gráfico de exposição é pior do
+que um por arrumar — o segundo aparece como lacuna, o primeiro passa por conta
+feita.
+
+**Duas fatias e não uma por tipo da fonte.** Um ETF e um fundo são a mesma
+decisão: comprar o cabaz e não escolher lá dentro. O que não é nem uma coisa nem
+outra (cripto, moeda) fica com o nome que a fonte lhe dá, em vez de ser arrumado
+à força num dos dois lados.
+
+**O que a comparação vale, dito onde ela está.** É ganho sobre o custo do que
+ainda se tem, dos dois lados, e não conta com o tempo. Sem essa linha, o número
+lia-se como um veredicto sobre saber escolher.
+
+### Um aviso que não se pode fechar ensina a ignorar os avisos
+A análise dizia "86,9% do valor por classificar" com a carteira toda arrumada: o
+que faltava eram fundos, e um fundo não tem setor para dar. O aviso era
+verdadeiro, permanente e sem nenhuma forma de o fechar.
+
+Passam a existir as duas metades que faltavam. Quando o que falta são só fundos,
+o ecrã diz isso em vez de chamar lacuna ao normal. E quando falta mesmo alguma
+coisa — um investimento sem símbolo, um nome que a fonte não conhece — há um
+painel para a classificar à mão, ali, sem sair da página onde a lacuna aparece.
+Uma gravação para a lista toda, e só valores das listas conhecidas entram: o que
+vem de um formulário é texto que alguém pôs lá.
+
+**A consulta automática ganhou uma segunda pergunta, uma só vez.** Quem foi
+consultado antes de existir o tipo tem o carimbo escrito e o tipo vazio, e pelo
+carimbo passaria por "já se perguntou e a fonte não soube" — ficando sem tipo
+para sempre. A data em que o tipo passou a ser lido está escrita no serviço, e é
+ela que faz essa segunda pergunta acontecer uma vez e nunca mais.

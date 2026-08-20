@@ -19,7 +19,7 @@
  * instante em cada navegação, que é precisamente o que isto evita.
  */
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "rachar-privado";
 
@@ -41,23 +41,42 @@ function aplicar(privado: boolean) {
   }
 }
 
+/**
+ * O modo privacidade, para quem não chega lá só com CSS.
+ *
+ * A cortina é feita em CSS de propósito: aplica-se antes de pintar, sem
+ * esperar pelo JavaScript, e é assim que tem de ser em tudo o que é texto no
+ * ecrã. Só que há uma coisa que o CSS não alcança — o que vai dentro de um
+ * atributo, como o balão que aparece ao passar o rato. Para esses casos, isto
+ * diz se o modo está ligado.
+ *
+ * No servidor responde sempre "desligado", que é o que o HTML inicial mostra;
+ * o valor certo entra na hidratação, e nenhum balão aparece antes disso porque
+ * é preciso lá ir com o rato.
+ */
+export function usePrivado(): boolean {
+  return useSyncExternalStore(
+    (aoMudar) => {
+      const observador = new MutationObserver(aoMudar);
+      observador.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-privado"],
+      });
+      return () => observador.disconnect();
+    },
+    () => document.documentElement.dataset.privado === "1",
+    () => false,
+  );
+}
+
 export function PrivacyToggle() {
-  const [privado, setPrivado] = useState(false);
-
-  // O estado real só se sabe no cliente; até lá o botão mostra o predefinido.
-  useEffect(() => {
-    setPrivado(document.documentElement.dataset.privado === "1");
-  }, []);
-
+  const privado = usePrivado();
   const seguinte = !privado;
 
   return (
     <button
       type="button"
-      onClick={() => {
-        aplicar(seguinte);
-        setPrivado(seguinte);
-      }}
+      onClick={() => aplicar(seguinte)}
       className="grid h-9 w-9 place-items-center rounded-full border border-hair text-fg-muted transition-colors hover:border-fg/30 hover:text-fg"
       aria-pressed={privado}
       aria-label={seguinte ? "Esconder os valores em euros" : "Mostrar os valores em euros"}

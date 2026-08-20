@@ -99,6 +99,8 @@ import {
   etapaSugerida,
   ETAPA_LABEL,
   assinatura,
+  SETORES_PT,
+  TIPOS_PT,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -3663,6 +3665,66 @@ export async function descobrirSetoresAction(
   }
 
   return { ok: true, message: `${partes.join("; ")}.` };
+}
+
+/**
+ * Classificar à mão o que a fonte não classificou.
+ *
+ * **Porque é que isto tem de existir.** A consulta automática resolve a maioria
+ * e deixa sempre um resto: investimentos sem símbolo (a quem não há a quem
+ * perguntar), fundos que a fonte não classifica por setor, e nomes que ela não
+ * conhece. Enquanto esse resto ficar por classificar, as percentagens da
+ * exposição estão incompletas — e o ecrã diz que estão, o que torna a lacuna
+ * visível e sem forma de a fechar. Isto é a forma de a fechar.
+ *
+ * **Grava tudo de uma vez.** Um botão por linha eram doze idas ao servidor e
+ * doze recargas da página para arrumar uma carteira.
+ *
+ * **Só valores conhecidos entram.** O que vem de um formulário é texto que
+ * alguém pôs lá, e um setor escrito à mão fora da lista abria um grupo novo
+ * numa análise que se lê por percentagens. Um valor que não seja das listas é
+ * ignorado, não é gravado a torto e a direito.
+ */
+export async function classificarInvestimentosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id);
+  const investimentos = new Map(
+    bens.filter((a) => a.kind === "investimento").map((a) => [a.id, a]),
+  );
+
+  let mexidos = 0;
+  for (const [id, bem] of investimentos) {
+    const setor = String(formData.get(`setor-${id}`) ?? "").trim();
+    const tipo = String(formData.get(`tipo-${id}`) ?? "").trim();
+
+    const patch: { sector?: string | null; instrumento?: string | null } = {};
+    // `SETORES_PT` tem as chaves como a fonte as escreve; é isso que se grava,
+    // para a tradução continuar a viver num sítio só.
+    if (setor && setor in SETORES_PT && setor !== bem.sector) patch.sector = setor;
+    if (tipo && tipo in TIPOS_PT && tipo !== bem.instrumento) patch.instrumento = tipo;
+    if (Object.keys(patch).length === 0) continue;
+
+    // O `space_id` filtra a escrita: um id vindo de um formulário não é prova
+    // de nada, e o bem já foi procurado dentro deste ambiente.
+    await repo.updateAsset(id, ctx.space.id, patch);
+    mexidos += 1;
+  }
+
+  if (mexidos === 0) return { ok: true, message: "Não havia nada por mudar." };
+
+  revalidatePath("/patrimonio");
+  revalidatePath("/relatorios/patrimonio");
+  return {
+    ok: true,
+    message: mexidos === 1 ? "Um investimento classificado." : `${mexidos} investimentos classificados.`,
+  };
 }
 
 // ---- Fundamentais de uma empresa --------------------------------------------

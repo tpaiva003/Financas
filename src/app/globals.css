@@ -186,6 +186,45 @@
   }
 
   /*
+   * Tapar os euros não chegava: as unidades diziam o mesmo por outras palavras.
+   *
+   * O preço de uma ação é público. Quem vir "125 un." num ecrã com os valores
+   * tapados vai ao telemóvel, multiplica pela cotação e sabe exactamente quanto
+   * lá está — e, com a percentagem de retorno que fica à vista, quanto se
+   * ganhou. A cortina não tapava nada a quem se desse ao trabalho.
+   *
+   * A troca: **as unidades saem, os preços por unidade ficam**. Um preço por
+   * unidade não diz quanto se tem (falta-lhe o número de unidades, que é o que
+   * passou a estar escondido) e é o que faz a app continuar legível: dá para
+   * mostrar por quanto se comprou e por quanto está hoje sem dizer de quanto
+   * se fala.
+   */
+  .so-privado {
+    display: none;
+  }
+  html[data-privado="1"] .so-aberto {
+    display: none;
+  }
+  html[data-privado="1"] .so-privado {
+    display: inline;
+  }
+  /* Uma célula inteira que só faz sentido com os valores à vista. */
+  html[data-privado="1"] .bloco-aberto {
+    display: none;
+  }
+
+  /*
+   * Preço por unidade: dinheiro que NÃO se tapa, de propósito.
+   *
+   * É a excepção à regra do `.dinheiro`, e a classe existe para a excepção ser
+   * escrita e não deduzida — quem lê o código vê que aquele valor ficou à vista
+   * porque alguém decidiu, e não porque se esqueceu.
+   */
+  .preco-un {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
    * Fichas da landing: superfícies elevadas e lavagens de fundo.
    *
    * A landing deixou de separar blocos com linhas. O contorno de um cartão
@@ -378,6 +417,30 @@
 
   .hairline {
     @apply border-hair;
+  }
+
+  /*
+   * Faixa que desliza na horizontal: separadores, tabelas largas, listas de
+   * pastilhas.
+   *
+   * **O padding vertical não é ar, é o que impede o corte.** Pedir
+   * `overflow-x: auto` faz o `overflow-y` deixar de ser `visible`, e a partir
+   * daí o contentor corta tudo o que passe da caixa de padding — nos dois
+   * eixos, não só naquele em que se desliza. O que é desenhado FORA da caixa
+   * de um filho (o anel de foco de um separador, o halo de um campo) desaparece
+   * sem deixar rasto.
+   *
+   * Isto custou um separador achatado num portátil e inteiro noutro: com zero
+   * de folga em cima, o anel de foco perdia os 2 px que lhe passavam da caixa,
+   * e só se via nas máquinas onde a escala do sistema o desenha mais gordo.
+   *
+   * A margem negativa é só na horizontal, para o que desliza continuar
+   * alinhado com o resto da página. Na vertical fica o padding a sério: seis
+   * píxeis de folga, que é mais do que qualquer anel de foco precisa e cresce
+   * com o zoom da mesma maneira que ele.
+   */
+  .scroll-x {
+    @apply -mx-1 overflow-x-auto px-1 py-1.5;
   }
 
   /*

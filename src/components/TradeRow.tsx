@@ -16,6 +16,7 @@
  */
 
 import { useState } from "react";
+import { usePrivado } from "./PrivacyToggle";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   addAssetTradeAction,
@@ -74,6 +75,7 @@ export function TradeRow({
   assetId: string;
   unitPriceCents?: number | null;
 }) {
+  const privado = usePrivado();
   const [aberto, setAberto] = useState(false);
   const [state, guardar] = useFormState(addAssetTradeAction, empty);
   const [moeda, setMoeda] = useState<FxCurrency>(
@@ -89,6 +91,17 @@ export function TradeRow({
   );
   const entrada = t.kind === "compra" || t.kind === "custo";
 
+  /**
+   * O preço por unidade deste movimento, que substitui as unidades quando os
+   * valores estão tapados.
+   *
+   * Não é o custo médio da posição: é o que esta linha em concreto pagou ou
+   * recebeu por unidade, e é isso que a torna útil — vê-se a que preços se foi
+   * comprando sem se ver quanto se comprou.
+   */
+  const precoUnCents =
+    t.quantity && t.quantity !== 0 ? Math.round(Math.abs(t.amountCents) / Math.abs(t.quantity)) : null;
+
   return (
     <li className="px-5 py-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -96,7 +109,16 @@ export function TradeRow({
           <p className="text-sm font-medium text-fg">
             {TRADE_KIND_LABELS[t.kind as TradeKind] ?? t.kind}
             {t.quantity ? (
-              <span className="ml-2 font-mono text-xs text-fg-muted">{t.quantity} un.</span>
+              <span className="ml-2 font-mono text-xs text-fg-muted">
+                <span className="so-aberto">{t.quantity} un.</span>
+                {/* Tapados os valores, as unidades dão a posição de volta (a
+                    cotação é pública). O preço a que se fez o negócio, não. */}
+                {precoUnCents !== null ? (
+                  <span className="so-privado">
+                    a <span className="preco-un">{formatCents(precoUnCents)}</span>
+                  </span>
+                ) : null}
+              </span>
             ) : null}
           </p>
           <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
@@ -123,7 +145,13 @@ export function TradeRow({
             {lucro ? (
               <span
                 className={`block font-mono text-[11px] tnum ${lucro.gainCents >= 0 ? "text-credit" : "text-debt"}`}
-                title={`Estas ${t.quantity} un. ${lucro.kind === "compra" ? "valem" : "valeriam"} hoje ${formatCents(lucro.nowCents)}.`}
+                /* O balão é a única coisa aqui que o CSS não alcança: com os
+                   valores tapados, dizia as unidades E o que valem hoje. */
+                title={
+                  privado
+                    ? undefined
+                    : `Estas ${t.quantity} un. ${lucro.kind === "compra" ? "valem" : "valeriam"} hoje ${formatCents(lucro.nowCents)}.`
+                }
               >
                 {lucro.gainCents >= 0 ? "+" : ""}
                 <span className="dinheiro">{formatCents(lucro.gainCents)}</span>
