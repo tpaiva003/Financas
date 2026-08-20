@@ -252,7 +252,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
         <p className="py-6 text-center text-sm text-fg-muted">
           {filtrado
             ? "Nenhum investimento com estes filtros."
-            : "Só há posições fechadas por aqui — carrega em “Só as fechadas” para as veres."}
+            : "Só há posições fechadas por aqui: carrega em “Só as fechadas” para as veres."}
         </p>
       ) : (
         <>
@@ -268,7 +268,7 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
                 <>
                   {" "}
                   Há {semSimboloFechadas === 1 ? "mais 1 sem símbolo" : `mais ${semSimboloFechadas} sem símbolo`}{" "}
-                  em posições já fechadas — e a essas o símbolo já não muda nada.{" "}
+                  em posições já fechadas, e a essas o símbolo já não muda nada.{" "}
                   <button
                     type="button"
                     onClick={() => setSoFechadas(true)}

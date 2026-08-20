@@ -497,7 +497,7 @@ export function incoerenciaEntreMovimentosECotacoes(
       const sentido = razao >= 1 ? "acima" : "abaixo";
       return (
         `O movimento de ${t.date} tem um preço por unidade cerca de ${Math.round(vezes)}× ` +
-        `${sentido} da cotação desse dia. Parece um desdobramento (split) por tratar — ` +
+        `${sentido} da cotação desse dia. Parece um desdobramento (split) por tratar: ` +
         `sem isso, a rentabilidade deste investimento não é fiável.`
       );
     }
@@ -620,7 +620,7 @@ export function movimentosImplausiveis(
       porque:
         `Este movimento dá ${(Math.round(implicito) / 100).toFixed(2).replace(".", ",")} € por ` +
         `unidade, cerca de ${Math.round(melhorRazao)}× ${sentido} de ${pior.fonte}. ` +
-        `Costuma ser um separador decimal trocado numa importação — confere o valor.`,
+        `Costuma ser um separador decimal trocado numa importação: confere o valor.`,
     });
   }
 

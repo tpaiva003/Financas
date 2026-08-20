@@ -234,7 +234,7 @@ export default async function PlataformaPage() {
             )}
             <p className="mt-2 text-xs text-fg-faint">
               Para convidar alguém da fila, usa o «Dar acesso a alguém» aqui em
-              cima com o mesmo email — a fila marca sozinha que o convite saiu.
+              cima com o mesmo email: a fila marca sozinha que o convite saiu.
             </p>
           </div>
         </div>
@@ -464,7 +464,7 @@ function Proporcao({
       <p className="eyebrow">{label}</p>
       <p className="mt-1.5 font-display text-3xl font-semibold tracking-tight tnum">
         {p.de === 0 ? (
-          <span className="text-fg-faint">—</span>
+          <span className="text-fg-faint">-</span>
         ) : p.pct !== null ? (
           `${p.pct}%`
         ) : (
@@ -492,7 +492,7 @@ function Stat({ label, value }: { label: string; value: number | null }) {
         }`}
         title={value === null ? "Não foi possível ler este número" : undefined}
       >
-        {value === null ? "—" : value}
+        {value === null ? "-" : value}
       </p>
     </div>
   );

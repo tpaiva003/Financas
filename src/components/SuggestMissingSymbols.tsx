@@ -77,7 +77,7 @@ export function SuggestMissingSymbols() {
           <div>
             <p className="label mb-0.5">Símbolos propostos</p>
             <p className="text-xs text-fg-faint">
-              Todos já foram confirmados contra a fonte de cotações — mas isso só
+              Todos já foram confirmados contra a fonte de cotações, mas isso só
               prova que o ticker existe, não que é desta empresa. Desmarca o que
               não reconheceres.
             </p>
@@ -105,7 +105,7 @@ export function SuggestMissingSymbols() {
                       {p.bolsa}
                       {p.moeda ? ` · ${p.moeda}` : ""}
                       {p.lastDate ? ` · fecho de ${p.lastDate}` : ""}
-                      {p.porque ? ` — ${p.porque}` : ""}
+                      {p.porque ? `: ${p.porque}` : ""}
                     </span>
                   </span>
                 </label>
@@ -128,7 +128,7 @@ export function SuggestMissingSymbols() {
           <ul className="space-y-1">
             {falhas.map((f) => (
               <li key={f.assetName} className="text-[11px] leading-snug text-fg-faint">
-                <span className="text-fg-muted">{f.assetName}</span> — {f.problem}
+                <span className="text-fg-muted">{f.assetName}</span>: {f.problem}
               </li>
             ))}
           </ul>

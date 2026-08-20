@@ -62,7 +62,7 @@ const TEMAS: readonly Tema[] = [
         label: "Fluxo de caixa livre",
         unidade: "mM",
         valor: (a) => a.fcfBilioes,
-        nota: "O dinheiro que sobra depois de investir no negócio. É este número que o DCF projeta — e por isso é o que mais vale a pena olhar de perto.",
+        nota: "O dinheiro que sobra depois de investir no negócio. É este número que o DCF projeta, e por isso é o que mais vale a pena olhar de perto.",
       },
     ],
   },
@@ -83,7 +83,7 @@ const TEMAS: readonly Tema[] = [
         label: "ROE",
         unidade: "pct",
         valor: (a) => a.roePct,
-        nota: "Retorno sobre o capital próprio. Com dívida alta sobe sem a empresa melhorar — por isso lê-se ao lado do ROCE, nunca sozinho.",
+        nota: "Retorno sobre o capital próprio. Com dívida alta sobe sem a empresa melhorar, por isso lê-se ao lado do ROCE, nunca sozinho.",
       },
       {
         id: "bruta",
@@ -140,7 +140,7 @@ const TEMAS: readonly Tema[] = [
 ];
 
 function formatar(v: number | null, u: Unidade): string {
-  if (v === null) return "—";
+  if (v === null) return "-";
   const n = String(Math.round(v * 100) / 100).replace(".", ",");
   if (u === "pct") return `${n}%`;
   if (u === "mM") return `${n}`;
@@ -265,7 +265,7 @@ export function SeriesFundamentais({
           Nos trimestres, parte do movimento é o calendário e não o negócio:
           quase todas as empresas têm trimestres fortes e fracos que se repetem
           todos os anos. Para julgar a direcção, compara cada trimestre com o
-          mesmo trimestre do ano anterior — e usa a vista anual para as
+          mesmo trimestre do ano anterior, e usa a vista anual para as
           conclusões.
         </p>
       ) : null}
@@ -349,7 +349,7 @@ export function SeriesFundamentais({
                               −160% — com o sinal ao contrário do que aconteceu.
                             */}
                             {t === null
-                              ? "—"
+                              ? "-"
                               : t.variacaoPct !== null
                                 ? `${t.variacaoPct >= 0 ? "+" : ""}${String(t.variacaoPct).replace(".", ",")}%`
                                 : `${t.variacao >= 0 ? "+" : ""}${String(Math.round(t.variacao * 10) / 10).replace(".", ",")}${ind.unidade === "pct" ? " p.p." : ""}`}
@@ -376,7 +376,7 @@ export function SeriesFundamentais({
       <p className="mt-3 text-[11px] leading-snug text-fg-faint">
         Os valores em milhares de milhões são da moeda em que a empresa relata as
         contas, que nem sempre é a moeda em que a ação cota. Um período em branco
-        é um dado que a fonte não trouxe — não é um zero.
+        é um dado que a fonte não trouxe, não é um zero.
       </p>
     </section>
   );

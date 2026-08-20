@@ -80,7 +80,7 @@ export function SuggestSymbolButton({ assetId }: { assetId: string }) {
           <input type="hidden" name="apply" value={`${p.assetId}:${p.symbol}`} />
           <Botao label={`Gravar ${p.symbol} e buscar preço`} aDecorrer="A gravar…" />
           <span className="text-[11px] text-fg-faint">
-            Confere que é mesmo esta empresa — o símbolo manda em todos os preços
+            Confere que é mesmo esta empresa: o símbolo manda em todos os preços
             daqui para a frente.
           </span>
         </form>

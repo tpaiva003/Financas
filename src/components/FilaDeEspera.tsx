@@ -33,7 +33,7 @@ export function FilaDeEspera({ source }: { source: string }) {
   if (state.ok) {
     return (
       <p role="status" className="rounded-xl border border-credit/30 bg-credit/10 px-4 py-3 text-sm">
-        Ficou guardado. Quando abrir vaga, recebes um convite nesse email — e até
+        Ficou guardado. Quando abrir vaga, recebes um convite nesse email, e até
         lá não te escrevemos para mais nada.
       </p>
     );
@@ -66,7 +66,7 @@ export function FilaDeEspera({ source }: { source: string }) {
       <label className="flex items-start gap-2 text-xs leading-snug text-fg-muted">
         <input type="checkbox" name="consent" required className="mt-0.5" />
         <span>
-          Aceito ser contactado quando houver vaga. Só para isso — sem
+          Aceito ser contactado quando houver vaga. Só para isso, sem
           novidades, sem publicidade.
         </span>
       </label>

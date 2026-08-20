@@ -24,7 +24,7 @@ export function AvisoCongelado({ podeReativar }: { podeReativar: boolean }) {
         Esteve muito tempo sem ser aberto, e por isso passou a só de leitura.{" "}
         {/* A primeira pergunta de quem lê isto é sempre a mesma, e é melhor
             respondê-la antes de ser feita. */}
-        <span className="text-fg">Não se apagou nada</span> — está tudo aqui, como
+        <span className="text-fg">Não se apagou nada:</span> está tudo aqui, como
         estava.
       </p>
       {podeReativar ? (

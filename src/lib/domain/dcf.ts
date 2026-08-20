@@ -138,7 +138,7 @@ function nucleo(input: DcfInput): { ok: Omit<DcfResultado, "sensibilidade"> } | 
   if (!Number.isFinite(fcfCents) || fcfCents <= 0) {
     return {
       erro:
-        "O fluxo de caixa livre tem de ser positivo. Uma empresa que queima dinheiro não se avalia assim — o modelo assume que os fluxos crescem para sempre, e a partir de um número negativo isso dá um valor negativo cada vez maior.",
+        "O fluxo de caixa livre tem de ser positivo. Uma empresa que queima dinheiro não se avalia assim: o modelo assume que os fluxos crescem para sempre, e a partir de um número negativo isso dá um valor negativo cada vez maior.",
     };
   }
   if (!Number.isFinite(acoes) || acoes <= 0) {
@@ -156,7 +156,7 @@ function nucleo(input: DcfInput): { ok: Omit<DcfResultado, "sensibilidade"> } | 
   if (gT >= r) {
     return {
       erro:
-        "O crescimento perpétuo tem de ser menor do que a taxa de desconto. Igual ou maior, a fórmula do valor terminal divide por zero ou por um número negativo — e devolve um valor enorme ou negativo com ar de resposta. Na prática, nenhuma empresa cresce para sempre acima do custo do capital.",
+        "O crescimento perpétuo tem de ser menor do que a taxa de desconto. Igual ou maior, a fórmula do valor terminal divide por zero ou por um número negativo, e devolve um valor enorme ou negativo com ar de resposta. Na prática, nenhuma empresa cresce para sempre acima do custo do capital.",
     };
   }
 

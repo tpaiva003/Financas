@@ -39,7 +39,7 @@ export function AtivosDuplicados({ grupos }: { grupos: GrupoDuplicado[] }) {
       <p className="mt-1 max-w-prose text-xs leading-snug text-fg-muted">
         Vieram de importações em que a corretora escreveu o nome de maneiras
         diferentes. Enquanto forem dois, o dinheiro conta a dobrar no investido e
-        a posição aparece partida ao meio — com a rentabilidade de cada metade
+        a posição aparece partida ao meio, com a rentabilidade de cada metade
         calculada contra o custo da outra.
       </p>
 

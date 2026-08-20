@@ -47,7 +47,7 @@ export default async function AjudaPage() {
       {pedidos === null ? (
         <p role="alert" className="card p-6 text-sm text-fg-muted">
           Não consegui ler os teus pedidos. Falta correr a migração dos pedidos
-          de ajuda. Não é que não tenhas nenhum — é que ainda não sei.
+          de ajuda. Não é que não tenhas nenhum: é que ainda não sei.
         </p>
       ) : pedidos.length === 0 ? (
         <p className="card p-8 text-center text-sm text-fg-muted">

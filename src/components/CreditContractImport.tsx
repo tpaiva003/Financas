@@ -51,7 +51,7 @@ function Periodo({
       : `${p.indexante ? INDEXANTES[p.indexante] : "indexante por dizer"} + ${String(p.spreadPct ?? "").replace(".", ",")}%`;
   return (
     <li className="text-[11px] leading-snug text-fg-faint">
-      <span className="text-fg-muted">{p.startsOn}</span> — {PERIODO_TIPO_LABELS[p.kind]}, {taxa}
+      <span className="text-fg-muted">{p.startsOn}</span> · {PERIODO_TIPO_LABELS[p.kind]}, {taxa}
     </li>
   );
 }
@@ -68,7 +68,7 @@ export function CreditContractImport({ onUse }: { onUse: (r: ContratoRevisto) =>
 
       <p className="mt-2 text-xs text-fg-faint">
         O PDF do contrato de crédito, para não escrever à mão o montante, o prazo
-        e os períodos de taxa. O ficheiro é lido e deitado fora — não fica
+        e os períodos de taxa. O ficheiro é lido e deitado fora, não fica
         guardado. Nada é gravado: os campos ficam preenchidos e por confirmar.
       </p>
 

@@ -47,7 +47,7 @@ const METRICAS: readonly Metrica[] = [
     id: "registos",
     label: "Registos",
     valor: (m) => m.registosNovos,
-    nota: "Tudo o que entrou na app nesse mês — despesas, ativos, movimentos, rendimentos. É a medida de uso a sério.",
+    nota: "Tudo o que entrou na app nesse mês: despesas, ativos, movimentos, rendimentos. É a medida de uso a sério.",
   },
   {
     id: "contas",

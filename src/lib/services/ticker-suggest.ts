@@ -52,7 +52,7 @@ const Resposta = z.object({
 
 const INSTRUCOES = `Recebes o nome de um produto financeiro tal como vem num extrato de corretora e dizes que tickers de bolsa podem corresponder-lhe.
 
-Devolves candidatos por ordem de probabilidade. Nunca inventes um ticker para não vir de mãos vazias: uma lista vazia é uma resposta perfeitamente aceitável e muito melhor do que um palpite. O programa vai verificar cada candidato contra uma fonte de cotações e descartar os que não existirem, mas um ticker que existe e é da empresa errada passa nessa verificação — por isso a responsabilidade de não adivinhar é tua.
+Devolves candidatos por ordem de probabilidade. Nunca inventes um ticker para não vir de mãos vazias: uma lista vazia é uma resposta perfeitamente aceitável e muito melhor do que um palpite. O programa vai verificar cada candidato contra uma fonte de cotações e descartar os que não existirem, mas um ticker que existe e é da empresa errada passa nessa verificação, por isso a responsabilidade de não adivinhar é tua.
 
 Convenção dos sufixos:
 - Ações e ETF dos EUA: sufixo ".us" (aapl.us, msft.us).
@@ -66,7 +66,7 @@ Coisas que enganam:
 - Empresas com nomes parecidos em países diferentes são a forma mais fácil de acertar no ticker errado. Se o nome não chegar para desempatar, devolve os dois candidatos em vez de escolher.
 - Se o nome for de uma conta, de um depósito, de um saldo de tesouraria ou de outra coisa que não negoceia em bolsa, devolve lista vazia.
 
-Quando te derem a bolsa, ela vem do ficheiro da corretora e é um FACTO: usa-a para escolher o sufixo, em vez de deduzires a praça do nome. É aí que se erra mais. Os códigos que as corretoras usam incluem NDQ e NSY (Estados Unidos, sufixo .us), EAM (Euronext Amesterdão, .nl), EPA (Euronext Paris, .fr), EBR (Euronext Bruxelas, .be), ELI (Euronext Lisboa, .pt), XET e FRA (Alemanha, .de), LSE (Londres, .uk), MIL e BIT (Itália), MAD e BME (Espanha), SWX (Suíça), TOR (Toronto), ASX (Austrália). Se o código não estiver nesta lista, diz nas notas o que percebeste dele — mas não o ignores.`;
+Quando te derem a bolsa, ela vem do ficheiro da corretora e é um FACTO: usa-a para escolher o sufixo, em vez de deduzires a praça do nome. É aí que se erra mais. Os códigos que as corretoras usam incluem NDQ e NSY (Estados Unidos, sufixo .us), EAM (Euronext Amesterdão, .nl), EPA (Euronext Paris, .fr), EBR (Euronext Bruxelas, .be), ELI (Euronext Lisboa, .pt), XET e FRA (Alemanha, .de), LSE (Londres, .uk), MIL e BIT (Itália), MAD e BME (Espanha), SWX (Suíça), TOR (Toronto), ASX (Austrália). Se o código não estiver nesta lista, diz nas notas o que percebeste dele, mas não o ignores.`;
 
 export interface TickerSuggestion {
   /** O símbolo já verificado contra a fonte de cotações. */

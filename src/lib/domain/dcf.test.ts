@@ -21,7 +21,7 @@ function ok(i: DcfInput) {
   return r.ok;
 }
 
-describe("calcularDcf — a aritmética", () => {
+describe("calcularDcf: a aritmética", () => {
   /**
    * Sem crescimento nenhum, o fluxo do ano 1 é 100 € e o valor terminal é uma
    * perpetuidade de 100 €/ano a 10%, ou seja 1000 €, descontada um ano.
@@ -61,7 +61,7 @@ describe("calcularDcf — a aritmética", () => {
   });
 });
 
-describe("calcularDcf — as recusas", () => {
+describe("calcularDcf: as recusas", () => {
   /**
    * A recusa mais importante. Com crescimento perpétuo igual ou acima da taxa
    * de desconto, a fórmula divide por zero ou por um negativo — e cospe um

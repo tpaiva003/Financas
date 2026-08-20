@@ -168,7 +168,7 @@ export function QuickTradeForm({
       {vendeAMais ? (
         <p className="text-[11px] leading-snug text-debt">
           Só há {maxQuantity} unidades registadas. Se vendeste mais, falta uma
-          compra por lançar — e sem ela a mais-valia fica errada.
+          compra por lançar, e sem ela a mais-valia fica errada.
         </p>
       ) : null}
 

@@ -210,7 +210,7 @@ function DoBruto({
         A taxa de IRS é a que vem no teu recibo de vencimento. Não a adivinho: as
         tabelas de retenção mudam todos os anos e dependem do agregado, e um
         número errado aqui alastra a tudo o resto. A Segurança Social já vem
-        preenchida — essa é fixa.
+        preenchida: essa é fixa.
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -271,7 +271,7 @@ function DoBruto({
             ? "Escreve o bruto."
             : irs.trim() === ""
               ? "Falta a taxa de IRS do teu recibo."
-              : "Os valores não dão uma conta possível — confere as percentagens."}
+              : "Os valores não dão uma conta possível: confere as percentagens."}
         </p>
       )}
     </details>

@@ -111,7 +111,7 @@ export function compararNoSetor(input: {
  * quando é uma comparação entre dois nomes.
  */
 export function confiancaPorExtenso(quantas: number): string {
-  if (quantas === 1) return "Comparado com a única que tens neste setor — não é uma mediana, é a outra empresa.";
+  if (quantas === 1) return "Comparado com a única que tens neste setor, não é uma mediana, é a outra empresa.";
   if (quantas < 4) return `Comparado com as ${quantas} que tens neste setor. São poucas: lê como indicação, não como referência.`;
   return `Mediana das ${quantas} que tens neste setor.`;
 }

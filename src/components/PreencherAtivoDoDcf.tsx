@@ -49,7 +49,7 @@ export function PreencherAtivoDoDcf({
   if (state.ok) {
     return (
       <p className="rounded-xl border border-credit/30 bg-credit/10 px-4 py-3 text-sm text-fg-muted">
-        {state.message} Regista lá a compra quando a fizeres — a posição nasce
+        {state.message} Regista lá a compra quando a fizeres: a posição nasce
         dos movimentos.
       </p>
     );
@@ -68,7 +68,7 @@ export function PreencherAtivoDoDcf({
       <p className="text-xs leading-snug text-fg-faint">
         Cria <span className="text-fg-muted">{nome}</span> no património com o
         símbolo e o preço deste estudo, e sem unidades nenhumas. A quantidade sai
-        dos movimentos que registares — a app não decide quanto investiste.
+        dos movimentos que registares: a app não decide quanto investiste.
       </p>
       <div className="flex flex-wrap items-center gap-3 pt-1">
         <Botao />

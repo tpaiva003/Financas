@@ -94,7 +94,7 @@ describe("uma pessoa que entra a meio", () => {
     expect(r.netByUser[CLARA]).toBe(-20_00 - 30_00);
   });
 
-  it("entrando 'tudo', divide também o histórico — mas só se for pedido", () => {
+  it("entrando 'tudo', divide também o histórico, mas só se for pedido", () => {
     const r = computeBalance({
       users: [TIAGO, CLARA, RUI],
       expenses: JANEIRO,

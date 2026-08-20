@@ -66,7 +66,7 @@ export function OwnershipField({
       <p className="label mb-1">Quanto deste {noun} é teu</p>
       <p className="mb-3 text-xs text-fg-faint">
         Em branco ou 100% conta por inteiro. Numa casa comprada a meias, 50% faz
-        o património e a dívida contarem só a tua parte — que é a única forma de
+        o património e a dívida contarem só a tua parte, que é a única forma de
         os dois números serem verdade ao mesmo tempo.
       </p>
 
@@ -125,7 +125,7 @@ export function OwnershipField({
       {ambosCa ? (
         <p className="mt-3 text-xs text-fg-muted">
           As duas metades estão as duas neste ambiente, e o património do
-          ambiente é a soma das duas. Com 50% aqui, ele passa a contar só a tua —
+          ambiente é a soma das duas. Com 50% aqui, ele passa a contar só a tua:
           o que é o que queres se leres o património como teu, e não é se o
           leres como da casa. Fica como está se for de propósito.
         </p>

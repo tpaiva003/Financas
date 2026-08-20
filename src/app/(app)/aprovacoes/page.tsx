@@ -23,7 +23,7 @@ export default async function AprovacoesPage() {
     .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
 
   const nameOf = (id?: string | null) =>
-    id ? ctx.members.find((m) => m.id === id)?.name ?? id : "—";
+    id ? ctx.members.find((m) => m.id === id)?.name ?? id : "-";
   const catName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 

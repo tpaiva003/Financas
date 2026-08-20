@@ -142,7 +142,7 @@ export function PropertyPriceField({
       }
       setCandidatos(r.candidatos ?? []);
       if ((r.candidatos ?? []).length > 0) {
-        setAviso("Há mais do que um sítio com esse nome. Escolhe qual — os preços são diferentes.");
+        setAviso("Há mais do que um sítio com esse nome. Escolhe qual: os preços são diferentes.");
       }
     });
   }
@@ -154,7 +154,7 @@ export function PropertyPriceField({
         Com a área e o sítio, o preço mediano por m² que o INE publica diz
         quanto valeria à mediana da zona. É uma referência, não uma avaliação: a
         mediana não sabe como é esta casa. O valor lá em cima não se mexe
-        sozinho. Escreve o concelho — ou a freguesia e o concelho, como numa
+        sozinho. Escreve o concelho, ou a freguesia e o concelho, como numa
         morada: &quot;Paranhos, Porto&quot;.
       </p>
 
@@ -172,7 +172,7 @@ export function PropertyPriceField({
           />
           <p className="mt-1 text-xs text-fg-faint">
             O da escritura. É o único número que se sabe de certeza sobre esta
-            casa — o valor de hoje estima-se a partir dele.
+            casa: o valor de hoje estima-se a partir dele.
           </p>
         </div>
         <div>
@@ -246,7 +246,7 @@ export function PropertyPriceField({
               >
                 {c.geodsg}
                 {c.dentroDe ? <span className="text-fg-faint"> · em {c.dentroDe}</span> : null}
-                {" — "}
+                {" · "}
                 {formatCents(c.pricePerM2Cents)}/m²
               </button>
             </li>

@@ -64,7 +64,7 @@ describe("quem pode e quem não pode ser indexado", () => {
     expect(fonte).toMatch(/robots:\s*\{\s*index:\s*false/);
   });
 
-  it("as páginas de token levam noindex — o URL carrega um segredo", () => {
+  it("as páginas de token levam noindex: o URL carrega um segredo", () => {
     for (const pagina of [
       join(APP, "recuperar", "[token]", "page.tsx"),
       join(APP, "convite", "[token]", "page.tsx"),

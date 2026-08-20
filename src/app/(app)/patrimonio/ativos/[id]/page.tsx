@@ -163,13 +163,13 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
           <ul className="space-y-1 text-xs leading-snug">
             {implausiveis.map((m) => (
               <li key={m.tradeId}>
-                <span className="font-mono text-fg">{fmtDate(m.date)}</span> — {m.porque}
+                <span className="font-mono text-fg">{fmtDate(m.date)}</span>: {m.porque}
               </li>
             ))}
           </ul>
           <p className="text-xs text-fg-faint">
             Enquanto estiver assim, o investido, o ganho e a rentabilidade deste
-            investimento estão errados — e arrastam o património todo com eles.
+            investimento estão errados, e arrastam o património todo com eles.
             Corrige no Editar do movimento, aqui em baixo.
           </p>
         </div>
@@ -212,7 +212,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
               <li key={sp.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="text-fg-muted">
                   <span className="font-mono text-fg">{ratioPorExtenso(sp.ratio)}</span> em{" "}
-                  {fmtDate(sp.date)} — as unidades compradas antes desta data contam
+                  {fmtDate(sp.date)}: as unidades compradas antes desta data contam
                   multiplicadas.
                 </span>
                 <form action={apagarSplitAction}>
@@ -349,7 +349,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
         {!asset.symbol ? (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-fg-faint">
-              Sem símbolo de bolsa, o preço é sempre escrito à mão — e não há
+              Sem símbolo de bolsa, o preço é sempre escrito à mão, e não há
               cotação, nem ganho, nem rentabilidade.
             </p>
             {tickerSuggestAvailable() ? <SuggestSymbolButton assetId={asset.id} /> : null}
@@ -481,7 +481,7 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
             <p className="text-[11px] leading-snug text-fg-faint">
               O número por baixo de cada linha é o que essa entrada valeu a pena
               até hoje, ao preço de agora. Não é mais-valia realizada nem serve
-              para o IRS — a posição aqui é a custo médio, e em Portugal a regra
+              para o IRS: a posição aqui é a custo médio, e em Portugal a regra
               fiscal é FIFO.
             </p>
           ) : null}

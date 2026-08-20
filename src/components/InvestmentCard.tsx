@@ -178,13 +178,13 @@ export function InvestmentCard({ data }: { data: InvestmentCardData }) {
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Custo médio</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitCostCents === null ? "—" : formatCents(data.unitCostCents)}
+            {data.unitCostCents === null ? "-" : formatCents(data.unitCostCents)}
           </p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">Preço atual</p>
           <p className="font-mono text-sm tnum text-fg-muted">
-            {data.unitPriceCents === null ? "—" : formatCents(data.unitPriceCents)}
+            {data.unitPriceCents === null ? "-" : formatCents(data.unitPriceCents)}
           </p>
         </div>
       </div>

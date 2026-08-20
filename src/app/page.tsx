@@ -706,7 +706,7 @@ function PorqueEsta() {
               e quem não usou não fica a saber mais por ler uma marca.
             */}
             <p className="mt-4 text-[15px] text-fg-muted text-pretty">
-              Não as nomeamos — quem já dividiu uma conta sabe quais são. A
+              Não as nomeamos: quem já dividiu uma conta sabe quais são. A
               lista à direita é o que elas fazem, e o que esta faz em vez
               disso.
             </p>

@@ -29,7 +29,7 @@ const Resposta = z.object({
     .number()
     .nullable()
     .describe(
-      "O total efetivamente pago, tal como impresso — depois de descontos, com IVA. Não somes linhas: copia o total. Null se não estiver legível.",
+      "O total efetivamente pago, tal como impresso: depois de descontos, com IVA. Não somes linhas: copia o total. Null se não estiver legível.",
     ),
   moeda: z
     .enum(["EUR", "outra"])
@@ -50,11 +50,11 @@ const Resposta = z.object({
 
 const INSTRUCOES = `Recebes a imagem (ou o texto) de um recibo de compra e copias de lá quatro coisas: o total pago, a moeda, a data e o nome da loja.
 
-Copias o que está impresso. Não calculas nada: não somes as linhas, não apliques descontos tu, não convertas moedas. Se o total impresso não se ler, devolves null — um campo vazio pergunta-se à pessoa, um campo inventado entra nas contas dela.
+Copias o que está impresso. Não calculas nada: não somes as linhas, não apliques descontos tu, não convertas moedas. Se o total impresso não se ler, devolves null: um campo vazio pergunta-se à pessoa, um campo inventado entra nas contas dela.
 
 O total é o que foi efetivamente pago: a linha "Total", depois de descontos e com IVA incluído. Num talão português costuma ser a maior quantia perto do fim.
 
-Se o documento não for um recibo — for um menu, um cartaz, uma fotografia de outra coisa — põe "encontrado" a falso e di-lo nas notas.`;
+Se o documento não for um recibo: for um menu, um cartaz, uma fotografia de outra coisa: põe "encontrado" a falso e di-lo nas notas.`;
 
 export interface ReciboExtraido {
   proposta: PropostaDeDespesa | null;

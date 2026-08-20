@@ -105,7 +105,7 @@ export function AnaliseSetores({
             {carteira.porClassificar === 1
               ? "Um investimento ainda não tem setor"
               : `${carteira.porClassificar} investimentos ainda não têm setor`}{" "}
-            — são {String(carteira.porClassificarPct).replace(".", ",")}% do valor,
+            ({String(carteira.porClassificarPct).replace(".", ",")}% do valor),
             e enquanto assim for as percentagens acima e abaixo estão incompletas.
           </p>
         ) : (
@@ -158,8 +158,8 @@ export function AnaliseSetores({
                     Do dinheiro que entrou, este setor levou{" "}
                     {String(g.pesoDoReforcoPct).replace(".", ",")}%
                     {g.pesoDoReforcoPct < g.pesoPct
-                      ? " — pesa mais hoje do que o que se decidiu pôr nele."
-                      : " — pesa menos hoje do que o que se decidiu pôr nele."}
+                      ? ": pesa mais hoje do que o que se decidiu pôr nele."
+                      : ": pesa menos hoje do que o que se decidiu pôr nele."}
                   </p>
                 ) : null}
               </li>
@@ -220,7 +220,7 @@ export function AnaliseSetores({
                       }`}
                     >
                       {e.ganhoCents === null
-                        ? "—"
+                        ? "-"
                         : `${e.ganhoCents >= 0 ? "+" : ""}${String(e.ganhoPct).replace(".", ",")}%`}
                     </td>
                   </tr>
@@ -236,7 +236,7 @@ export function AnaliseSetores({
             &ldquo;Entrou&rdquo; é todo o dinheiro que alguma vez foi para lá,
             menos o que saiu em vendas. O ganho é sobre o custo do que ainda
             tens, por isso os dois não têm de bater um com o outro. Um traço no
-            ganho é uma posição sem custo registado — não é zero.
+            ganho é uma posição sem custo registado, não é zero.
           </p>
         </section>
       ) : null}

@@ -32,7 +32,7 @@ export default async function ConvitePage({ params }: { params: { token: string 
       >
         <p className="text-sm text-fg-muted">
           Os convites valem sete dias e servem uma vez só. Pede um novo a quem te
-          convidou — ou, se já aceitaste, <Link href="/login" className="underline">entra aqui</Link>.
+          convidou, ou, se já aceitaste, <Link href="/login" className="underline">entra aqui</Link>.
         </p>
       </LegalLayout>
     );

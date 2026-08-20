@@ -788,7 +788,7 @@ export async function PatrimonioContent({
                       Enquanto isto não estiver tratado, o{" "}
                       <strong className="font-medium text-fg">investido</strong> e o{" "}
                       <strong className="font-medium text-fg">ganho</strong> desta página
-                      estão errados — e um ativo com mais vendas do que compras
+                      estão errados, e um ativo com mais vendas do que compras
                       aparece como posição fechada, escondido pelo filtro de
                       cima. Foi assim que a Google e a NVIDIA desapareceram de
                       uma carteira que continuava a tê-las.
@@ -803,7 +803,7 @@ export async function PatrimonioContent({
                             {g.nome}
                           </Link>
                           <span className="text-fg-faint">
-                            {" — "}
+                            {" · "}
                             {g.porConfirmar > 0
                               ? `${g.porConfirmar === 1 ? "um desdobramento" : `${g.porConfirmar} desdobramentos`} por confirmar`
                               : null}
@@ -1030,7 +1030,7 @@ async function PortfolioReturnSection({
           <p className="mt-1">
             Estão listados aqui em baixo, nos investimentos. Um deles chega para
             inflacionar o investido, e daí sai uma taxa que se contradiz com os
-            números ao lado — mas que ninguém confere, porque uma percentagem
+            números ao lado, mas que ninguém confere, porque uma percentagem
             não se confere contra nada.
           </p>
         </div>
@@ -1271,7 +1271,7 @@ function ResumoDoGrupo({ resumo }: { resumo: ResumoDoTipo }) {
 
 /** "2054-05" lido como se fala. */
 function formatMonthYear(ym: string | null): string {
-  if (!ym) return "—";
+  if (!ym) return "-";
   return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("pt-PT", {
     month: "long",
     year: "numeric",
@@ -1314,7 +1314,7 @@ function CreditoResumo({
   if (plano.problem) {
     return (
       <p className="mt-2 text-xs text-fg-faint">
-        Crédito de taxa {tipoDoCredito(periodos) ?? "—"}, sem plano:{" "}
+        Crédito de taxa {tipoDoCredito(periodos) ?? "-"}, sem plano:{" "}
         <span className="text-fg-muted">{plano.problem}</span>
       </p>
     );
@@ -1772,13 +1772,13 @@ function AssetRow({
             {formatCents(liquido.liquidoCents)}
           </span>{" "}
           <span className="text-fg-faint">
-            — falta pagar {formatCents(liquido.dividaCents)} em{" "}
+            (falta pagar {formatCents(liquido.dividaCents)} em{" "}
             {liquido.creditos.map((c) => c.name).join(", ")}
             {liquido.pagoPct !== null ? `. ${liquido.pagoPct}% já é teu` : ""}
             {liquido.liquidoCents < 0
               ? ". Deves mais do que ele vale, o que é normal nos primeiros anos"
               : ""}
-            .
+            ).
           </span>
         </p>
       ) : null}

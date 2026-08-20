@@ -116,12 +116,12 @@ export default function PrivacidadePage() {
         </p>
         <p>
           Nos <strong>ambientes gratuitos</strong> há mais uma regra: ao fim de{" "}
-          <strong>90 dias sem ninguém entrar</strong>, o ambiente congela — passa
+          <strong>90 dias sem ninguém entrar</strong>, o ambiente congela: passa
           a só de leitura. Avisamos por email duas semanas antes, e{" "}
           <strong>não se apaga nada</strong>: fica tudo onde está, e basta
           entrares (ou carregares em «Reativar») para voltar ao normal, sem
           pedir nada a ninguém. Fazemos isto para não guardar indefinidamente
-          dados financeiros de contas que ninguém usa — guardar para sempre
+          dados financeiros de contas que ninguém usa: guardar para sempre
           também é um risco para ti. Os ambientes do plano completo não são
           abrangidos.
         </p>
@@ -130,7 +130,7 @@ export default function PrivacidadePage() {
       <LegalSection title="Lista de espera">
         <p>
           Se deixares o teu email na lista de espera, guardamos esse email, o
-          nome se o deres, a data e o teu consentimento — e usamo-lo para uma
+          nome se o deres, a data e o teu consentimento, e usamo-lo para uma
           coisa só: avisar-te quando houver vaga. Sem novidades, sem
           publicidade. Se quiseres sair da lista antes disso, escreve para{" "}
           <a href="mailto:ola@rachar.pt" className="underline underline-offset-2">

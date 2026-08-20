@@ -105,7 +105,7 @@ describe("capitalEmDividaEm", () => {
   });
 });
 
-describe("capitalEmDividaEm — o que se recusa a calcular", () => {
+describe("capitalEmDividaEm: o que se recusa a calcular", () => {
   /**
    * Um capital em dívida errado propaga-se ao património líquido inteiro, e um
    * zero silencioso lê-se como um crédito pago.

@@ -217,7 +217,7 @@ export function AddExpenseForm({
                   <p>
                     Preenchi o valor, a descrição{proposta.date ? ", a data" : ""}
                     {proposta.categoryId ? " e a categoria" : ""} a partir do recibo.
-                    <span className="text-fg"> Confere antes de guardar</span> — nada fica
+                    <span className="text-fg"> Confere antes de guardar:</span> nada fica
                     registado sem carregares em guardar.
                   </p>
                   {proposta.notas ? <p className="mt-1 text-fg-faint">{proposta.notas}</p> : null}

@@ -165,7 +165,7 @@ export function AvaliacaoAnexos({
           ) : (
             <span className="text-[11px] leading-snug text-fg-faint">
               Lê os documentos e escreve o que percebeu. Não tira números para o
-              cálculo — esses continuas a ser tu a pô-los.
+              cálculo: esses continuas a ser tu a pô-los.
             </span>
           )}
         </form>
@@ -178,7 +178,7 @@ export function AvaliacaoAnexos({
             {resumoEm ? (
               <> · {new Date(resumoEm).toLocaleDateString("pt-PT")}</>
             ) : null}
-            . Escrito por IA a partir do que está nos anexos — confere antes de decidir.
+            . Escrito por IA a partir do que está nos anexos: confere antes de decidir.
           </p>
           <div className="whitespace-pre-line text-xs leading-relaxed text-fg-muted">{resumo}</div>
         </div>

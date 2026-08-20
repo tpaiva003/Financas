@@ -19,7 +19,7 @@ describe("a subida das iterações do PBKDF2", () => {
     expect(await verifyPassword("outra-coisa", h)).toBe(false);
   });
 
-  it("um hash antigo a 100 mil continua a abrir — ninguém fica trancado", async () => {
+  it("um hash antigo a 100 mil continua a abrir: ninguém fica trancado", async () => {
     expect(await verifyPassword("demo1234", HASH_ANTIGO_100K)).toBe(true);
     expect(await verifyPassword("errada", HASH_ANTIGO_100K)).toBe(false);
   });

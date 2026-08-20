@@ -109,7 +109,7 @@ export function GraficoContraIndice({
             {/* O que interessa não é o sinal, é a direção: estar atrás e a
                 recuperar é uma situação diferente de estar atrás e a afastar-se,
                 e o mesmo número serve as duas. */}
-            {rumo.melhorou ? " — está a fechar." : " — está a abrir."}
+            {rumo.melhorou ? ": está a fechar." : ": está a abrir."}
           </>
         ) : null}
       </p>

@@ -209,8 +209,8 @@ export function reviewContrato(bruto: ContratoBruto): ContratoRevisto {
   if (descartados > 0) {
     avisos.push(
       descartados === 1
-        ? "Um período de taxa saiu incompleto e foi deitado fora — confirma se falta algum."
-        : `${descartados} períodos de taxa saíram incompletos e foram deitados fora — confirma se falta algum.`,
+        ? "Um período de taxa saiu incompleto e foi deitado fora: confirma se falta algum."
+        : `${descartados} períodos de taxa saíram incompletos e foram deitados fora: confirma se falta algum.`,
     );
   }
 
@@ -283,7 +283,7 @@ export function reviewContrato(bruto: ContratoBruto): ContratoRevisto {
       if (!bate) {
         avisos.push(
           difCents < 0
-            ? "A prestação que o contrato diz é maior do que a que sai das contas. Costuma ser dos seguros, que vão na mesma prestação e não no crédito — mas confirma a taxa e o prazo."
+            ? "A prestação que o contrato diz é maior do que a que sai das contas. Costuma ser dos seguros, que vão na mesma prestação e não no crédito, mas confirma a taxa e o prazo."
             : "A prestação que sai das contas é maior do que a que o contrato diz. Alguma coisa foi mal lida: confirma o montante, a taxa e o prazo antes de gravar.",
         );
       }

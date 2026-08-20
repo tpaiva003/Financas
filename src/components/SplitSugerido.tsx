@@ -64,7 +64,7 @@ export function SplitSugerido({
       <p className="text-xs leading-snug text-fg-muted">
         Nesse dia há uma venda de {s.unidadesAntes} unidades e uma compra de{" "}
         {s.unidadesDepois}, <strong className="font-medium text-fg">pelo mesmo dinheiro</strong>. Não
-        saiu nem entrou nada da conta — é a forma como a corretora regista um
+        saiu nem entrou nada da conta: é a forma como a corretora regista um
         desdobramento.
       </p>
       <p className="text-xs leading-snug text-fg-faint">
@@ -74,7 +74,7 @@ export function SplitSugerido({
         unidade desce na mesma proporção. O dinheiro investido não muda.
       </p>
       <p className="text-xs leading-snug text-fg-faint">
-        Se foi mesmo uma venda seguida de uma recompra, não confirmes — havia
+        Se foi mesmo uma venda seguida de uma recompra, não confirmes: havia
         uma mais-valia real nesse dia.
       </p>
 

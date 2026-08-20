@@ -66,7 +66,7 @@ export function reviewRecibo(
     return {
       proposta: null,
       problema:
-        "O recibo não está em euros. Sem taxa de câmbio não se grava preço nenhum — regista esta à mão, com o valor em euros do extrato.",
+        "O recibo não está em euros. Sem taxa de câmbio não se grava preço nenhum: regista esta à mão, com o valor em euros do extrato.",
     };
   }
   const total = lida.totalEur;
@@ -86,14 +86,14 @@ export function reviewRecibo(
   let date: string | null = null;
   if (lida.data && dataValida(lida.data)) {
     if (lida.data > hoje) {
-      avisos.push(`A data lida (${lida.data}) é no futuro — ficou a de hoje.`);
+      avisos.push(`A data lida (${lida.data}) é no futuro: ficou a de hoje.`);
     } else {
       date = lida.data;
       const anos = Number(hoje.slice(0, 4)) - Number(lida.data.slice(0, 4));
       if (anos >= 2) avisos.push(`A data lida (${lida.data}) já tem uns anos. Confirma-a.`);
     }
   } else if (lida.data) {
-    avisos.push("A data do recibo não se percebeu — ficou a de hoje.");
+    avisos.push("A data do recibo não se percebeu: ficou a de hoje.");
   }
 
   const description = (lida.comerciante ?? "").trim().slice(0, 80) || "Recibo";

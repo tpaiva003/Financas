@@ -148,7 +148,7 @@ export async function AnalisePatrimonioContent() {
             <p className="eyebrow mb-1">De onde veio o crescimento</p>
             <p className="mb-3 text-xs leading-snug text-fg-faint">
               O que entrou é dinheiro teu. O resto é o que o património fez
-              sozinho — e inclui tudo, não só os investimentos: uma casa a
+              sozinho, e inclui tudo, não só os investimentos: uma casa a
               valorizar e um crédito a amortizar entram aqui na mesma conta. É um
               saldo, não uma rentabilidade.
             </p>
@@ -167,7 +167,7 @@ export async function AnalisePatrimonioContent() {
                   }`}
                 >
                   {analise.totalSemReforcosCents === null
-                    ? "—"
+                    ? "-"
                     : `${analise.totalSemReforcosCents >= 0 ? "+" : ""}${formatCents(analise.totalSemReforcosCents)}`}
                 </p>
               </div>
@@ -250,7 +250,7 @@ function Cartao({
                 : "text-debt"
         }`}
       >
-        {valor ?? "—"}
+        {valor ?? "-"}
       </p>
       <p className="mt-1 text-xs leading-snug text-fg-faint">{nota}</p>
     </div>

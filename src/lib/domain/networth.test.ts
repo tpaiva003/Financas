@@ -110,7 +110,7 @@ describe("quota do ambiente no bem", () => {
     expect(assetValueCents({ ...casa, ownershipPct: 100 })).toBe(300_000_00);
   });
 
-  it("com metade, conta metade — e o valor inteiro continua a saber-se", () => {
+  it("com metade, conta metade, e o valor inteiro continua a saber-se", () => {
     const meia = { ...casa, ownershipPct: 50 };
     expect(assetValueCents(meia)).toBe(150_000_00);
     expect(assetTotalValueCents(meia)).toBe(300_000_00);
