@@ -232,7 +232,7 @@ export function ValuationCalculator() {
           />
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[32rem] text-sm">
             <thead>
               <tr className="text-left text-fg-faint">
@@ -325,7 +325,7 @@ export function ValuationCalculator() {
       {ready ? (
         <section className="card space-y-4 p-6">
           <h2 className="label">Resultado</h2>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full min-w-[34rem] text-sm">
               <thead>
                 <tr className="text-left text-fg-faint">
@@ -461,7 +461,7 @@ export function ValuationCalculator() {
               de retorno sobre o capital diz mais do que o retrato de um ano.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="text-left text-fg-faint">

@@ -381,6 +381,30 @@
   }
 
   /*
+   * Faixa que desliza na horizontal: separadores, tabelas largas, listas de
+   * pastilhas.
+   *
+   * **O padding vertical não é ar, é o que impede o corte.** Pedir
+   * `overflow-x: auto` faz o `overflow-y` deixar de ser `visible`, e a partir
+   * daí o contentor corta tudo o que passe da caixa de padding — nos dois
+   * eixos, não só naquele em que se desliza. O que é desenhado FORA da caixa
+   * de um filho (o anel de foco de um separador, o halo de um campo) desaparece
+   * sem deixar rasto.
+   *
+   * Isto custou um separador achatado num portátil e inteiro noutro: com zero
+   * de folga em cima, o anel de foco perdia os 2 px que lhe passavam da caixa,
+   * e só se via nas máquinas onde a escala do sistema o desenha mais gordo.
+   *
+   * A margem negativa é só na horizontal, para o que desliza continuar
+   * alinhado com o resto da página. Na vertical fica o padding a sério: seis
+   * píxeis de folga, que é mais do que qualquer anel de foco precisa e cresce
+   * com o zoom da mesma maneira que ele.
+   */
+  .scroll-x {
+    @apply -mx-1 overflow-x-auto px-1 py-1.5;
+  }
+
+  /*
    * Linha de despesa: estilo lista editorial (hairline em vez de cartões
    * pesados). O fio fica: numa lista densa de valores, é ele que diz onde
    * acaba uma linha e começa a outra, e isso é anatomia da lista, não uma

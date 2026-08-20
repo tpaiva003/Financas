@@ -159,7 +159,7 @@ function ColumnPanel({ file }: { file: BrokerFilePreview }) {
         </p>
       </div>
 
-      <div className="-mx-1 overflow-x-auto px-1">
+      <div className="scroll-x">
         <table className="w-full min-w-[32rem] border-collapse text-left text-xs">
           <tbody>
             {file.sample.map((row, r) => (

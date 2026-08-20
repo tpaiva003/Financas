@@ -177,7 +177,7 @@ export function AnaliseSetores({
             que menos dinheiro levou.
           </p>
 
-          <div className="-mx-1 overflow-x-auto px-1">
+          <div className="scroll-x">
             <table className="w-full min-w-[32rem] text-sm">
               <thead>
                 <tr className="text-right text-[11px] text-fg-muted">

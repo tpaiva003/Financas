@@ -18,7 +18,7 @@ export function SectionNav() {
   if (!children || children.length < 2) return null;
 
   return (
-    <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+    <nav className="scroll-x flex gap-1">
       {children.map((c) => {
         /**
          * O separador raiz da secção só está ativo na correspondência exacta.

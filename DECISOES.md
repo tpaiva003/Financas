@@ -2951,3 +2951,25 @@ O gancho é a classe `dinheiro`, posta em todos os montantes desenhados. Um
 teste de leitura de código (`modo-privacidade.test.ts`) impede que um valor
 novo escape: um buraco na cortina só se descobre a projetar à frente de
 alguém, que é o pior sítio para o descobrir.
+
+### O que desliza na horizontal corta nos dois eixos
+Um separador aparecia com o anel de foco achatado num portátil e inteiro
+noutro. A máquina não era a causa: a barra dos separadores é um contentor com
+`overflow-x: auto`, e pedir scroll num eixo faz o outro deixar de ser
+`visible`. A partir daí o contentor corta em cima e em baixo, e o anel de foco
+— que o browser desenha FORA da caixa da pastilha — perdia os 2 px que lhe
+passavam. A barra tinha 4 px de folga em baixo e **zero em cima**.
+
+Só muda de máquina para máquina o quanto se nota, porque a escala do sistema
+desenha o anel mais fino ou mais gordo. Numa vê-se, noutra não, e a conversa
+começa por "no teu computador está bem".
+
+Passa a haver uma classe `.scroll-x` com a folga incluída, usada nas doze
+faixas que deslizam (separadores e tabelas largas): as tabelas tinham o mesmo
+problema com o halo dos campos lá dentro. A margem negativa fica só na
+horizontal — na vertical seis píxeis de padding a sério, que cresce com o zoom
+da mesma maneira que o anel.
+
+Medido, não visto: com o corte, o anel perdia 8 px numa captura a 4x; com a
+folga, a barra que corta desenha exactamente o mesmo que uma barra sem corte
+nenhum. Um teste de leitura de código proíbe `overflow-x-auto` à mão.
