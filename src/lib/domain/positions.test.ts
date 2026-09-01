@@ -3,9 +3,11 @@ import {
   buildPosition,
   buildPositionReturn,
   derivePosition,
+  ficaVazio,
   incoerenciaEntreMovimentosECotacoes,
   lucroDoMovimento,
   movimentosImplausiveis,
+  primeiroMovimento,
   tradeAmountCents,
   type Trade,
 } from "./positions";
@@ -421,5 +423,111 @@ describe("movimentosImplausiveis", () => {
       trade({ id: "d", date: "2025-07-01", kind: "dividendo", amountCents: 1_200 }),
     ];
     expect(movimentosImplausiveis(t).map((x) => x.tradeId)).toEqual([]);
+  });
+});
+
+describe("primeiroMovimento", () => {
+  /**
+   * Registar "100 unidades a 12 €" é dizer que se comprou 100 unidades a 12 €.
+   * Sem este movimento, o investimento nascia com uma posição escrita à mão e
+   * um histórico vazio: sem TIR, sem TWR, sem comparação com o índice, e com a
+   * ficha a dizer "ainda não há movimentos" a quem acabou de registar a compra.
+   */
+  it("transforma o que se escreveu no formulário numa compra", () => {
+    expect(
+      primeiroMovimento({
+        quantity: 100,
+        unitCostCents: 1_200,
+        purchasedAt: "2026-03-04",
+        hoje: "2026-08-24",
+      }),
+    ).toEqual({
+      date: "2026-03-04",
+      quantity: 100,
+      unitPriceCents: 1_200,
+      amountCents: 120_000,
+    });
+  });
+
+  it("sem data escrita, o movimento é de hoje", () => {
+    const m = primeiroMovimento({
+      quantity: 10,
+      unitCostCents: 5_000,
+      purchasedAt: "",
+      hoje: "2026-08-24",
+    });
+    expect(m?.date).toBe("2026-08-24");
+  });
+
+  /** Uma data mal escrita não pode virar silenciosamente uma data errada. */
+  it("uma data que não é data vale como não escrita", () => {
+    const m = primeiroMovimento({
+      quantity: 10,
+      unitCostCents: 5_000,
+      purchasedAt: "4 de março",
+      hoje: "2026-08-24",
+    });
+    expect(m?.date).toBe("2026-08-24");
+  });
+
+  it("as casas decimais das unidades contam", () => {
+    // ETF fracionado: 2,5 unidades a 130,35 € são 325,88 € e não 325,00 €.
+    const m = primeiroMovimento({
+      quantity: 2.5,
+      unitCostCents: 13_035,
+      purchasedAt: "2026-01-02",
+      hoje: "2026-08-24",
+    });
+    expect(m?.amountCents).toBe(32_588);
+  });
+
+  /**
+   * Um movimento de zero euros não é um movimento. Nesses casos a posição
+   * escrita à mão continua a valer, que é o que a app fazia antes disto.
+   */
+  it("não inventa negócio nenhum sem unidades ou sem preço", () => {
+    const hoje = "2026-08-24";
+    expect(primeiroMovimento({ quantity: null, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 0, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: -5, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 100, unitCostCents: null, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 100, unitCostCents: 0, hoje })).toBeNull();
+  });
+
+  /** A posição que sai do movimento tem de ser a que se escreveu, sem desvio. */
+  it("a posição derivada do movimento é a que se registou", () => {
+    const m = primeiroMovimento({
+      quantity: 100,
+      unitCostCents: 1_200,
+      purchasedAt: "2026-03-04",
+      hoje: "2026-08-24",
+    })!;
+    const d = derivePosition({ quantity: null, unitCostCents: null }, [
+      { id: "t1", date: m.date, kind: "compra", quantity: m.quantity, amountCents: m.amountCents },
+    ]);
+    expect(d.derived).toBe(true);
+    expect(d.quantity).toBe(100);
+    expect(d.unitCostCents).toBe(1_200);
+  });
+});
+
+describe("ficaVazio", () => {
+  /**
+   * O investimento que nasceu de uma compra e a quem se apaga essa compra não
+   * fica "a zero": fica uma linha sem nada, que continua na carteira a dizer
+   * que vale zero e que ninguém percebe de onde veio.
+   */
+  it("um investimento sem movimentos e sem posição escrita fica vazio", () => {
+    expect(ficaVazio({ quantity: null, unitCostCents: null }, [])).toBe(true);
+    expect(ficaVazio({ quantity: 0, unitCostCents: 0 }, [])).toBe(true);
+  });
+
+  /** O invariante das entradas manuais: o que alguém escreveu sobrevive. */
+  it("uma posição escrita à mão nunca é vazio", () => {
+    expect(ficaVazio({ quantity: 100, unitCostCents: 1_200 }, [])).toBe(false);
+  });
+
+  it("com movimentos a mais não fica vazio nenhum", () => {
+    expect(ficaVazio({ quantity: null, unitCostCents: null }, [{}])).toBe(false);
   });
 });

@@ -1,0 +1,222 @@
+/**
+ * Registar um investimento cria a compra que lhe deu origem.
+ *
+ * **O que isto protege.** O formulário pede unidades e preço de compra, e isso
+ * é a descrição de um negócio com data. Antes, gravava-se só a posição no bem:
+ * o investimento nascia com um histórico vazio, sem TIR, sem TWR e sem
+ * comparação com o índice, e a própria ficha dizia "ainda não há movimentos" a
+ * quem tinha acabado de registar a compra. Quem quisesse as contas certas tinha
+ * de escrever tudo outra vez, como movimento.
+ *
+ * **E apagar o único movimento leva o investimento.** Um ativo cuja posição
+ * vive no movimento não fica "a zero" quando ele desaparece: fica uma linha
+ * sem nada na carteira. Mas uma posição escrita à mão sobrevive sempre — é o
+ * invariante das entradas manuais — e aí o ativo fica.
+ *
+ * Corre contra o repositório de mentira, com a sessão e a cache substituídas:
+ * o que se mede é o que ficou gravado, e não o que a função devolveu.
+ */
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockRepository } from "@/lib/data/mock-repository";
+
+const ESPACO = "casa-investimentos";
+
+vi.mock("@/lib/data", async () => {
+  const { MockRepository: M } = await import("@/lib/data/mock-repository");
+  const repo = new M();
+  return { getRepository: () => repo };
+});
+
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// A sessão vive fora daqui, e arrastava o Auth.js inteiro para dentro do teste.
+vi.mock("@/lib/session", () => ({
+  requireUser: async () => ({ id: "u1", name: "Tiago", email: "tiago@example.com" }),
+  getUser: async () => ({ id: "u1", name: "Tiago", email: "tiago@example.com" }),
+}));
+vi.mock("next/navigation", () => ({
+  redirect: (destino: string) => {
+    throw new Error(`REDIRECT:${destino}`);
+  },
+}));
+
+vi.mock("@/lib/space", () => ({
+  getSpaceContext: async () => ({
+    space: { id: ESPACO, name: "Casa", plan: "full" },
+    user: { id: "u1", name: "Tiago", email: "tiago@example.com" },
+    members: [],
+    fullMembers: [],
+    viewerRole: "full",
+    viewerMemberId: "m1",
+    spaces: [],
+    congelado: false,
+  }),
+  getTargetSpace: async () => ESPACO,
+  SPACE_COOKIE: "espaco",
+}));
+
+function form(campos: Record<string, string>): FormData {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(campos)) fd.set(k, v);
+  return fd;
+}
+
+async function repositorio() {
+  const { getRepository } = await import("@/lib/data");
+  return getRepository() as unknown as MockRepository;
+}
+
+describe("registar um investimento", () => {
+  beforeEach(async () => {
+    const repo = await repositorio();
+    for (const a of await repo.listAssets(ESPACO)) await repo.deleteAsset(a.id, ESPACO);
+  });
+
+  it("cria o ativo E a compra que lhe deu origem", async () => {
+    const { saveAssetAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const r = await saveAssetAction(
+      {},
+      form({
+        name: "Empresa de Ensaio",
+        kind: "investimento",
+        quantity: "100",
+        unitCost: "12,00",
+        purchasedAt: "2026-03-04",
+        symbol: "ens.us",
+      }),
+    );
+    expect(r.error).toBeUndefined();
+
+    const [bem] = await repo.listAssets(ESPACO);
+    expect(bem?.name).toBe("Empresa de Ensaio");
+
+    const movimentos = await repo.listAssetTrades(ESPACO, bem!.id);
+    expect(movimentos).toHaveLength(1);
+    expect(movimentos[0]).toMatchObject({
+      kind: "compra",
+      date: "2026-03-04",
+      quantity: 100,
+      amountCents: 120_000,
+    });
+  });
+
+  /**
+   * Duas versões da mesma verdade divergem à primeira correção: o movimento
+   * passa a mandar (ver `derivePosition`), e a posição escrita no bem ficava
+   * lá em baixo a dizer outra coisa a quem fosse ler a linha em cru.
+   */
+  it("a posição fica no movimento e não escrita no bem", async () => {
+    const { saveAssetAction } = await import("./actions");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Outra", kind: "investimento", quantity: "50", unitCost: "10,00" }),
+    );
+
+    const [bem] = await repo.listAssets(ESPACO);
+    expect(bem?.quantity ?? null).toBeNull();
+    expect(bem?.unitCostCents ?? null).toBeNull();
+  });
+
+  it("apagar o único movimento apaga o investimento", async () => {
+    const { saveAssetAction, deleteAssetTradeAction } = await import("./actions");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Só uma compra", kind: "investimento", quantity: "10", unitCost: "20,00" }),
+    );
+    const [bem] = await repo.listAssets(ESPACO);
+    const [mov] = await repo.listAssetTrades(ESPACO, bem!.id);
+
+    // A ação leva a página para a lista, que já não tem este ativo.
+    await expect(
+      deleteAssetTradeAction(form({ id: mov!.id, assetId: bem!.id, apagarAtivo: "1" })),
+    ).rejects.toThrow("REDIRECT:/patrimonio/ativos");
+
+    expect(await repo.listAssets(ESPACO)).toHaveLength(0);
+  });
+
+  /**
+   * O invariante das entradas manuais. Quem escreveu a posição à mão e depois
+   * lançou movimentos por cima fica com a posição escrita quando eles saem —
+   * apagar-lhe o ativo era destruir o que ele escreveu.
+   */
+  it("não apaga o ativo quando há posição escrita à mão a que voltar", async () => {
+    const { deleteAssetTradeAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const bem = await repo.createAsset({
+      spaceId: ESPACO,
+      name: "Escrito à mão",
+      kind: "investimento",
+      quantity: 80,
+      unitCostCents: 1_000,
+    });
+    const mov = await repo.createAssetTrade({
+      spaceId: ESPACO,
+      assetId: bem.id,
+      date: "2026-01-05",
+      kind: "compra",
+      quantity: 80,
+      amountCents: 80_000,
+    });
+
+    await deleteAssetTradeAction(form({ id: mov.id, assetId: bem.id, apagarAtivo: "1" }));
+
+    const bens = await repo.listAssets(ESPACO);
+    expect(bens).toHaveLength(1);
+    expect(bens[0]!.quantity).toBe(80);
+  });
+
+  /**
+   * O formulário de edição de um investimento com movimentos deixou de pedir
+   * unidades — elas vêm de lá. Se a ação continuasse a exigi-las, mudar só o
+   * nome ou o preço atual passava a dar "Indica quantas unidades tens", e não
+   * havia campo nenhum onde as escrever.
+   */
+  it("edita um investimento com movimentos sem lhe pedir unidades", async () => {
+    const { saveAssetAction } = await import("./actions");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Antes", kind: "investimento", quantity: "10", unitCost: "20,00" }),
+    );
+    const [bem] = await repo.listAssets(ESPACO);
+
+    const r = await saveAssetAction(
+      {},
+      form({ id: bem!.id, name: "Depois", kind: "investimento", unitPrice: "30,00" }),
+    );
+
+    expect(r.error).toBeUndefined();
+    const [depois] = await repo.listAssets(ESPACO);
+    expect(depois!.name).toBe("Depois");
+    expect(depois!.unitPriceCents).toBe(3_000);
+    // E o movimento continua a ser quem manda na posição.
+    const movs = await repo.listAssetTrades(ESPACO, bem!.id);
+    expect(movs).toHaveLength(1);
+    expect(movs[0]!.quantity).toBe(10);
+  });
+
+  /** Sem o pedido explícito de quem foi avisado, o ativo fica sempre. */
+  it("sem aviso não apaga o ativo", async () => {
+    const { saveAssetAction, deleteAssetTradeAction } = await import("./actions");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Sem aviso", kind: "investimento", quantity: "10", unitCost: "20,00" }),
+    );
+    const [bem] = await repo.listAssets(ESPACO);
+    const [mov] = await repo.listAssetTrades(ESPACO, bem!.id);
+
+    await deleteAssetTradeAction(form({ id: mov!.id, assetId: bem!.id }));
+
+    expect(await repo.listAssets(ESPACO)).toHaveLength(1);
+  });
+});

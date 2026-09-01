@@ -9,6 +9,7 @@ import {
   buildPosition,
   buildPositionReturn,
   movimentosImplausiveis,
+  ficaVazio,
   aplicarSplits,
   detetarSplits,
   ratioPorExtenso,
@@ -525,6 +526,10 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
                   key={t.id}
                   assetId={asset.id}
                   unitPriceCents={asset.unitPriceCents}
+                  /* Só quando é mesmo o último e não há posição escrita à mão a
+                     que voltar: o servidor confirma o mesmo antes de apagar. */
+                  apagaOAtivo={registados.length === 1 && ficaVazio(asset, [])}
+                  nomeDoAtivo={asset.name}
                   trade={{
                     id: t.id,
                     date: t.date,

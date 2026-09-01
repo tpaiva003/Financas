@@ -104,12 +104,22 @@ export function AssetForm({
   podeLerContrato = false,
   /** Bens que um crédito pode financiar: imóveis, carros, o que se compra a crédito. */
   bensFinanciaveis = [],
+  /**
+   * Este investimento já tem movimentos registados?
+   *
+   * Se tem, as unidades e o custo saem de lá (ver `derivePosition`) e este
+   * formulário deixa de os pedir. Pedi-los na mesma era oferecer dois campos
+   * que se preenchem, se gravam e não mudam nada — e um campo que não faz
+   * efeito é pior do que um campo que não existe.
+   */
+  temMovimentos = false,
 }: {
   asset?: AssetFormValues;
   contexto?: "ativos" | "dividas";
   members?: OwnershipMember[];
   bensFinanciaveis?: { id: string; name: string }[];
   podeLerContrato?: boolean;
+  temMovimentos?: boolean;
 }) {
   const [state, action] = useFormState(saveAssetAction, empty);
   const emDividas = contexto === "dividas";
@@ -214,29 +224,33 @@ export function AssetForm({
       </div>
 
       {isInvestment ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="label" htmlFor={`asset-qty-${uid}`}>Unidades</label>
-            <input
-              id={`asset-qty-${uid}`}
-              name="quantity"
-              inputMode="decimal"
-              defaultValue={plain(asset?.quantity)}
-              placeholder="100"
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor={`asset-cost-${uid}`}>Preço de compra (por unidade)</label>
-            <input
-              id={`asset-cost-${uid}`}
-              name="unitCost"
-              inputMode="decimal"
-              defaultValue={decimal(asset?.unitCostCents)}
-              placeholder="100,00"
-              className="input"
-            />
-          </div>
+        <div className={`grid gap-4 ${temMovimentos ? "" : "sm:grid-cols-3"}`}>
+          {temMovimentos ? null : (
+            <div>
+              <label className="label" htmlFor={`asset-qty-${uid}`}>Unidades</label>
+              <input
+                id={`asset-qty-${uid}`}
+                name="quantity"
+                inputMode="decimal"
+                defaultValue={plain(asset?.quantity)}
+                placeholder="100"
+                className="input"
+              />
+            </div>
+          )}
+          {temMovimentos ? null : (
+            <div>
+              <label className="label" htmlFor={`asset-cost-${uid}`}>Preço de compra (por unidade)</label>
+              <input
+                id={`asset-cost-${uid}`}
+                name="unitCost"
+                inputMode="decimal"
+                defaultValue={decimal(asset?.unitCostCents)}
+                placeholder="100,00"
+                className="input"
+              />
+            </div>
+          )}
           <div>
             <label className="label" htmlFor={`asset-price-${uid}`}>Preço atual (opcional)</label>
             <input

@@ -70,13 +70,25 @@ export function TradeRow({
   assetId,
   /** O preço por unidade de hoje, para se dizer o que a entrada valeu a pena. */
   unitPriceCents,
+  /**
+   * Apagar este movimento apaga o investimento inteiro?
+   *
+   * É verdade quando ele é o único e o ativo não tem posição escrita à mão a
+   * que voltar. Quem carrega em "Remover" tem de saber isso ANTES, não depois:
+   * o botão passa a pedir confirmação e a dizer o nome do que vai desaparecer.
+   */
+  apagaOAtivo = false,
+  nomeDoAtivo,
 }: {
   trade: TradeRowData;
   assetId: string;
   unitPriceCents?: number | null;
+  apagaOAtivo?: boolean;
+  nomeDoAtivo?: string;
 }) {
   const privado = usePrivado();
   const [aberto, setAberto] = useState(false);
+  const [aConfirmar, setAConfirmar] = useState(false);
   const [state, guardar] = useFormState(addAssetTradeAction, empty);
   const [moeda, setMoeda] = useState<FxCurrency>(
     (t.currency as FxCurrency) && FX_CURRENCIES.includes(t.currency as FxCurrency)
@@ -171,14 +183,45 @@ export function TradeRow({
             {aberto ? "Fechar" : "Editar"}
           </button>
 
-          <form action={deleteAssetTradeAction}>
-            <input type="hidden" name="id" value={t.id} />
-            <button type="submit" className="btn-ghost px-2 text-xs text-debt hover:text-debt">
+          {apagaOAtivo && !aConfirmar ? (
+            <button
+              type="button"
+              onClick={() => setAConfirmar(true)}
+              className="btn-ghost px-2 text-xs text-debt hover:text-debt"
+            >
               Remover
             </button>
-          </form>
+          ) : (
+            <form action={deleteAssetTradeAction} className="flex items-center gap-2">
+              <input type="hidden" name="id" value={t.id} />
+              <input type="hidden" name="assetId" value={assetId} />
+              {/* O servidor volta a confirmar as condições: isto diz que a
+                  pessoa foi avisada, não que o ativo pode ser apagado. */}
+              {apagaOAtivo ? <input type="hidden" name="apagarAtivo" value="1" /> : null}
+              <button type="submit" className="btn-ghost px-2 text-xs text-debt hover:text-debt">
+                {apagaOAtivo ? "Apagar movimento e investimento" : "Remover"}
+              </button>
+              {apagaOAtivo ? (
+                <button
+                  type="button"
+                  onClick={() => setAConfirmar(false)}
+                  className="btn-ghost px-2 text-xs"
+                >
+                  Cancelar
+                </button>
+              ) : null}
+            </form>
+          )}
         </div>
       </div>
+
+      {apagaOAtivo && aConfirmar ? (
+        <p className="mt-2 text-[11px] leading-snug text-debt">
+          Este é o único movimento{nomeDoAtivo ? ` de ${nomeDoAtivo}` : ""}, e as
+          unidades e o custo vêm dele. Ao removê-lo, o investimento desaparece
+          também da carteira. Se o que queres é corrigi-lo, usa o Editar.
+        </p>
+      ) : null}
 
       {aberto ? (
         <form action={guardar} className="mt-3 rounded-xl border border-hair bg-panel2/30 p-4">

@@ -3045,3 +3045,39 @@ consultado antes de existir o tipo tem o carimbo escrito e o tipo vazio, e pelo
 carimbo passaria por "já se perguntou e a fonte não soube" — ficando sem tipo
 para sempre. A data em que o tipo passou a ser lido está escrita no serviço, e é
 ela que faz essa segunda pergunta acontecer uma vez e nunca mais.
+
+### Registar um investimento é registar uma compra
+O formulário pedia unidades e preço de compra e gravava-os no bem, e mais nada.
+Só que "100 unidades a 12 €" é a descrição de um negócio com data: o
+investimento nascia com a posição escrita à mão e o histórico vazio, sem TIR,
+sem TWR e sem comparação com o índice — e a própria ficha dizia "ainda não há
+movimentos" a quem tinha acabado de registar a compra. Quem quisesse as contas
+certas escrevia tudo outra vez, agora como movimento.
+
+Passa a nascer a compra com o ativo, com a data que se escreveu (ou a de hoje,
+quando não se escreveu nenhuma). **A posição fica no movimento e não no bem**:
+duas versões da mesma verdade divergem à primeira correção, e é o movimento que
+manda (`derivePosition`). Se a compra não conseguir ser gravada, escreve-se a
+posição no bem como dantes — um erro ali não pode deixar na carteira uma linha
+a valer zero.
+
+**O formulário de edição deixou de pedir unidades quando já há movimentos.** Era
+um campo que se preenchia, se gravava e não mudava nada, o que é pior do que um
+campo que não existe.
+
+### Apagar o último movimento apaga o investimento, com aviso
+Um ativo cuja posição vive no movimento não fica "a zero" quando ele desaparece:
+fica uma linha sem nada na carteira, a dizer que vale zero, que ninguém percebe
+de onde veio. Por isso o ativo vai atrás — **mas nunca por decisão da app**: o
+botão passa a pedir confirmação e a dizer, pelo nome, o que vai desaparecer.
+
+Três guardas, porque isto apaga coisas:
+
+1. **Uma posição escrita à mão sobrevive sempre.** Quem escreveu "100 unidades"
+   no bem e lançou movimentos por cima fica com as 100 quando eles saem, e o
+   ativo fica. É o invariante das entradas manuais (`ficaVazio`).
+2. **Só com o aviso dado.** O pedido leva uma marca a dizer que quem carregou
+   foi avisado; sem ela apaga-se o movimento e mais nada.
+3. **As condições são reconfirmadas no servidor**, com o ambiente a filtrar: uma
+   página desatualizada não pode levar à frente um ativo que entretanto ganhou
+   movimentos.

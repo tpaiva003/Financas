@@ -1814,15 +1814,16 @@ function AssetRow({
         <div className="mt-3 rounded-xl border border-hair bg-panel2/20 p-4">
           {tradeCount > 0 ? (
             <p className="mb-3 text-xs text-fg-faint">
-              As unidades e o custo vêm dos {tradeCount} movimentos registados.
-              O que escreveres aqui fica guardado, mas só volta a valer se
-              apagares os movimentos.
+              As unidades e o custo vêm dos {tradeCount} movimentos registados, e
+              por isso não se pedem aqui. Corrige-os na ficha do investimento,
+              onde estão os movimentos.
             </p>
           ) : null}
           <AssetForm
             members={members}
             podeLerContrato={podeLerContrato}
             bensFinanciaveis={bensFinanciaveis}
+            temMovimentos={tradeCount > 0}
             asset={{
               id: a.id,
               name: a.name,

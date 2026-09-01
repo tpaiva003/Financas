@@ -239,6 +239,67 @@ export function derivePosition(
   };
 }
 
+/**
+ * O primeiro movimento de um investimento que acabou de ser registado.
+ *
+ * **Porque é que registar um investimento tem de criar um movimento.** Quem
+ * escreve "100 unidades a 12 €" no formulário está a dizer que comprou 100
+ * unidades a 12 €. Isso é um negócio, com uma data — e sem ele o ativo nascia
+ * com uma posição escrita à mão e um histórico vazio: sem TIR, sem TWR, sem
+ * comparação com o índice, e com a página do ativo a dizer "ainda não há
+ * movimentos" a quem acabou de registar a compra.
+ *
+ * Devolve `null` quando não há negócio nenhum a inventar: sem unidades, ou com
+ * um custo que dá zero. Um movimento de zero euros não é um movimento, e a
+ * posição escrita à mão continua a valer para esse caso.
+ */
+export function primeiroMovimento(input: {
+  quantity: number | null;
+  unitCostCents: number | null;
+  /** A data de compra do formulário, quando lá está. */
+  purchasedAt?: string | null;
+  /** Hoje, em "AAAA-MM-DD". Serve de data quando não se escreveu nenhuma. */
+  hoje: string;
+}): { date: string; quantity: number; unitPriceCents: number; amountCents: number } | null {
+  const { quantity, unitCostCents } = input;
+  if (quantity === null || quantity <= 0) return null;
+  if (unitCostCents === null || unitCostCents <= 0) return null;
+
+  const amountCents = Math.round(quantity * unitCostCents);
+  if (amountCents <= 0) return null;
+
+  const data = (input.purchasedAt ?? "").trim();
+  return {
+    // Uma data mal escrita não vira silenciosamente uma data errada: vale hoje.
+    date: /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : input.hoje,
+    quantity,
+    unitPriceCents: unitCostCents,
+    amountCents,
+  };
+}
+
+/**
+ * Este ativo fica vazio se lhe tirarem os movimentos que restam?
+ *
+ * **A pergunta que decide se apagar um movimento apaga também o ativo.** Um
+ * investimento que nasceu de uma compra e a quem se apaga essa compra não fica
+ * "a zero": fica uma linha sem nada — sem unidades, sem custo e sem histórico —
+ * que continua a aparecer na carteira a dizer que vale zero.
+ *
+ * **Mas uma posição escrita à mão nunca é vazio.** Quem escreveu "100 unidades"
+ * no ativo e depois lançou movimentos por cima continua a ter essas 100
+ * unidades quando os movimentos saem: é o invariante das entradas manuais, e
+ * apagar-lhe o ativo seria destruir o que ele escreveu.
+ */
+export function ficaVazio(
+  asset: { quantity?: number | null; unitCostCents?: number | null },
+  tradesRestantes: readonly unknown[],
+): boolean {
+  if (tradesRestantes.length > 0) return false;
+  const q = asset.quantity ?? 0;
+  return !(q > 0);
+}
+
 export interface PositionReturn {
   /** O que a posição vale hoje, em cêntimos. */
   currentValueCents: number;
