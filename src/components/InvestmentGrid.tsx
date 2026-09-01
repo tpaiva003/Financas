@@ -281,7 +281,17 @@ export function InvestmentGrid({ items }: { items: InvestmentCardData[] }) {
               ) : null}
             </p>
           ) : null}
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/*
+            `grid-cols-1` no telemóvel, e não "grid" à seca.
+
+            Sem coluna declarada, a coluna implícita é `auto`: cresce com o
+            conteúdo em vez de se limitar à largura que tem. Basta a letra do
+            sistema estar aumentada — o Android escala o tipo de letra e o
+            Tailwind mede em `rem` — para o cartão ficar mais largo do que o
+            ecrã e sair pela direita. `grid-cols-1` é `minmax(0, 1fr)`, que é o
+            que proíbe a coluna de crescer; as de tablet e desktop já o eram.
+          */}
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {visiveis.map((d, i) => (
               <InvestmentCard
                 key={d.id}

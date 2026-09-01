@@ -169,6 +169,17 @@
     /* Larguras mínimas para o "•••" não ficar apertado num valor curto. */
     min-width: 3.5ch;
     display: inline-block;
+    /*
+     * E um tecto, porque `inline-block` deixou de poder quebrar.
+     *
+     * Um montante grande escrito à solta parte-se pelo espaço dos milhares
+     * quando não cabe. Tapado, passa a ser uma caixa inteira que não parte —
+     * e o total do património, com a letra do sistema aumentada, empurrava a
+     * página para fora do ecrã. O texto lá dentro está transparente e os
+     * pontos ficam centrados na mesma.
+     */
+    max-width: 100%;
+    overflow: hidden;
   }
 
   html[data-privado="1"] .dinheiro::after {

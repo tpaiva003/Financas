@@ -3102,3 +3102,34 @@ comportamento é o mesmo em produção e no repositório de mentira, e está esc
 em código o que se destrói), e **diz quando falha**. A antiga engolia os erros e
 recarregava a página igual, o que faz uma remoção falhada parecer uma remoção
 feita — o mesmo engano que a consola de contas já tinha aprendido a não repetir.
+
+### O que sai do ecrã no telemóvel, medido em vez de adivinhado
+Um cartão de investimento aparecia cortado pela direita num telemóvel. Não se
+reproduzia com os dados de exemplo, e a causa não era nenhuma das óbvias: era a
+**letra do sistema aumentada**. O Android escala o tipo de letra, o Tailwind mede
+em `rem`, e a partir de certa altura o conteúdo deixa de caber.
+
+A causa concreta: `className="grid gap-3 sm:grid-cols-2"` **não declara coluna
+nenhuma no telemóvel**. A coluna implícita é `auto` — cresce com o conteúdo em
+vez de se limitar à largura que tem. `grid-cols-1` é `minmax(0, 1fr)`, que é o
+que a proíbe de crescer; as de tablet e desktop já o eram.
+
+O `html`/`body` cortam o que sai (`overflow-x: clip`), por isso isto nunca dá
+uma barra de scroll: dá um cartão cortado, que é bem mais difícil de perceber.
+
+**Medir foi o que resolveu.** Um varrimento das vinte rotas, num ecrã de 393 px,
+com o modo privacidade ligado e a letra a 16, 19, 22 e 26 px, a listar os
+elementos cuja borda direita passa da janela. Apanhou cinco coisas, quatro delas
+que ninguém tinha reportado:
+
+1. A grelha dos investimentos, sem coluna base (a que foi reportada).
+2. O cabeçalho: sem `min-w-0`, o nome do ambiente nunca chegava a ser cortado e
+   empurrava a página. Bastava um ambiente com nome comprido.
+3. A linha de um bem: valor, setas e "Remover" numa linha que não enrolava.
+4. O `.dinheiro` do modo privacidade: `display: inline-block` tirou ao montante
+   a capacidade de partir pelo espaço dos milhares, e o total do património
+   empurrava a página. Levou tecto (`max-width: 100%`).
+5. Um crachá e um `select` que cresciam com o conteúdo mais comprido da lista.
+
+Fica a app inteira dentro do ecrã até 26 px de raiz (~160% de escala). Acima
+disso ainda há coisas a passar, e isso está por resolver.

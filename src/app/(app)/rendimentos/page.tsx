@@ -158,10 +158,13 @@ export default async function RendimentosPage() {
               <li key={i.id} className="px-5 py-3.5">
                 <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 truncate text-sm font-medium text-fg">
-                    {i.description}
+                  {/* O `truncate` tem de estar na descrição e não na linha:
+                      posto na linha, era o crachá que ficava cortado, e com a
+                      letra do sistema aumentada saía do ecrã. */}
+                  <p className="flex items-center gap-2 text-sm font-medium text-fg">
+                    <span className="truncate">{i.description}</span>
                     {i.recurring ? (
-                      <span className="chip border-hair text-fg-faint">todos os meses</span>
+                      <span className="chip shrink-0 border-hair text-fg-faint">todos os meses</span>
                     ) : null}
                   </p>
                   <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">

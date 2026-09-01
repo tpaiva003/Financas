@@ -46,7 +46,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       */}
       <header data-sticky className="sticky top-0 z-20">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-5 py-4">
-          <div className="flex items-center gap-3">
+          {/*
+            `min-w-0` para o nome do ambiente poder encolher.
+
+            Sem ele, o `truncate` do nome nunca chega a acontecer: um filho de
+            flex não encolhe abaixo do seu conteúdo a menos que se lho permita,
+            e o cabeçalho ia crescendo até empurrar a página para fora do ecrã.
+            Bastava um ambiente com nome comprido, ou a letra do sistema
+            aumentada — o Android escala o tipo de letra e a largura máxima do
+            nome está em `rem`.
+          */}
+          <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/dashboard"
               className="flex items-center gap-2 font-display text-[15px] font-semibold tracking-tight"
@@ -62,7 +72,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               />
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          {/* Os botões não encolhem: o que dá lugar é o nome do ambiente. */}
+          <div className="flex shrink-0 items-center gap-2">
             {/* Ao lado do tema: as duas são preferências do aparelho, e é
                 aqui que se procura "como é que isto se mostra". */}
             <PrivacyToggle />

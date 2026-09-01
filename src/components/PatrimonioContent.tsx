@@ -1542,7 +1542,10 @@ function AssetRow({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Enrola quando não cabe. Com a letra do sistema aumentada, o valor
+          mais as setas mais o Remover passavam da largura do ecrã e levavam a
+          página com eles. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         {isInvestment ? (
           <div className="flex items-center gap-1.5">
             <form action={updateAssetPriceAction} className="flex items-center gap-1.5">
