@@ -105,6 +105,18 @@ export interface Fundamentais {
    */
   setor: string | null;
   industria: string | null;
+  /**
+   * O que a fonte diz que isto é: `EQUITY`, `ETF`, `MUTUALFUND`, `INDEX`…
+   *
+   * Vinha na resposta desde sempre — o módulo `price` já era pedido — e era
+   * deitado fora. Sem ele, separar ações de fundos ficava a cargo de adivinhar
+   * pelo nome ou pela ausência de setor, e as duas adivinhas erram: há ETF
+   * setoriais com setor e há empresas cujo perfil não veio.
+   *
+   * Em bruto, pela mesma razão do setor: um tipo novo chega ao ecrã como está
+   * em vez de cair calado num grupo onde ninguém dá por ele.
+   */
+  tipoFonte: string | null;
   /** Exercícios anuais, do mais antigo para o mais recente. */
   historico: AnoFundamental[];
   /**
@@ -381,6 +393,7 @@ export function parseFundamentais(texto: string): Fundamentais {
     caixaBilioes: null,
     setor: null,
     industria: null,
+    tipoFonte: null,
     historico: [],
     trimestral: [],
     medias: {
@@ -499,6 +512,7 @@ export function parseFundamentais(texto: string): Fundamentais {
     caixaBilioes: mM(caixa),
     setor: palavra(perfil.sector),
     industria: palavra(perfil.industry),
+    tipoFonte: palavra(price.quoteType),
     historico,
     trimestral,
     medias,

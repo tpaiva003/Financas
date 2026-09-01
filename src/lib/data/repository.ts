@@ -288,6 +288,17 @@ export interface Asset {
   sector?: string | null;
   industry?: string | null;
   /**
+   * Ação, fundo ou outra coisa, como a fonte lhe chama (`EQUITY`, `ETF`…).
+   *
+   * Separa a parte da carteira que é escolha de empresas da que é mercado
+   * inteiro — duas maneiras de investir com riscos diferentes, que estavam
+   * misturadas na mesma lista sem forma de as somar em separado.
+   *
+   * Em bruto, como o setor, e pela mesma razão: um tipo novo da fonte chega ao
+   * ecrã como está em vez de cair calado num grupo qualquer.
+   */
+  instrumento?: string | null;
+  /**
    * Quando é que o perfil foi consultado.
    *
    * A mesma razão do `marketDatesAt`: sem isto não se distingue "a fonte não

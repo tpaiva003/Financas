@@ -1505,9 +1505,13 @@ function AssetRow({
         <p className="mt-0.5 font-mono text-[11px] text-fg-faint">
           {isInvestment ? (
             <>
-              {a.quantity} un. a <span className="dinheiro">{formatCents(a.unitCostCents ?? 0)}</span>
+              {/* Com os valores tapados, as unidades saem e fica só por quanto
+                  se comprou: o preço por unidade não diz quanto lá está. */}
+              <span className="so-aberto">{a.quantity} un. a </span>
+              <span className="so-privado">comprado a </span>
+              <span className="preco-un">{formatCents(a.unitCostCents ?? 0)}</span>
               {a.unitPriceCents !== null && a.unitPriceCents !== undefined
-                ? [", a ", <span key="p" className="dinheiro">{formatCents(a.unitPriceCents)}</span>]
+                ? [", a ", <span key="p" className="preco-un">{formatCents(a.unitPriceCents)}</span>]
                 : ", sem preço atual"}
               {/* De quando é o preço. Sem isto, um valor velho passa por atual.
                   E **só se mostra a data quando ela é mesmo a deste preço**: se a
@@ -1538,7 +1542,10 @@ function AssetRow({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Enrola quando não cabe. Com a letra do sistema aumentada, o valor
+          mais as setas mais o Remover passavam da largura do ecrã e levavam a
+          página com eles. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         {isInvestment ? (
           <div className="flex items-center gap-1.5">
             <form action={updateAssetPriceAction} className="flex items-center gap-1.5">
@@ -1810,15 +1817,16 @@ function AssetRow({
         <div className="mt-3 rounded-xl border border-hair bg-panel2/20 p-4">
           {tradeCount > 0 ? (
             <p className="mb-3 text-xs text-fg-faint">
-              As unidades e o custo vêm dos {tradeCount} movimentos registados.
-              O que escreveres aqui fica guardado, mas só volta a valer se
-              apagares os movimentos.
+              As unidades e o custo vêm dos {tradeCount} movimentos registados, e
+              por isso não se pedem aqui. Corrige-os na ficha do investimento,
+              onde estão os movimentos.
             </p>
           ) : null}
           <AssetForm
             members={members}
             podeLerContrato={podeLerContrato}
             bensFinanciaveis={bensFinanciaveis}
+            temMovimentos={tradeCount > 0}
             asset={{
               id: a.id,
               name: a.name,

@@ -3,7 +3,9 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-18 (noite). Os **PRs #45 e #43 estão integrados e
+> Última atualização: 2026-08-20. **Começa pela secção 0-hoje.**
+>
+> Antes disso: Os **PRs #45 e #43 estão integrados e
 > em produção** (www.rachar.pt): janelas contra os índices, correções de cálculo
 > com vendas, mês parcial, revisão da landing, modo demo self-serve e revisão do
 > backend. O trabalho em curso vive no branch
@@ -12,6 +14,35 @@
 > convites opt-in — migrações **0044 e 0045 já aplicadas** no Supabase), SEO,
 > recibo→despesa e streak. Autorizado pelo Tiago com «Avança com todos, exceto
 > os SSO par ajá».
+
+---
+
+## 0-hoje. Sessão de 2026-08-20 — corte do anel, privacidade das unidades, ações contra cabaz
+
+**Já em produção** (fundido no PR #52): os travessões fora do texto da app e o
+**modo privacidade** (botão ao lado do tema, tapa os montantes com `•••`).
+
+**Por fundir, no PR #53** (branch `claude/rachar-landing-page-zdliyf`), com o
+gate verde em cada commit:
+
+- **Faixas que deslizam deixam de cortar** (`3d945f3`). `overflow-x: auto` faz o
+  `overflow-y` deixar de ser `visible`, e a barra dos separadores tinha zero de
+  folga em cima: o anel de foco perdia 2 px. Classe `.scroll-x` nas doze faixas,
+  teste a proibir `overflow-x-auto` à mão.
+- **O modo privacidade passa a tapar as unidades** (`f7c35e7`). O preço de uma
+  ação é público: "125 un." mais a cotação dizem quanto lá está. Saem as
+  unidades, ficam os preços por unidade (`preco-un`).
+- **Escolhas ou cabaz** (`f68c5c2`). Ações contra ETF, em peso e em ganho, na
+  análise do património. O tipo vem do `quoteType` do Yahoo, que já vinha no
+  pedido do preço. Painel para classificar setor e tipo à mão.
+
+> **YOU MUST correr a migração `0046` antes de fundir o PR #53.** Uma coluna
+> `assets.instrumento`, aditiva. Sem ela, gravar no painel de classificar dá
+> erro. Copiar pela vista **raw** do GitHub (ver o aviso mais abaixo).
+
+**Por decidir pelo Tiago:** o menu do Património tem dois separadores chamados
+"Avaliação" (`/patrimonio/dcf` e `/patrimonio/avaliacao`), os dois a avaliar
+empresas por fluxos de caixa. Qual fica.
 
 ---
 

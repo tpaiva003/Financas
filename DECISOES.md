@@ -2951,3 +2951,185 @@ O gancho é a classe `dinheiro`, posta em todos os montantes desenhados. Um
 teste de leitura de código (`modo-privacidade.test.ts`) impede que um valor
 novo escape: um buraco na cortina só se descobre a projetar à frente de
 alguém, que é o pior sítio para o descobrir.
+
+### O que desliza na horizontal corta nos dois eixos
+Um separador aparecia com o anel de foco achatado num portátil e inteiro
+noutro. A máquina não era a causa: a barra dos separadores é um contentor com
+`overflow-x: auto`, e pedir scroll num eixo faz o outro deixar de ser
+`visible`. A partir daí o contentor corta em cima e em baixo, e o anel de foco
+— que o browser desenha FORA da caixa da pastilha — perdia os 2 px que lhe
+passavam. A barra tinha 4 px de folga em baixo e **zero em cima**.
+
+Só muda de máquina para máquina o quanto se nota, porque a escala do sistema
+desenha o anel mais fino ou mais gordo. Numa vê-se, noutra não, e a conversa
+começa por "no teu computador está bem".
+
+Passa a haver uma classe `.scroll-x` com a folga incluída, usada nas doze
+faixas que deslizam (separadores e tabelas largas): as tabelas tinham o mesmo
+problema com o halo dos campos lá dentro. A margem negativa fica só na
+horizontal — na vertical seis píxeis de padding a sério, que cresce com o zoom
+da mesma maneira que o anel.
+
+Medido, não visto: com o corte, o anel perdia 8 px numa captura a 4x; com a
+folga, a barra que corta desenha exactamente o mesmo que uma barra sem corte
+nenhum. Um teste de leitura de código proíbe `overflow-x-auto` à mão.
+
+### Tapar os euros não chegava: as unidades diziam o mesmo
+O modo privacidade tapava os montantes e deixava "125 un." à vista. Só que o
+preço de uma ação é público: quem visse as unidades ia ao telemóvel, multiplicava
+pela cotação e sabia exactamente quanto lá estava — e, com a percentagem de
+retorno que fica à vista de propósito, quanto se tinha ganho. A cortina não
+tapava nada a quem se desse ao trabalho de fazer uma multiplicação.
+
+**A troca: saem as unidades, ficam os preços por unidade.** Um preço por unidade
+não diz quanto se tem, porque lhe falta exactamente o número que passou a estar
+escondido. E é o que faz a app continuar a valer a pena mostrar: vê-se por
+quanto se comprou e por quanto está hoje, movimento a movimento, sem se ver de
+quanto se fala. A página de um ativo passa a ler-se "comprado a 130,35 €, hoje
+a 138,53 €", e cada linha de movimento mostra o preço a que se fez o negócio em
+vez das unidades.
+
+Três classes: `so-aberto` e `bloco-aberto` para o que sai, `so-privado` para o
+que entra no lugar, e `preco-un` para o dinheiro que fica à vista de propósito
+— a excepção à regra do `dinheiro`, escrita e não deduzida.
+
+**O balão do rato foi o único sítio onde o CSS não chegou.** O que vai dentro de
+um atributo não se troca com uma folha de estilo, e aquele dizia as unidades e o
+que valem hoje. Para esse caso há um `usePrivado()` (o estado do modo, a sério),
+usado só onde é mesmo preciso: o resto continua em CSS, que é o que permite a
+cortina aplicar-se antes de pintar.
+
+Um segundo teste de leitura de código apanha uma quantidade desenhada sem a
+marca — apanhou as oito que existiam.
+
+### Escolher empresas ou comprar o cabaz: a leitura que faltava
+A análise dizia a que setores a carteira está exposta e não dizia uma coisa mais
+simples: quanto dela é escolha de empresas e quanto é mercado comprado inteiro.
+São duas maneiras de investir com riscos diferentes, estavam misturadas na mesma
+lista, e a pergunta que interessa — "as minhas escolhas estão a bater o que eu
+teria sem escolher nada?" — não tinha resposta em lado nenhum.
+
+**O tipo vem da fonte e já vinha.** O `quoteType` do Yahoo chega no módulo
+`price`, que a app já pedia para saber o preço e a moeda, e estava a ser deitado
+fora. Não custa um pedido novo: custa ler o que já lá está.
+
+**Não se adivinha.** As duas adivinhas óbvias erram as duas: pelo nome falha nos
+fundos que não dizem que o são; pela ausência de setor falha nos ETF setoriais,
+que têm setor. Um investimento mal arrumado num gráfico de exposição é pior do
+que um por arrumar — o segundo aparece como lacuna, o primeiro passa por conta
+feita.
+
+**Duas fatias e não uma por tipo da fonte.** Um ETF e um fundo são a mesma
+decisão: comprar o cabaz e não escolher lá dentro. O que não é nem uma coisa nem
+outra (cripto, moeda) fica com o nome que a fonte lhe dá, em vez de ser arrumado
+à força num dos dois lados.
+
+**O que a comparação vale, dito onde ela está.** É ganho sobre o custo do que
+ainda se tem, dos dois lados, e não conta com o tempo. Sem essa linha, o número
+lia-se como um veredicto sobre saber escolher.
+
+### Um aviso que não se pode fechar ensina a ignorar os avisos
+A análise dizia "86,9% do valor por classificar" com a carteira toda arrumada: o
+que faltava eram fundos, e um fundo não tem setor para dar. O aviso era
+verdadeiro, permanente e sem nenhuma forma de o fechar.
+
+Passam a existir as duas metades que faltavam. Quando o que falta são só fundos,
+o ecrã diz isso em vez de chamar lacuna ao normal. E quando falta mesmo alguma
+coisa — um investimento sem símbolo, um nome que a fonte não conhece — há um
+painel para a classificar à mão, ali, sem sair da página onde a lacuna aparece.
+Uma gravação para a lista toda, e só valores das listas conhecidas entram: o que
+vem de um formulário é texto que alguém pôs lá.
+
+**A consulta automática ganhou uma segunda pergunta, uma só vez.** Quem foi
+consultado antes de existir o tipo tem o carimbo escrito e o tipo vazio, e pelo
+carimbo passaria por "já se perguntou e a fonte não soube" — ficando sem tipo
+para sempre. A data em que o tipo passou a ser lido está escrita no serviço, e é
+ela que faz essa segunda pergunta acontecer uma vez e nunca mais.
+
+### Registar um investimento é registar uma compra
+O formulário pedia unidades e preço de compra e gravava-os no bem, e mais nada.
+Só que "100 unidades a 12 €" é a descrição de um negócio com data: o
+investimento nascia com a posição escrita à mão e o histórico vazio, sem TIR,
+sem TWR e sem comparação com o índice — e a própria ficha dizia "ainda não há
+movimentos" a quem tinha acabado de registar a compra. Quem quisesse as contas
+certas escrevia tudo outra vez, agora como movimento.
+
+Passa a nascer a compra com o ativo, com a data que se escreveu (ou a de hoje,
+quando não se escreveu nenhuma). **A posição fica no movimento e não no bem**:
+duas versões da mesma verdade divergem à primeira correção, e é o movimento que
+manda (`derivePosition`). Se a compra não conseguir ser gravada, escreve-se a
+posição no bem como dantes — um erro ali não pode deixar na carteira uma linha
+a valer zero.
+
+**O formulário de edição deixou de pedir unidades quando já há movimentos.** Era
+um campo que se preenchia, se gravava e não mudava nada, o que é pior do que um
+campo que não existe.
+
+### Apagar o último movimento apaga o investimento, com aviso
+Um ativo cuja posição vive no movimento não fica "a zero" quando ele desaparece:
+fica uma linha sem nada na carteira, a dizer que vale zero, que ninguém percebe
+de onde veio. Por isso o ativo vai atrás — **mas nunca por decisão da app**: o
+botão passa a pedir confirmação e a dizer, pelo nome, o que vai desaparecer.
+
+Três guardas, porque isto apaga coisas:
+
+1. **Uma posição escrita à mão sobrevive sempre.** Quem escreveu "100 unidades"
+   no bem e lançou movimentos por cima fica com as 100 quando eles saem, e o
+   ativo fica. É o invariante das entradas manuais (`ficaVazio`).
+2. **Só com o aviso dado.** O pedido leva uma marca a dizer que quem carregou
+   foi avisado; sem ela apaga-se o movimento e mais nada.
+3. **As condições são reconfirmadas no servidor**, com o ambiente a filtrar: uma
+   página desatualizada não pode levar à frente um ativo que entretanto ganhou
+   movimentos.
+
+### Um investimento não se conseguia apagar em lado nenhum
+Os investimentos são desenhados em cartões (`InvestmentGrid`) e não na linha que
+traz o "Remover"; a ficha do ativo só tinha o "Remover" de cada **movimento**.
+Somando as duas coisas: um investimento criado por engano não tinha, na app
+inteira, um único sítio onde ser apagado. Com movimentos ainda se lá chegava
+pelo caminho novo — apagar o último leva o ativo — mas sem movimentos, que é
+como fica quem se enganou a registar, não havia nada em que carregar.
+
+Passa a haver "Apagar este investimento" no fim da ficha, fechado e longe do
+resto: o que destrói não se põe ao lado do que se usa todos os dias. Diz o que
+leva atrás (movimentos e documentos, pelo número) e lembra a alternativa que
+quase sempre é a certa — **registar a venda em vez de apagar**, para o histórico
+e a mais-valia ficarem para quando houver que os declarar.
+
+Duas coisas que a remoção antiga não fazia e esta faz: **apaga os movimentos
+explicitamente** em vez de confiar na cascata da base de dados (assim o
+comportamento é o mesmo em produção e no repositório de mentira, e está escrito
+em código o que se destrói), e **diz quando falha**. A antiga engolia os erros e
+recarregava a página igual, o que faz uma remoção falhada parecer uma remoção
+feita — o mesmo engano que a consola de contas já tinha aprendido a não repetir.
+
+### O que sai do ecrã no telemóvel, medido em vez de adivinhado
+Um cartão de investimento aparecia cortado pela direita num telemóvel. Não se
+reproduzia com os dados de exemplo, e a causa não era nenhuma das óbvias: era a
+**letra do sistema aumentada**. O Android escala o tipo de letra, o Tailwind mede
+em `rem`, e a partir de certa altura o conteúdo deixa de caber.
+
+A causa concreta: `className="grid gap-3 sm:grid-cols-2"` **não declara coluna
+nenhuma no telemóvel**. A coluna implícita é `auto` — cresce com o conteúdo em
+vez de se limitar à largura que tem. `grid-cols-1` é `minmax(0, 1fr)`, que é o
+que a proíbe de crescer; as de tablet e desktop já o eram.
+
+O `html`/`body` cortam o que sai (`overflow-x: clip`), por isso isto nunca dá
+uma barra de scroll: dá um cartão cortado, que é bem mais difícil de perceber.
+
+**Medir foi o que resolveu.** Um varrimento das vinte rotas, num ecrã de 393 px,
+com o modo privacidade ligado e a letra a 16, 19, 22 e 26 px, a listar os
+elementos cuja borda direita passa da janela. Apanhou cinco coisas, quatro delas
+que ninguém tinha reportado:
+
+1. A grelha dos investimentos, sem coluna base (a que foi reportada).
+2. O cabeçalho: sem `min-w-0`, o nome do ambiente nunca chegava a ser cortado e
+   empurrava a página. Bastava um ambiente com nome comprido.
+3. A linha de um bem: valor, setas e "Remover" numa linha que não enrolava.
+4. O `.dinheiro` do modo privacidade: `display: inline-block` tirou ao montante
+   a capacidade de partir pelo espaço dos milhares, e o total do património
+   empurrava a página. Levou tecto (`max-width: 100%`).
+5. Um crachá e um `select` que cresciam com o conteúdo mais comprido da lista.
+
+Fica a app inteira dentro do ecrã até 26 px de raiz (~160% de escala). Acima
+disso ainda há coisas a passar, e isso está por resolver.

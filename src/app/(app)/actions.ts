@@ -99,6 +99,10 @@ import {
   etapaSugerida,
   ETAPA_LABEL,
   assinatura,
+  ficaVazio,
+  primeiroMovimento,
+  SETORES_PT,
+  TIPOS_PT,
 } from "@/lib/domain";
 import type { CenarioDcf, Fundamentais } from "@/lib/domain";
 
@@ -1865,10 +1869,25 @@ export async function saveAssetAction(
   const unitPrice = parseNumber(formData.get("unitPrice"));
   const value = parseNumber(formData.get("value"));
 
-  if (kind === "investimento") {
+  const id = String(formData.get("id") ?? "").trim();
+
+  /**
+   * Um investimento com movimentos não recebe unidades pelo formulário.
+   *
+   * A posição desse ativo sai dos movimentos (ver `derivePosition`), por isso
+   * escrever "200 unidades" aqui não mudava nada — e um campo que se preenche,
+   * se grava e não faz efeito nenhum é pior do que um campo que não existe. O
+   * formulário deixa de os mostrar; isto é a outra metade da mesma decisão.
+   */
+  const temMovimentos =
+    id && kind === "investimento"
+      ? (await getRepository().listAssetTrades(ctx.space.id, id).catch(() => [])).length > 0
+      : false;
+
+  if (kind === "investimento" && !temMovimentos) {
     if (quantity === null || quantity <= 0) return { error: "Indica quantas unidades tens." };
     if (unitCost === null || unitCost < 0) return { error: "Indica o preço de compra por unidade." };
-  } else if (value === null && kind !== "imovel") {
+  } else if (kind !== "investimento" && value === null && kind !== "imovel") {
     return { error: "Indica o valor." };
   } else if (kind === "imovel" && value === null && parseNumber(formData.get("purchasePrice")) === null) {
     // Num imóvel, o valor de hoje é estimado a partir do que custou. Um dos
@@ -1914,12 +1933,45 @@ export async function saveAssetAction(
   const rawCompra = parseNumber(formData.get("purchasePrice"));
   const rawObras = parseNumber(formData.get("works"));
 
+  /**
+   * A compra que dá origem a um investimento novo.
+   *
+   * Quem escreve "100 unidades a 12 €" está a dizer que comprou 100 unidades a
+   * 12 €, e isso é um movimento com data. Ver `primeiroMovimento`.
+   */
+  const movimentoInicial =
+    !id && kind === "investimento"
+      ? primeiroMovimento({
+          quantity,
+          unitCostCents: unitCost !== null ? toCents(unitCost) : null,
+          purchasedAt: String(formData.get("purchasedAt") ?? ""),
+          hoje: new Date().toISOString().slice(0, 10),
+        })
+      : null;
+
   const patch = {
     spaceId: ctx.space.id,
     name: name.slice(0, 120),
     kind,
-    quantity: kind === "investimento" ? quantity : null,
-    unitCostCents: kind === "investimento" && unitCost !== null ? toCents(unitCost) : null,
+    /**
+     * As unidades escritas no bem, quando são elas que valem.
+     *
+     * Três casos, e é por isso que isto não é uma linha só: um investimento com
+     * movimentos não as recebe do formulário (ficam como estão, por fora do
+     * patch); um investimento novo que gerou a sua compra fica com elas a
+     * `null`, porque a posição passa a sair do movimento e ter as duas coisas
+     * escritas era ter duas versões da mesma verdade; o resto continua como
+     * sempre foi.
+     */
+    ...(temMovimentos
+      ? {}
+      : movimentoInicial
+        ? { quantity: null, unitCostCents: null }
+        : {
+            quantity: kind === "investimento" ? quantity : null,
+            unitCostCents:
+              kind === "investimento" && unitCost !== null ? toCents(unitCost) : null,
+          }),
     // Preço atual é opcional: sem ele não inventamos valorização.
     unitPriceCents: kind === "investimento" && unitPrice !== null ? toCents(unitPrice) : null,
     valueCents: kind === "investimento" ? null : value !== null ? toCents(Math.abs(value)) : null,
@@ -1993,7 +2045,6 @@ export async function saveAssetAction(
     }
   }
 
-  const id = String(formData.get("id") ?? "").trim();
   // Só a criação conta para o tecto: editar um bem que já existe nunca pode ser
   // travado por um limite, senão ficava lá preso sem se poder corrigir.
   if (!id) {
@@ -2001,15 +2052,110 @@ export async function saveAssetAction(
     if (cheio) return { error: cheio };
   }
   try {
-    if (id) await getRepository().updateAsset(id, ctx.space.id, patch);
-    else await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
+    if (id) {
+      await getRepository().updateAsset(id, ctx.space.id, patch);
+    } else {
+      const criado = await getRepository().createAsset({ ...patch, createdBy: ctx.user.id });
+
+      if (movimentoInicial) {
+        /**
+         * A compra que dá origem ao investimento.
+         *
+         * **Se ela não sair, o ativo não pode ficar sem posição.** O bem já
+         * está gravado com as unidades a `null` — à espera do movimento — e um
+         * erro aqui deixava na carteira uma linha a valer zero, escrita pela
+         * app e não por ninguém. Nesse caso escreve-se a posição à mão, que é
+         * exactamente o que a app fazia antes de isto existir.
+         */
+        try {
+          await getRepository().createAssetTrade({
+            spaceId: ctx.space.id,
+            assetId: criado.id,
+            date: movimentoInicial.date,
+            kind: "compra",
+            quantity: movimentoInicial.quantity,
+            unitPriceCents: movimentoInicial.unitPriceCents,
+            amountCents: movimentoInicial.amountCents,
+            notes: null,
+            createdBy: ctx.user.id,
+          });
+        } catch {
+          await getRepository()
+            .updateAsset(criado.id, ctx.space.id, {
+              quantity: movimentoInicial.quantity,
+              unitCostCents: movimentoInicial.unitPriceCents,
+            })
+            .catch(() => {});
+        }
+      }
+    }
   } catch (e) {
     return { error: porqueNaoGravou(e) };
   }
 
   await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
-  return { ok: true, message: id ? "Atualizado." : `${name} adicionado.` };
+  return {
+    ok: true,
+    message: id
+      ? "Atualizado."
+      : movimentoInicial
+        ? `${name} adicionado, com a compra registada.`
+        : `${name} adicionado.`,
+  };
+}
+
+/**
+ * Apagar um investimento inteiro, a partir da ficha dele.
+ *
+ * **Porque é que isto teve de existir.** Os investimentos são desenhados em
+ * cartões (`InvestmentGrid`) e não na linha que traz o "Remover" — e a ficha do
+ * ativo só tinha o "Remover" de cada MOVIMENTO. Resultado: um investimento
+ * criado por engano **não se conseguia apagar em lado nenhum**. Com movimentos,
+ * ainda se lá chegava pelo caminho de apagar o último; sem movimentos, que é o
+ * caso de quem se enganou a registar, não havia nada em que carregar.
+ *
+ * **Apaga os movimentos primeiro, de propósito.** A base de dados leva-os
+ * atrás por cascata, mas fazê-lo aqui é dizer em código o que se está a
+ * destruir — e é o que faz o comportamento ser o mesmo com Supabase e com o
+ * repositório de mentira, em vez de depender de uma chave estrangeira que este
+ * ficheiro não vê.
+ *
+ * **Diz o que aconteceu.** A remoção antiga engolia os erros e a página
+ * recarregava igual, o que faz uma remoção falhada parecer uma remoção feita —
+ * o mesmo engano que a consola de contas já tinha aprendido a não repetir.
+ */
+export async function removerInvestimentoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Falta o investimento." };
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id vindo de um formulário não é
+  // prova de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === id);
+  if (!bem) return { error: "Esse investimento não é deste ambiente." };
+
+  try {
+    for (const m of await repo.listAssetTrades(ctx.space.id, id)) {
+      await repo.deleteAssetTrade(m.id, ctx.space.id);
+    }
+    await repo.deleteAsset(id, ctx.space.id);
+  } catch (e) {
+    return { error: porqueNaoGravou(e) };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  // A ficha deixou de existir: ficar nela dava um 404 a seguir a uma ação que
+  // correu bem.
+  redirect("/patrimonio/ativos");
 }
 
 export async function deleteAssetAction(formData: FormData): Promise<void> {
@@ -2467,15 +2613,54 @@ export async function addAssetTradeAction(
   return { ok: true, message: tradeId ? "Movimento corrigido." : "Movimento registado." };
 }
 
+/**
+ * Apagar um movimento e, quando era o último, o ativo que ele sustentava.
+ *
+ * **Porque é que o ativo vai atrás.** Um investimento registado pelo formulário
+ * nasce com a sua compra: as unidades e o custo vivem no movimento, não no bem.
+ * Apagar essa compra não deixa o ativo "a zero" — deixa uma linha sem nada, que
+ * continua na carteira a dizer que vale zero e que ninguém percebe de onde veio.
+ *
+ * **Mas nunca por decisão da app.** Só se apaga o ativo quando quem carregou no
+ * botão foi avisado de que era isso que ia acontecer (`apagarAtivo`), e mesmo
+ * assim as condições são reconfirmadas aqui: uma posição escrita à mão sobrevive
+ * sempre aos movimentos, e um pedido antigo de uma página desatualizada não pode
+ * levar à frente um ativo que entretanto ganhou mais movimentos.
+ */
 export async function deleteAssetTradeAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;
   if (ctx.congelado) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await getRepository().deleteAssetTrade(id, ctx.space.id).catch(() => {});
+
+  const repo = getRepository();
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const pediramApagarOAtivo = String(formData.get("apagarAtivo") ?? "") === "1";
+
+  await repo.deleteAssetTrade(id, ctx.space.id).catch(() => {});
+
+  let apagou = false;
+  if (pediramApagarOAtivo && assetId) {
+    // O ativo tem de ser mesmo deste ambiente: um id vindo de um formulário não
+    // é prova de nada, e tudo aqui corre com a chave de serviço.
+    const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find(
+      (a) => a.id === assetId,
+    );
+    if (bem && bem.kind === "investimento") {
+      const sobram = await repo.listAssetTrades(ctx.space.id, assetId).catch(() => [null]);
+      if (ficaVazio(bem, sobram)) {
+        await repo.deleteAsset(assetId, ctx.space.id).catch(() => {});
+        apagou = true;
+      }
+    }
+  }
+
   await fotografarDepoisDoMovimento(ctx.space.id);
   revalidatePath("/patrimonio");
+  // A página do ativo deixou de existir: ficar nela dava um 404 a seguir a uma
+  // ação que correu bem.
+  if (apagou) redirect("/patrimonio/ativos");
 }
 
 // ---- Rendimento -----------------------------------------------------------
@@ -3663,6 +3848,66 @@ export async function descobrirSetoresAction(
   }
 
   return { ok: true, message: `${partes.join("; ")}.` };
+}
+
+/**
+ * Classificar à mão o que a fonte não classificou.
+ *
+ * **Porque é que isto tem de existir.** A consulta automática resolve a maioria
+ * e deixa sempre um resto: investimentos sem símbolo (a quem não há a quem
+ * perguntar), fundos que a fonte não classifica por setor, e nomes que ela não
+ * conhece. Enquanto esse resto ficar por classificar, as percentagens da
+ * exposição estão incompletas — e o ecrã diz que estão, o que torna a lacuna
+ * visível e sem forma de a fechar. Isto é a forma de a fechar.
+ *
+ * **Grava tudo de uma vez.** Um botão por linha eram doze idas ao servidor e
+ * doze recargas da página para arrumar uma carteira.
+ *
+ * **Só valores conhecidos entram.** O que vem de um formulário é texto que
+ * alguém pôs lá, e um setor escrito à mão fora da lista abria um grupo novo
+ * numa análise que se lê por percentagens. Um valor que não seja das listas é
+ * ignorado, não é gravado a torto e a direito.
+ */
+export async function classificarInvestimentosAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const bens = await repo.listAssets(ctx.space.id);
+  const investimentos = new Map(
+    bens.filter((a) => a.kind === "investimento").map((a) => [a.id, a]),
+  );
+
+  let mexidos = 0;
+  for (const [id, bem] of investimentos) {
+    const setor = String(formData.get(`setor-${id}`) ?? "").trim();
+    const tipo = String(formData.get(`tipo-${id}`) ?? "").trim();
+
+    const patch: { sector?: string | null; instrumento?: string | null } = {};
+    // `SETORES_PT` tem as chaves como a fonte as escreve; é isso que se grava,
+    // para a tradução continuar a viver num sítio só.
+    if (setor && setor in SETORES_PT && setor !== bem.sector) patch.sector = setor;
+    if (tipo && tipo in TIPOS_PT && tipo !== bem.instrumento) patch.instrumento = tipo;
+    if (Object.keys(patch).length === 0) continue;
+
+    // O `space_id` filtra a escrita: um id vindo de um formulário não é prova
+    // de nada, e o bem já foi procurado dentro deste ambiente.
+    await repo.updateAsset(id, ctx.space.id, patch);
+    mexidos += 1;
+  }
+
+  if (mexidos === 0) return { ok: true, message: "Não havia nada por mudar." };
+
+  revalidatePath("/patrimonio");
+  revalidatePath("/relatorios/patrimonio");
+  return {
+    ok: true,
+    message: mexidos === 1 ? "Um investimento classificado." : `${mexidos} investimentos classificados.`,
+  };
 }
 
 // ---- Fundamentais de uma empresa --------------------------------------------

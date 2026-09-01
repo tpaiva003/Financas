@@ -172,7 +172,7 @@ function ManualMappingPanel({ sample }: { sample: ImportUnknownSample }) {
       </div>
 
       {/* As primeiras linhas do ficheiro, com o número de cada coluna. */}
-      <div className="-mx-1 overflow-x-auto px-1">
+      <div className="scroll-x">
         <table className="w-full min-w-[36rem] border-collapse text-left text-xs">
           <thead>
             <tr>

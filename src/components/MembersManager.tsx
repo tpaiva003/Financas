@@ -171,7 +171,14 @@ function MemberRow({
             name="userId"
             key={`acc:${member.id}:${member.linkedUserId ?? ""}`}
             defaultValue={member.linkedUserId ?? ""}
-            className="select h-9 w-auto py-1 text-xs"
+            /*
+              O `w-auto` cresce com a opção mais comprida da lista — um nome
+              com email a seguir — e com a letra do sistema aumentada saía do
+              ecrã. `max-w-full` põe o tecto; `min-w-0` é o que lhe permite
+              encolher, porque um filho de flex não desce abaixo do seu
+              conteúdo sem isso, e o tecto sozinho não chegava.
+            */
+            className="select h-9 w-auto min-w-0 max-w-full py-1 text-xs"
           >
             <option value="">Sem conta associada</option>
             {accounts.map((a) => (

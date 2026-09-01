@@ -299,7 +299,7 @@ export function SeriesFundamentais({
 
               <p className="mt-1.5 text-xs text-fg-faint">{tema.pergunta}</p>
 
-              <div className="-mx-1 mt-3 overflow-x-auto px-1">
+              <div className="scroll-x mt-3">
                 <table className="w-full min-w-[34rem] text-sm">
                   <thead>
                     <tr className="text-right text-[11px] text-fg-muted">

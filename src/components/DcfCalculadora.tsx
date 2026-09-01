@@ -270,7 +270,7 @@ export function DcfCalculadora({
           parte do resultado.
         </p>
 
-        <div className="-mx-1 overflow-x-auto px-1">
+        <div className="scroll-x">
           <table className="w-full min-w-[26rem] text-sm">
             <thead>
               <tr className="text-left text-xs text-fg-muted">
@@ -374,7 +374,7 @@ export function DcfCalculadora({
         <>
           <section className="card p-5">
             <p className="eyebrow mb-3">Resultado</p>
-            <div className="-mx-1 overflow-x-auto px-1">
+            <div className="scroll-x">
               <table className="w-full min-w-[26rem] text-sm">
                 <thead>
                   <tr className="text-right text-xs text-fg-muted">
@@ -444,7 +444,7 @@ export function DcfCalculadora({
             .map((c) => (
               <section key={c.id} className="card p-5">
                 <p className="eyebrow mb-3">Fluxos do cenário central</p>
-                <div className="-mx-1 overflow-x-auto px-1">
+                <div className="scroll-x">
                   <table className="w-full min-w-[22rem] text-sm">
                     <thead>
                       <tr className="text-right text-xs text-fg-muted">
@@ -614,7 +614,7 @@ function Historial({ contas }: { contas: Fundamentais }) {
         <summary className="cursor-pointer text-xs text-fg-faint hover:text-fg-muted">
           Ver os números todos
         </summary>
-        <div className="-mx-1 mt-3 overflow-x-auto px-1">
+        <div className="scroll-x mt-3">
         <table className="w-full min-w-[30rem] text-sm">
           <thead>
             <tr className="text-right text-xs text-fg-muted">

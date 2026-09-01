@@ -80,15 +80,7 @@ export async function atualizarSetores(spaceId: string): Promise<SetoresAtualiza
   const ate = Date.now() + ORCAMENTO_MS;
 
   const bens = await repo.listAssets(spaceId).catch(() => []);
-  const candidatos = bens.filter(
-    (a) =>
-      a.kind === "investimento" &&
-      a.symbol &&
-      !a.sector &&
-      // Já se perguntou e a fonte não soube. Voltar a perguntar em cada
-      // passagem gastava a fonte para ouvir a mesma coisa.
-      !a.profileAt,
-  );
+  const candidatos = bens.filter((a) => a.kind === "investimento" && a.symbol && porSaber(a));
   if (candidatos.length === 0) {
     return {
       consultados: 0,
@@ -147,8 +139,10 @@ export async function atualizarSetores(spaceId: string): Promise<SetoresAtualiza
 
     try {
       await repo.updateAsset(a.id, spaceId, {
-        sector: r.dados.setor,
-        industry: r.dados.industria,
+        // Só o que está vazio: um setor ou um tipo escritos à mão nunca são
+        // reescritos pela fonte. É o invariante das entradas manuais.
+        ...(a.sector ? {} : { sector: r.dados.setor, industry: r.dados.industria }),
+        ...(a.instrumento ? {} : { instrumento: r.dados.tipoFonte }),
         profileAt: agora.toISOString(),
       });
       if (r.dados.setor) gravados += 1;
@@ -168,10 +162,45 @@ export async function atualizarSetores(spaceId: string): Promise<SetoresAtualiza
   };
 }
 
+/** O que a fonte pode responder e ainda não respondeu, para este bem. */
+interface PorSaber {
+  sector?: string | null;
+  instrumento?: string | null;
+  profileAt?: string | null;
+}
+
+/**
+ * O dia em que uma consulta ao perfil passou a trazer também o tipo.
+ *
+ * Serve uma pergunta que o carimbo sozinho não sabe responder: um bem
+ * consultado **antes** disto tem `profile_at` escrito e o tipo vazio, e pelo
+ * carimbo passaria por "já se perguntou e a fonte não soube" — ficando sem tipo
+ * para sempre, sem forma nenhuma de o obter.
+ *
+ * É uma data escrita à mão e é isso mesmo que se quer: a segunda pergunta faz-se
+ * **uma vez** a quem ficou de fora, e nunca mais. Passada essa passagem, o
+ * carimbo novo é maior do que esta data e o bem deixa de ser candidato — mesmo
+ * que a fonte não tenha sabido dizer o tipo, que é o caso que uma condição só
+ * sobre "está vazio" transformaria numa pergunta eterna.
+ */
+const DESDE_QUE_HA_TIPO = "2026-08-20";
+
+/**
+ * Vale a pena ir perguntar por este?
+ *
+ * Duas situações, e nenhuma delas é "está vazio": nunca se perguntou, ou
+ * perguntou-se antes de a resposta incluir o tipo. Quando a fonte já respondeu
+ * a tudo o que sabe — e para um fundo, "não tenho setor" é uma resposta — não
+ * se volta lá.
+ */
+function porSaber(a: PorSaber): boolean {
+  if (!a.sector && !a.profileAt) return true;
+  return !a.instrumento && (a.profileAt ?? "") < DESDE_QUE_HA_TIPO;
+}
+
 /** Quantos investimentos ainda esperam por uma consulta ao perfil. */
 export function porConsultar(
-  bens: readonly { kind: string; symbol?: string | null; sector?: string | null; profileAt?: string | null }[],
+  bens: readonly (PorSaber & { kind: string; symbol?: string | null })[],
 ): number {
-  return bens.filter((a) => a.kind === "investimento" && a.symbol && !a.sector && !a.profileAt)
-    .length;
+  return bens.filter((a) => a.kind === "investimento" && a.symbol && porSaber(a)).length;
 }

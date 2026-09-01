@@ -59,6 +59,8 @@ export interface PosicaoDoSetor {
   id: string;
   nome: string;
   setor: string | null;
+  /** Ação, fundo ou outra coisa, como a fonte lhe chama. Ver `tipoPorExtenso`. */
+  instrumento?: string | null;
   /** Quanto vale hoje. */
   valorCents: number;
   /** Quanto custou o que ainda se tem. */
@@ -68,7 +70,15 @@ export interface PosicaoDoSetor {
 }
 
 export interface GrupoDeSetor {
-  setor: string;
+  /**
+   * A etiqueta do grupo: o setor, ou o tipo de instrumento.
+   *
+   * Chamava-se `setor` quando só havia uma forma de repartir a carteira. A
+   * conta é a mesma para as duas — somar o valor, o custo e o reforço de um
+   * punhado de posições e dividir pelo total — e duplicá-la para lhe chamar
+   * outro nome era duplicar também o sítio onde ela pode passar a estar errada.
+   */
+  nome: string;
   /** `true` no grupo dos que ainda não têm setor. */
   porClassificar: boolean;
   valorCents: number;
@@ -126,25 +136,44 @@ function pct1(parte: number, total: number): number {
  * si num gráfico de exposição.
  */
 export function carteiraPorSetor(posicoes: readonly PosicaoDoSetor[]): CarteiraPorSetor {
+  return repartir(posicoes, (p) => setorPorExtenso(p.setor));
+}
+
+/**
+ * Reparte a carteira por uma etiqueta qualquer.
+ *
+ * O setor e o tipo de instrumento são a mesma pergunta feita com outra chave —
+ * "quanto do meu dinheiro está nisto?" — e a conta é a mesma: somar valor,
+ * custo e reforço de um punhado de posições e dividir pelos totais. Escrevê-la
+ * duas vezes era duplicar o sítio onde ela pode passar a estar errada.
+ *
+ * O grupo do que falta chama-se sempre `SEM_SETOR` nas duas leituras, e é isso
+ * que faz o resto do ficheiro (o "maior a sério", a percentagem por
+ * classificar) valer para as duas sem saber de qual se trata.
+ */
+function repartir(
+  posicoes: readonly PosicaoDoSetor[],
+  etiquetaDe: (p: PosicaoDoSetor) => string,
+): CarteiraPorSetor {
   const abertas = posicoes.filter((p) => p.valorCents > 0 || p.custoCents > 0);
 
   const porSetor = new Map<string, PosicaoDoSetor[]>();
   for (const p of abertas) {
-    const nome = setorPorExtenso(p.setor);
+    const nome = etiquetaDe(p);
     porSetor.set(nome, [...(porSetor.get(nome) ?? []), p]);
   }
 
   const valorTotalCents = abertas.reduce((s, p) => s + p.valorCents, 0);
   const reforcoTotalCents = abertas.reduce((s, p) => s + p.reforcoCents, 0);
 
-  const grupos: GrupoDeSetor[] = [...porSetor.entries()].map(([setor, lista]) => {
+  const grupos: GrupoDeSetor[] = [...porSetor.entries()].map(([nome, lista]) => {
     const valorCents = lista.reduce((s, p) => s + p.valorCents, 0);
     const custoCents = lista.reduce((s, p) => s + p.custoCents, 0);
     const reforcoCents = lista.reduce((s, p) => s + p.reforcoCents, 0);
     const ganhoCents = custoCents > 0 ? valorCents - custoCents : null;
     return {
-      setor,
-      porClassificar: setor === SEM_SETOR,
+      nome,
+      porClassificar: nome === SEM_SETOR,
       valorCents,
       custoCents,
       reforcoCents,
@@ -218,4 +247,95 @@ export function empresasPorReforco(
       };
     })
     .sort((a, b) => b.reforcoCents - a.reforcoCents);
+}
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ações ou fundos: a outra pergunta que a lista de investimentos não responde.
+ *
+ * **Porque é que isto é uma leitura à parte e não mais um setor.** Comprar dez
+ * empresas escolhidas e comprar um ETF do mundo inteiro são duas maneiras
+ * diferentes de investir, e a diferença não está em nenhum setor: um ETF do
+ * mundo tem-nos todos. A pergunta que isto responde é "quanto do meu dinheiro
+ * está em escolhas minhas, e essas escolhas estão a valer a pena?" — e sem
+ * separar as duas coisas, a resposta estava diluída na média da carteira.
+ *
+ * **O tipo vem da fonte.** É o `quoteType` do Yahoo, que já vinha no mesmo
+ * pedido do preço e era deitado fora. Não se adivinha pelo nome nem pela falta
+ * de setor: pelo nome falha nos fundos que não dizem que o são, pela falta de
+ * setor falha nos ETF setoriais, que têm setor.
+ */
+export const TIPOS_PT: Readonly<Record<string, string>> = {
+  EQUITY: "Ações",
+  ETF: "ETF",
+  MUTUALFUND: "Fundos",
+  INDEX: "Índices",
+  CRYPTOCURRENCY: "Cripto",
+  CURRENCY: "Moeda",
+  FUTURE: "Futuros",
+};
+
+/** O tipo como se lê em português, ou como veio se não se reconhecer. */
+export function tipoPorExtenso(bruto: string | null | undefined): string {
+  const s = (bruto ?? "").trim();
+  if (!s) return SEM_SETOR;
+  return TIPOS_PT[s.toUpperCase()] ?? s;
+}
+
+/** As escolhas de empresa, de um lado. */
+export const ESCOLHAS = "Ações";
+/** O mercado comprado inteiro, do outro. Um ETF e um fundo são a mesma decisão. */
+export const FUNDOS = "ETF e fundos";
+
+const TIPOS_DE_FUNDO = new Set(["ETF", "MUTUALFUND"]);
+
+/**
+ * Reparte a carteira entre escolhas de empresa e mercado comprado inteiro.
+ *
+ * **Duas fatias e não uma por tipo da fonte.** A pergunta é "quanto disto sou
+ * eu a escolher?", e para essa pergunta um ETF e um fundo são a mesma decisão:
+ * comprar o cabaz e não escolher lá dentro. Separá-los dava três barras onde a
+ * leitura precisa de duas, e a comparação que interessa — escolhas contra
+ * cabaz — deixava de estar escrita em lado nenhum.
+ *
+ * O que não for nem uma coisa nem outra (cripto, moeda) fica com o nome que a
+ * fonte lhe dá, em vez de ser arrumado à força num dos dois lados.
+ *
+ * A conta é a mesma da repartição por setor. Ver `repartir`.
+ */
+export function carteiraPorTipo(posicoes: readonly PosicaoDoSetor[]): CarteiraPorSetor {
+  return repartir(posicoes, (p) => {
+    const t = (p.instrumento ?? "").trim().toUpperCase();
+    if (!t) return SEM_SETOR;
+    if (t === "EQUITY") return ESCOLHAS;
+    if (TIPOS_DE_FUNDO.has(t)) return FUNDOS;
+    return tipoPorExtenso(t);
+  });
+}
+
+/**
+ * As escolhas estão a valer a pena, comparadas com o cabaz?
+ *
+ * **O que este número é, e o que não é.** É o ganho sobre o custo do que ainda
+ * se tem, de um lado e do outro, e a diferença entre os dois em pontos. Não
+ * conta com o tempo: uma posição aberta o mês passado teve menos tempo para
+ * subir do que uma de há três anos, e isso não aparece aqui. Para a pergunta
+ * "escolher valeu a pena?" chega, desde que se diga o que se está a comparar —
+ * e é por isso que o ecrã diz.
+ *
+ * `null` quando falta um dos lados: uma carteira só de ETF não tem nada com que
+ * se comparar, e inventar-lhe um zero seria pior do que não dizer nada.
+ */
+export function escolhasContraFundos(
+  carteira: CarteiraPorSetor,
+): { escolhasPct: number; fundosPct: number; diferencaPontos: number } | null {
+  const a = carteira.grupos.find((g) => g.nome === ESCOLHAS);
+  const f = carteira.grupos.find((g) => g.nome === FUNDOS);
+  if (!a || !f || a.ganhoPct === null || f.ganhoPct === null) return null;
+  return {
+    escolhasPct: a.ganhoPct,
+    fundosPct: f.ganhoPct,
+    diferencaPontos: Math.round((a.ganhoPct - f.ganhoPct) * 10) / 10,
+  };
 }

@@ -21,11 +21,11 @@ export function SpaceSwitcher({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-full border border-hair px-3 py-1.5 text-sm text-fg transition hover:border-fg/30"
+        className="flex min-w-0 items-center gap-1.5 rounded-full border border-hair px-3 py-1.5 text-sm text-fg transition hover:border-fg/30"
         aria-haspopup="menu"
         aria-expanded={open}
       >
