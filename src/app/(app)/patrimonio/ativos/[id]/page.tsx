@@ -25,6 +25,7 @@ import { TradeRow } from "@/components/TradeRow";
 import { AssetAttachments } from "@/components/AssetAttachments";
 import { SplitSugerido } from "@/components/SplitSugerido";
 import { SplitManual } from "@/components/SplitManual";
+import { RemoverInvestimento } from "@/components/RemoverInvestimento";
 import {
   deleteAssetTradeAction,
   fetchAssetQuoteAction,
@@ -562,6 +563,16 @@ export default async function AtivoPage({ params }: { params: { id: string } }) 
       />
 
       <TradeForm assetId={asset.id} assetName={asset.name} />
+
+      {/* No fim e fechado: o que destrói não se põe ao lado do que se usa
+          todos os dias. É também o único sítio onde um investimento se pode
+          apagar — o cartão da carteira não tem "Remover". */}
+      <RemoverInvestimento
+        id={asset.id}
+        nome={asset.name}
+        movimentos={registados.length}
+        documentos={anexos?.length ?? 0}
+      />
     </div>
   );
 }

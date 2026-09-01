@@ -203,6 +203,77 @@ describe("registar um investimento", () => {
     expect(movs[0]!.quantity).toBe(10);
   });
 
+  /**
+   * O caso de quem se enganou antes de isto existir.
+   *
+   * Os investimentos são desenhados em cartões, e o cartão não tem "Remover";
+   * a ficha só tinha o "Remover" de cada movimento. Um investimento criado por
+   * engano e sem movimentos nenhuns — que é como fica quem se enganou a
+   * registar — não se conseguia apagar em lado nenhum.
+   */
+  it("apaga um investimento sem movimentos, que não tinha por onde ser apagado", async () => {
+    const { removerInvestimentoAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const bem = await repo.createAsset({
+      spaceId: ESPACO,
+      name: "Criado por engano",
+      kind: "investimento",
+      quantity: 5,
+      unitCostCents: 1_000,
+    });
+
+    await expect(removerInvestimentoAction({}, form({ id: bem.id }))).rejects.toThrow(
+      "REDIRECT:/patrimonio/ativos",
+    );
+    expect(await repo.listAssets(ESPACO)).toHaveLength(0);
+  });
+
+  /** Com movimentos, vão todos atrás — e não ficam linhas órfãs para trás. */
+  it("apagar o investimento leva os movimentos", async () => {
+    const { saveAssetAction, removerInvestimentoAction } = await import("./actions");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Com história", kind: "investimento", quantity: "10", unitCost: "20,00" }),
+    );
+    const [bem] = await repo.listAssets(ESPACO);
+    await repo.createAssetTrade({
+      spaceId: ESPACO,
+      assetId: bem!.id,
+      date: "2026-02-02",
+      kind: "compra",
+      quantity: 5,
+      amountCents: 10_000,
+    });
+    expect(await repo.listAssetTrades(ESPACO, bem!.id)).toHaveLength(2);
+
+    await expect(removerInvestimentoAction({}, form({ id: bem!.id }))).rejects.toThrow("REDIRECT:");
+
+    expect(await repo.listAssets(ESPACO)).toHaveLength(0);
+    expect(await repo.listAssetTrades(ESPACO, bem!.id)).toHaveLength(0);
+  });
+
+  /** Um id de outro ambiente não apaga nada, e diz porquê. */
+  it("não apaga o que não é deste ambiente", async () => {
+    const { removerInvestimentoAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const alheio = await repo.createAsset({
+      spaceId: "outra-casa",
+      name: "De outra pessoa",
+      kind: "investimento",
+      quantity: 1,
+      unitCostCents: 100,
+    });
+
+    const r = await removerInvestimentoAction({}, form({ id: alheio.id }));
+
+    expect(r.error).toBe("Esse investimento não é deste ambiente.");
+    expect(await repo.listAssets("outra-casa")).toHaveLength(1);
+  });
+
   /** Sem o pedido explícito de quem foi avisado, o ativo fica sempre. */
   it("sem aviso não apaga o ativo", async () => {
     const { saveAssetAction, deleteAssetTradeAction } = await import("./actions");

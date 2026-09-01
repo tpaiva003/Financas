@@ -2105,6 +2105,59 @@ export async function saveAssetAction(
   };
 }
 
+/**
+ * Apagar um investimento inteiro, a partir da ficha dele.
+ *
+ * **Porque é que isto teve de existir.** Os investimentos são desenhados em
+ * cartões (`InvestmentGrid`) e não na linha que traz o "Remover" — e a ficha do
+ * ativo só tinha o "Remover" de cada MOVIMENTO. Resultado: um investimento
+ * criado por engano **não se conseguia apagar em lado nenhum**. Com movimentos,
+ * ainda se lá chegava pelo caminho de apagar o último; sem movimentos, que é o
+ * caso de quem se enganou a registar, não havia nada em que carregar.
+ *
+ * **Apaga os movimentos primeiro, de propósito.** A base de dados leva-os
+ * atrás por cascata, mas fazê-lo aqui é dizer em código o que se está a
+ * destruir — e é o que faz o comportamento ser o mesmo com Supabase e com o
+ * repositório de mentira, em vez de depender de uma chave estrangeira que este
+ * ficheiro não vê.
+ *
+ * **Diz o que aconteceu.** A remoção antiga engolia os erros e a página
+ * recarregava igual, o que faz uma remoção falhada parecer uma remoção feita —
+ * o mesmo engano que a consola de contas já tinha aprendido a não repetir.
+ */
+export async function removerInvestimentoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Falta o investimento." };
+
+  const repo = getRepository();
+  // O bem tem de ser mesmo deste ambiente: um id vindo de um formulário não é
+  // prova de nada, e tudo aqui corre com a chave de serviço, que ignora o RLS.
+  const bem = (await repo.listAssets(ctx.space.id).catch(() => [])).find((a) => a.id === id);
+  if (!bem) return { error: "Esse investimento não é deste ambiente." };
+
+  try {
+    for (const m of await repo.listAssetTrades(ctx.space.id, id)) {
+      await repo.deleteAssetTrade(m.id, ctx.space.id);
+    }
+    await repo.deleteAsset(id, ctx.space.id);
+  } catch (e) {
+    return { error: porqueNaoGravou(e) };
+  }
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  // A ficha deixou de existir: ficar nela dava um 404 a seguir a uma ação que
+  // correu bem.
+  redirect("/patrimonio/ativos");
+}
+
 export async function deleteAssetAction(formData: FormData): Promise<void> {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") return;

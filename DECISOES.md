@@ -3081,3 +3081,24 @@ Três guardas, porque isto apaga coisas:
 3. **As condições são reconfirmadas no servidor**, com o ambiente a filtrar: uma
    página desatualizada não pode levar à frente um ativo que entretanto ganhou
    movimentos.
+
+### Um investimento não se conseguia apagar em lado nenhum
+Os investimentos são desenhados em cartões (`InvestmentGrid`) e não na linha que
+traz o "Remover"; a ficha do ativo só tinha o "Remover" de cada **movimento**.
+Somando as duas coisas: um investimento criado por engano não tinha, na app
+inteira, um único sítio onde ser apagado. Com movimentos ainda se lá chegava
+pelo caminho novo — apagar o último leva o ativo — mas sem movimentos, que é
+como fica quem se enganou a registar, não havia nada em que carregar.
+
+Passa a haver "Apagar este investimento" no fim da ficha, fechado e longe do
+resto: o que destrói não se põe ao lado do que se usa todos os dias. Diz o que
+leva atrás (movimentos e documentos, pelo número) e lembra a alternativa que
+quase sempre é a certa — **registar a venda em vez de apagar**, para o histórico
+e a mais-valia ficarem para quando houver que os declarar.
+
+Duas coisas que a remoção antiga não fazia e esta faz: **apaga os movimentos
+explicitamente** em vez de confiar na cascata da base de dados (assim o
+comportamento é o mesmo em produção e no repositório de mentira, e está escrito
+em código o que se destrói), e **diz quando falha**. A antiga engolia os erros e
+recarregava a página igual, o que faz uma remoção falhada parecer uma remoção
+feita — o mesmo engano que a consola de contas já tinha aprendido a não repetir.
