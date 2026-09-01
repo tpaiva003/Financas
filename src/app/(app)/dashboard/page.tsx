@@ -9,6 +9,8 @@ import { formatCents, streakDeRegistos } from "@/lib/domain";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { OnboardingCard } from "@/components/OnboardingCard";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { MovimentosEmFalta } from "@/components/MovimentosEmFalta";
+import { investimentosSemMovimentos } from "@/lib/services/movimentos-em-falta";
 import { buildOnboarding } from "@/lib/domain";
 import { cookies } from "next/headers";
 
@@ -25,7 +27,13 @@ export default async function DashboardPage() {
   // falhas). ANTES das leituras, de propósito: as despesas geradas têm de
   // aparecer nas listas deste mesmo render — mas as leituras que não dependem
   // dela (importações, rendimentos, lembretes) arrancam em paralelo.
-  const [[{ transfers }, recent, categories], batches, income, todosLembretes] =
+  const [
+    [{ transfers }, recent, categories],
+    batches,
+    income,
+    todosLembretes,
+    semMovimentos,
+  ] =
     await Promise.all([
       (async () => {
         await generateDueRecurring(ctx.space.id);
@@ -38,6 +46,15 @@ export default async function DashboardPage() {
       repo.listImportBatches(ctx.space.id).catch(() => []),
       repo.listIncome(ctx.space.id).catch(() => []),
       getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
+      /**
+       * Investimentos antigos à espera da compra que lhes deu origem.
+       *
+       * Vai no mesmo lote das outras: em paralelo não acrescenta latência
+       * nenhuma, e a resposta é quase sempre uma lista vazia. É a leitura mais
+       * leve que responde à pergunta — os ids dos bens COM movimentos, e não
+       * os movimentos todos.
+       */
+      investimentosSemMovimentos(ctx.space.id).catch(() => []),
     ]);
 
   const pending = recent.filter((e) => e.status === "pending");
@@ -104,6 +121,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
+      {/* Só se houver: a caixa não aparece a quem não tem nada por arranjar,
+          e quem a fechar não a vê outra vez nesta visita. */}
+      <MovimentosEmFalta bens={semMovimentos} />
+
       <BalanceHero
         transfers={transfers}
         totalToSettle={totalToSettle}

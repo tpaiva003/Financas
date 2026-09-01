@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import { usePrivado } from "./PrivacyToggle";
+import { Modal } from "./Modal";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   addAssetTradeAction,
@@ -183,7 +184,7 @@ export function TradeRow({
             {aberto ? "Fechar" : "Editar"}
           </button>
 
-          {apagaOAtivo && !aConfirmar ? (
+          {apagaOAtivo ? (
             <button
               type="button"
               onClick={() => setAConfirmar(true)}
@@ -192,35 +193,55 @@ export function TradeRow({
               Remover
             </button>
           ) : (
-            <form action={deleteAssetTradeAction} className="flex items-center gap-2">
+            <form action={deleteAssetTradeAction}>
               <input type="hidden" name="id" value={t.id} />
               <input type="hidden" name="assetId" value={assetId} />
-              {/* O servidor volta a confirmar as condições: isto diz que a
-                  pessoa foi avisada, não que o ativo pode ser apagado. */}
-              {apagaOAtivo ? <input type="hidden" name="apagarAtivo" value="1" /> : null}
               <button type="submit" className="btn-ghost px-2 text-xs text-debt hover:text-debt">
-                {apagaOAtivo ? "Apagar movimento e investimento" : "Remover"}
+                Remover
               </button>
-              {apagaOAtivo ? (
-                <button
-                  type="button"
-                  onClick={() => setAConfirmar(false)}
-                  className="btn-ghost px-2 text-xs"
-                >
-                  Cancelar
-                </button>
-              ) : null}
             </form>
           )}
         </div>
       </div>
 
+      {/*
+        Uma caixa por cima de tudo, e não um aviso ao lado do botão.
+
+        O que está prestes a acontecer não é apagar uma linha: é o investimento
+        inteiro a sair da carteira. Um aviso na própria linha lê-se depois de se
+        ter carregado, e às vezes nem isso — a caixa obriga a olhar para ele.
+      */}
       {apagaOAtivo && aConfirmar ? (
-        <p className="mt-2 text-[11px] leading-snug text-debt">
-          Este é o único movimento{nomeDoAtivo ? ` de ${nomeDoAtivo}` : ""}, e as
-          unidades e o custo vêm dele. Ao removê-lo, o investimento desaparece
-          também da carteira. Se o que queres é corrigi-lo, usa o Editar.
-        </p>
+        <Modal titulo="Apagar o único movimento?" aoFechar={() => setAConfirmar(false)}>
+          <p className="mt-3 text-sm leading-snug text-fg-muted">
+            Este é o único movimento{nomeDoAtivo ? <> de <span className="font-medium text-fg">{nomeDoAtivo}</span></> : null},
+            e é dele que vêm as unidades e o custo. Ao removê-lo, o investimento
+            desaparece também da carteira.
+          </p>
+          <p className="mt-2 text-xs leading-snug text-fg-faint">
+            Se o que queres é corrigir a data, as unidades ou o valor, fecha isto
+            e usa o Editar. Se já não tens esta posição, o melhor é registar a
+            venda: assim o histórico e a mais-valia ficam.
+          </p>
+
+          <form action={deleteAssetTradeAction} className="mt-4 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="id" value={t.id} />
+            <input type="hidden" name="assetId" value={assetId} />
+            {/* O servidor volta a confirmar as condições: isto diz que a
+                pessoa foi avisada, não que o ativo pode ser apagado. */}
+            <input type="hidden" name="apagarAtivo" value="1" />
+            <button type="submit" className="btn-secondary text-xs text-debt">
+              Apagar movimento e investimento
+            </button>
+            <button
+              type="button"
+              onClick={() => setAConfirmar(false)}
+              className="btn-ghost px-2 text-xs"
+            >
+              Cancelar
+            </button>
+          </form>
+        </Modal>
       ) : null}
 
       {aberto ? (

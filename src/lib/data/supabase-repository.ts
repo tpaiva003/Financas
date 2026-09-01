@@ -1683,6 +1683,22 @@ export class SupabaseRepository implements Repository {
     return data.map(rowToAssetTrade);
   }
 
+  async assetIdsComMovimentos(spaceId: string): Promise<string[]> {
+    const db = getSupabaseAdmin();
+    // Só a coluna do id, e por páginas: a leitura cortada aos mil devolveria
+    // "este bem não tem movimentos" a bens que têm, e a app oferecia-se para
+    // criar uma compra que já lá estava.
+    const data = await todasAsLinhas<{ asset_id: string }>((de, ate) =>
+      db
+        .from("asset_trades")
+        .select("asset_id")
+        .eq("space_id", spaceId)
+        .order("asset_id")
+        .range(de, ate),
+    );
+    return [...new Set(data.map((r) => r.asset_id))];
+  }
+
   async createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade> {
     const db = getSupabaseAdmin();
     const id = `atr_${randomUUID()}`;

@@ -19,6 +19,7 @@ import { buscarEuribor } from "@/lib/services/euribor-service";
 import { buscarFundamentais } from "@/lib/services/fundamentais-service";
 import { atualizarDatasDeMercado } from "@/lib/services/datas-service";
 import { atualizarSetores } from "@/lib/services/setores-service";
+import { investimentosSemMovimentos } from "@/lib/services/movimentos-em-falta";
 import { descobrirMarcas } from "@/lib/services/marca-service";
 import { suggestTicker, tickerSuggestAvailable } from "@/lib/services/ticker-suggest";
 import {
@@ -2103,6 +2104,91 @@ export async function saveAssetAction(
         ? `${name} adicionado, com a compra registada.`
         : `${name} adicionado.`,
   };
+}
+
+/**
+ * Criar de uma vez as compras que faltam aos investimentos antigos.
+ *
+ * **O que isto arranja.** Antes de registar um investimento passar a criar o
+ * movimento, o formulário gravava só a posição no bem. Esses investimentos
+ * ficaram com o histórico vazio: sem TIR, sem TWR, sem comparação com o índice.
+ * Isto cria-lhes a compra que sempre existiu na cabeça de quem a registou.
+ *
+ * **A data vem de quem sabe, nunca da app.** É ela que diz quanto tempo o
+ * dinheiro esteve a render, e inventá-la daria uma TIR absurda com ar de conta
+ * feita. Cada bem traz a sua no formulário — já preenchida quando o bem a tem —
+ * e um bem sem data escolhida é simplesmente saltado.
+ *
+ * **A posição passa para o movimento.** As unidades e o custo saem do bem
+ * quando a compra fica gravada: ter as duas coisas escritas é ter duas versões
+ * da mesma verdade, e elas divergem à primeira correção.
+ */
+export async function criarMovimentosEmFaltaAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await getSpaceContext();
+  if (ctx.viewerRole === "submitter") return { error: "Sem permissão." };
+  if (ctx.congelado) return { error: ESCRITA_CONGELADA };
+
+  const repo = getRepository();
+  const emFalta = await investimentosSemMovimentos(ctx.space.id);
+  if (emFalta.length === 0) return { ok: true, message: "Já não faltava nenhum." };
+
+  let criados = 0;
+  let semData = 0;
+  for (const bem of emFalta) {
+    const data = String(formData.get(`data-${bem.id}`) ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      semData += 1;
+      continue;
+    }
+
+    const movimento = primeiroMovimento({
+      quantity: bem.quantity,
+      unitCostCents: bem.unitCostCents,
+      purchasedAt: data,
+      hoje: new Date().toISOString().slice(0, 10),
+    });
+    if (!movimento) continue;
+
+    try {
+      await repo.createAssetTrade({
+        spaceId: ctx.space.id,
+        assetId: bem.id,
+        date: movimento.date,
+        kind: "compra",
+        quantity: movimento.quantity,
+        unitPriceCents: movimento.unitPriceCents,
+        amountCents: movimento.amountCents,
+        notes: null,
+        createdBy: ctx.user.id,
+      });
+      // Só depois de a compra estar gravada: ao contrário, uma falha aqui
+      // deixava o bem sem posição nenhuma.
+      await repo.updateAsset(bem.id, ctx.space.id, { quantity: null, unitCostCents: null });
+      criados += 1;
+    } catch (e) {
+      return { error: porqueNaoGravou(e) };
+    }
+  }
+
+  if (criados === 0) return { error: "Indica a data de compra de pelo menos um." };
+
+  await fotografarDepoisDoMovimento(ctx.space.id);
+  revalidatePath("/patrimonio");
+  revalidatePath("/dashboard");
+  const partes = [
+    criados === 1 ? "Uma compra registada" : `${criados} compras registadas`,
+  ];
+  if (semData > 0) {
+    partes.push(
+      semData === 1
+        ? "ficou um por data escrever"
+        : `ficaram ${semData} por data escrever`,
+    );
+  }
+  return { ok: true, message: `${partes.join(", ")}.` };
 }
 
 /**
