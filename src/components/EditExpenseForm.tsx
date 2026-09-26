@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { updateExpenseAction, deleteExpenseAction, type ActionState } from "@/app/(app)/actions";
-import { formatCents } from "@/lib/domain";
+import { ehEntrada, palavrasDoMontante } from "@/lib/domain";
+import { QuotaLida } from "@/components/QuotaLida";
 import { parseMoneyToCents } from "@/lib/money-input";
 import type { Category } from "@/lib/data";
 
@@ -49,6 +50,9 @@ export function EditExpenseForm({
   const [amountStr, setAmountStr] = useState(initial.amount);
 
   const amountCents = parseMoneyToCents(amountStr);
+  // Ver `AddExpenseForm`: o sinal decide se isto é dinheiro que sai ou que entra.
+  const palavras = palavrasDoMontante(amountCents);
+  const entrada = ehEntrada(amountCents);
   const shareA = Math.round((amountCents * percentA) / 100);
   const shareB = amountCents - shareA;
 
@@ -81,8 +85,14 @@ export function EditExpenseForm({
               className="w-full border-0 bg-transparent p-0 font-display text-5xl font-semibold tracking-tight tnum text-fg placeholder:text-fg-faint/40 focus:outline-none focus:ring-0"
             />
           </div>
-          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
-            Valor negativo = reembolso / estorno
+          <p
+            className={`mt-2 font-mono text-[11px] uppercase tracking-[0.04em] ${
+              entrada ? "text-credit" : "text-fg-faint"
+            }`}
+          >
+            {entrada
+              ? "Rendimento a dividir — reparte-se pela regra abaixo"
+              : "Valor negativo = rendimento a dividir ou estorno"}
           </p>
         </div>
 
@@ -109,7 +119,7 @@ export function EditExpenseForm({
             </div>
           </div>
           <div>
-            <span className="label">Quem pagou</span>
+            <span className="label">{palavras.quemMoveu}</span>
             <div className={`grid gap-2 ${members.length > 2 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
               {members.map((m) => (
                 <label
@@ -172,8 +182,8 @@ export function EditExpenseForm({
               {splitType === "PERCENT" && a && b ? (
                 <div className="mt-4">
                   <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                    <span>{a.name}: {percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareA)}</span></> : ""}</span>
-                    <span>{b.name}: {100 - percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareB)}</span></> : ""}</span>
+                    <QuotaLida nome={a.name} pct={percentA} cents={shareA} verbo={palavras.verboDaQuota} />
+                    <QuotaLida nome={b.name} pct={100 - percentA} cents={shareB} verbo={palavras.verboDaQuota} />
                   </div>
                   <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                   <input type="hidden" name="percentA" value={percentA} />

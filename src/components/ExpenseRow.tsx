@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatCents, type Expense } from "@/lib/domain";
+import { ehEntrada, formatCents, palavrasDoMontante, type Expense } from "@/lib/domain";
 
 function splitLabel(e: Expense): string {
   switch (e.split.type) {
@@ -47,7 +47,16 @@ export function ExpenseRow({
   categoryIcon?: string | null;
   payerName: string;
 }) {
-  const isRefund = expense.amountCents < 0;
+  /**
+   * Dinheiro que entrou leva etiqueta, e não só uma cor.
+   *
+   * Um "−15,00 €" a verde no meio de despesas lê-se como um engano no sinal:
+   * a cor diz que é bom, não diz o que é. A palavra diz — e é a mesma palavra
+   * que o formulário usa ao gravar, para não haver dois nomes para o mesmo
+   * dinheiro.
+   */
+  const entrada = ehEntrada(expense.amountCents);
+  const palavras = palavrasDoMontante(expense.amountCents);
   const date = new Date(expense.transactionDate).toLocaleDateString("pt-PT", {
     day: "2-digit",
     month: "short",
@@ -71,6 +80,9 @@ export function ExpenseRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-[15px] font-medium text-fg">{expense.description}</p>
+            {entrada ? (
+              <span className="chip shrink-0 border-credit/30 text-credit">{palavras.substantivo}</span>
+            ) : null}
             {expense.kind === "personal" ? <span className="chip shrink-0">Pessoal</span> : null}
             {expense.status === "pending" ? (
               <span className="chip shrink-0 border-debt/30 text-debt">Pendente</span>
@@ -92,7 +104,7 @@ export function ExpenseRow({
         </div>
 
         <div
-          className={`shrink-0 font-mono text-[15px] tnum ${isRefund ? "text-credit" : "text-fg"}`}
+          className={`shrink-0 font-mono text-[15px] tnum ${entrada ? "text-credit" : "text-fg"}`}
         >
           <span className="dinheiro">{formatCents(expense.amountCents, expense.currency)}</span>
         </div>
