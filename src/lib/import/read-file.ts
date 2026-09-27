@@ -11,7 +11,6 @@
  * Só os dois utilizadores autenticados podem carregar ficheiros.
  */
 
-import * as XLSX from "xlsx";
 import type { Grid } from "./columns";
 import { universoLinesToGrid } from "./pdf-universo";
 
@@ -67,8 +66,29 @@ function readCsv(buf: Buffer): Grid {
     .map((l) => splitCsvLine(l, sep));
 }
 
-function readXlsx(buf: Buffer): Grid {
-  const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: false });
+/**
+ * Lê o VALOR da célula, não o texto que o Excel desenha.
+ *
+ * Isto era `raw: false`, que devolve a célula já formatada — ou seja, o que se
+ * vê no ecrã. Parece inofensivo e não é: o formato de número do Excel decide se
+ * o sinal negativo aparece. Com `#,##0;[Red]#,##0` — negativo a vermelho, que é
+ * o que várias localizações oferecem por omissão — o `-23` chega aqui como
+ * `"23"`. Numa coluna de quantidades de corretora, isso transforma **todas as
+ * vendas em compras**, em silêncio, e a posição e a rentabilidade ficam
+ * corrompidas sem nada avisar.
+ *
+ * Com `raw: true` recebemos o número, e o sinal vem com ele. As datas continuam
+ * a chegar como `Date` por causa do `cellDates`, e o texto continua texto. O
+ * `parseAmountCents` já lida com o que sai daqui: "1234.56" é lido igual a
+ * "1 234,56 €".
+ */
+async function readXlsx(buf: Buffer): Promise<Grid> {
+  // Import dinâmico, como o pdf-parse logo abaixo e pela mesma razão: são
+  // 7,3 MB que só interessam a quem carregou mesmo uma folha de cálculo. Com
+  // o import estático, todas as rotas que alcançavam este módulo (via
+  // actions.ts) pagavam-no no arranque a frio.
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return [];
   const sheet = wb.Sheets[sheetName];
@@ -77,7 +97,7 @@ function readXlsx(buf: Buffer): Grid {
   // header: 1 => matriz de arrays (nunca objetos com chaves do ficheiro).
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
-    raw: false,
+    raw: true,
     defval: "",
     blankrows: false,
   });
@@ -91,17 +111,30 @@ function readXlsx(buf: Buffer): Grid {
 }
 
 /**
- * Extrai o texto de um PDF e converte-o em grelha. Para já só o extrato do
- * cartão Universo; outros PDFs devolvem vazio (a UI explica que não reconheceu).
+ * O texto cru de um PDF.
+ *
+ * Serve os dois usos que a app tem para PDF: a grelha dos extratos e a leitura
+ * de um contrato. Devolve vazio num PDF digitalizado — que é uma imagem e não
+ * tem texto nenhum lá dentro — e quem chama diz isso a quem carregou, em vez de
+ * seguir com zero linhas e dar a entender que o ficheiro não tinha nada.
  */
-async function readPdf(buf: Buffer): Promise<Grid> {
+export async function readPdfText(buf: Buffer): Promise<string> {
   // Import dinâmico: a biblioteca só é carregada quando há mesmo um PDF.
   // Usamos o módulo interno porque o index de `pdf-parse` tem um bloco de debug
   // que tenta ler um ficheiro de teste do próprio pacote quando empacotado.
   const mod = await import("pdf-parse/lib/pdf-parse.js");
   const pdfParse = (mod.default ?? mod) as (b: Buffer) => Promise<{ text: string }>;
   const data = await pdfParse(buf);
-  const lines = data.text.split("\n").map((l) => l.trim());
+  return data.text ?? "";
+}
+
+/**
+ * Extrai o texto de um PDF e converte-o em grelha. Para já só o extrato do
+ * cartão Universo; outros PDFs devolvem vazio (a UI explica que não reconheceu).
+ */
+async function readPdf(buf: Buffer): Promise<Grid> {
+  const text = await readPdfText(buf);
+  const lines = text.split("\n").map((l) => l.trim());
   return universoLinesToGrid(lines);
 }
 
@@ -111,7 +144,7 @@ export async function readUploadToGrid(file: File): Promise<Grid> {
   const name = (file.name ?? "").toLowerCase();
   const isText = name.endsWith(".csv") || name.endsWith(".txt") || name.endsWith(".tsv");
   const isPdf = name.endsWith(".pdf");
-  const grid = isPdf ? await readPdf(buf) : isText ? readCsv(buf) : readXlsx(buf);
+  const grid = isPdf ? await readPdf(buf) : isText ? readCsv(buf) : await readXlsx(buf);
   // Remove linhas totalmente vazias, que baralham a deteção do cabeçalho.
   return grid.filter((r) => r.some((c) => (c ?? "").trim() !== ""));
 }

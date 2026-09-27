@@ -17,6 +17,7 @@ function comInatividade(dias: number, patch: Partial<RetentionInput> = {}): Rete
     lastActivity: d.toISOString().slice(0, 10),
     createdAt: "2020-01-01",
     warnedAt: null,
+    frozenAt: null,
     today: HOJE,
     ...patch,
   };
@@ -79,6 +80,7 @@ describe("retentionVerdict", () => {
       lastActivity: null,
       createdAt: "2020-01-01",
       warnedAt: null,
+      frozenAt: null,
       today: HOJE,
     });
     expect(v.state).toBe("congelar");
@@ -97,11 +99,70 @@ describe("retentionVerdict", () => {
       lastActivity: "não é uma data",
       createdAt: "2020-01-01",
       warnedAt: null,
+      frozenAt: null,
       today: HOJE,
     });
     // Sem conseguir medir, fica ativo: entre não mexer e bloquear por engano, a
     // escolha é óbvia.
     expect(v.state).toBe("ativo");
+  });
+});
+
+/**
+ * O que faltava para isto poder correr todos os dias sem se estragar a si
+ * próprio, e o que o `RETOMAR.md` já dizia em falta: sem `frozenAt`, o veredito
+ * não distinguia "há que congelar" de "já está congelado".
+ */
+describe("retentionVerdict, já congelado", () => {
+  const CONGELOU_EM = "2026-05-01";
+
+  it("não volta a congelar o que já está congelado", () => {
+    // Contra a versão anterior isto dava "congelar" — todos os dias, para
+    // sempre, reescrevendo a data em que o congelamento aconteceu.
+    const v = retentionVerdict(
+      comInatividade(RETENTION_DAYS + 30, { frozenAt: CONGELOU_EM }),
+    );
+    expect(v.state).toBe("congelado");
+  });
+
+  it("descongela quando houve vida depois do congelamento", () => {
+    // A regra 3 a funcionar sem ninguém ter de pedir nada: a pessoa voltou há
+    // três dias, e o ambiente congelou em maio.
+    const v = retentionVerdict(comInatividade(3, { frozenAt: CONGELOU_EM }));
+    expect(v.state).toBe("descongelar");
+  });
+
+  it("atividade no próprio dia do congelamento ainda não chega", () => {
+    // A fronteira é estritamente depois: no dia em que congelou, a atividade
+    // desse dia é a que já tinha sido contada para congelar.
+    const v = retentionVerdict(
+      comInatividade(RETENTION_DAYS + 1, { frozenAt: CONGELOU_EM, lastActivity: CONGELOU_EM }),
+    );
+    expect(v.state).toBe("congelado");
+  });
+
+  it("passar a pagar descongela, sem ter de voltar a entrar", () => {
+    // Ficar bloqueado depois de pagar era o pior desfecho possível desta regra.
+    const v = retentionVerdict(
+      comInatividade(RETENTION_DAYS * 10, { plan: "full", frozenAt: CONGELOU_EM }),
+    );
+    expect(v.state).toBe("descongelar");
+  });
+
+  it("um ambiente completo que nunca congelou continua a não ser tocado", () => {
+    expect(
+      retentionVerdict(comInatividade(RETENTION_DAYS * 10, { plan: "full" })).state,
+    ).toBe("ativo");
+  });
+
+  it("nenhum dos estados novos destrói nada", () => {
+    // O mesmo compromisso do teste de cima, alargado aos estados novos: se
+    // alguém acrescentar um estado que apague, este teste falha primeiro.
+    const estados: string[] = [
+      retentionVerdict(comInatividade(RETENTION_DAYS + 30, { frozenAt: CONGELOU_EM })).state,
+      retentionVerdict(comInatividade(3, { frozenAt: CONGELOU_EM })).state,
+    ];
+    expect(estados).toEqual(["congelado", "descongelar"]);
   });
 });
 

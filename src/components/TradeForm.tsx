@@ -183,7 +183,7 @@ export function TradeForm({ assetId, assetName }: { assetId: string; assetName: 
             {rateNote ? <p className="mt-2 text-xs text-fg-muted">{rateNote}</p> : null}
             {eurPreview !== null ? (
               <p className="mt-2 text-sm text-fg">
-                Fica gravado como <span className="tnum">{formatCents(eurPreview)}</span>.
+                Fica gravado como <span className="tnum"><span className="dinheiro">{formatCents(eurPreview)}</span></span>.
               </p>
             ) : null}
           </div>

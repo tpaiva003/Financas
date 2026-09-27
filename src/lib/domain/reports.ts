@@ -5,6 +5,8 @@
  * Trabalha sobre uma forma mínima de despesa para ser facilmente testável.
  */
 
+import { daysInMonth } from "./averages";
+
 const MONTHS_PT = [
   "jan", "fev", "mar", "abr", "mai", "jun",
   "jul", "ago", "set", "out", "nov", "dez",
@@ -46,6 +48,16 @@ export interface MonthPoint {
 }
 
 export interface MonthComparison {
+  /**
+   * O mês em análise ainda vai a meio.
+   *
+   * Quando vai, a referência é cortada nos mesmos dias — ver `throughDay`. Sem
+   * isto, o dia 3 de qualquer mês anunciava uma poupança de 90% que era só
+   * calendário.
+   */
+  partial: boolean;
+  /** Dia do mês até onde os dois lados contam. `null` = mês inteiro. */
+  throughDay: number | null;
   /** Mês de referência ("YYYY-MM"), o mais recente com despesas, ou null. */
   currentMonth: string | null;
   previousMonth: string | null;
@@ -109,29 +121,52 @@ function pct(current: number, previous: number): number | null {
  * mesmo que o mês corrente ainda não tenha registos.
  *
  * @param movingWindow nº de meses (com dados) para a média móvel (default 3).
+ * @param throughDay dia do mês até onde o mês em análise está preenchido. Só se
+ *   passa quando o mês em análise é mesmo o mês corrente: um mês passado onde
+ *   simplesmente se deixou de gastar ao dia 20 está completo, e cortar a
+ *   referência ao dia 20 encolhia-a sem razão. Quem sabe isso é o
+ *   `reports-service`, que já o calculava para as médias.
  */
 export function buildMonthComparison(
   expenses: ReportExpense[],
   categories: CategoryInfo[],
   movingWindow = 3,
   baseline: BaselineMode = "previous",
+  throughDay: number | null = null,
 ): MonthComparison {
   const catMap = new Map(categories.map((c) => [c.id, c]));
 
-  // Total por mês e total por (mês, categoria).
+  // Total por mês e total por (mês, categoria). E os mesmos dois contados só
+  // até ao dia de corte, para a referência poder ser comparável a um mês que
+  // ainda vai a meio.
   const monthTotals = new Map<string, number>();
   const monthCat = new Map<string, Map<string, number>>();
+  const monthTotalsAteAoDia = new Map<string, number>();
+  const monthCatAteAoDia = new Map<string, Map<string, number>>();
+
+  const somar = (
+    totais: Map<string, number>,
+    porCategoria: Map<string, Map<string, number>>,
+    ym: string,
+    catKey: string,
+    amountCents: number,
+  ) => {
+    totais.set(ym, (totais.get(ym) ?? 0) + amountCents);
+    let inner = porCategoria.get(ym);
+    if (!inner) {
+      inner = new Map<string, number>();
+      porCategoria.set(ym, inner);
+    }
+    inner.set(catKey, (inner.get(catKey) ?? 0) + amountCents);
+  };
 
   for (const e of expenses) {
     const ym = e.transactionDate.slice(0, 7);
-    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + e.amountCents);
     const catKey = e.categoryId ?? "__none__";
-    let inner = monthCat.get(ym);
-    if (!inner) {
-      inner = new Map<string, number>();
-      monthCat.set(ym, inner);
+    somar(monthTotals, monthCat, ym, catKey, e.amountCents);
+    if (throughDay !== null && Number(e.transactionDate.slice(8, 10)) <= throughDay) {
+      somar(monthTotalsAteAoDia, monthCatAteAoDia, ym, catKey, e.amountCents);
     }
-    inner.set(catKey, (inner.get(catKey) ?? 0) + e.amountCents);
   }
 
   const monthsWithData = [...monthTotals.keys()].sort();
@@ -139,6 +174,8 @@ export function buildMonthComparison(
 
   if (!currentMonth) {
     return {
+      partial: false,
+      throughDay: null,
       currentMonth: null,
       previousMonth: null,
       currentLabel: "",
@@ -161,6 +198,15 @@ export function buildMonthComparison(
     };
   }
 
+  /**
+   * Só há corte se o dia de corte for mesmo antes do fim do mês. A 31 de
+   * agosto não há nada a cortar, e cortar na mesma dava uma referência igual
+   * ao mês inteiro com um rótulo a dizer que não era.
+   */
+  const partial = throughDay !== null && throughDay < daysInMonth(currentMonth);
+  const refTotais = partial ? monthTotalsAteAoDia : monthTotals;
+  const refCat = partial ? monthCatAteAoDia : monthCat;
+
   const prevMonth = previousMonth(currentMonth);
   const yoyMonth = sameMonthLastYear(currentMonth);
   const curCats = monthCat.get(currentMonth) ?? new Map<string, number>();
@@ -175,9 +221,9 @@ export function buildMonthComparison(
 
   /** Valor de referência de uma categoria, conforme o modo. */
   const baseCat = (key: string): number => {
-    if (baseline === "yoy") return monthCat.get(yoyMonth)?.get(key) ?? 0;
-    if (baseline === "average") return avgOf((m) => monthCat.get(m)?.get(key) ?? 0);
-    return monthCat.get(prevMonth)?.get(key) ?? 0;
+    if (baseline === "yoy") return refCat.get(yoyMonth)?.get(key) ?? 0;
+    if (baseline === "average") return avgOf((m) => refCat.get(m)?.get(key) ?? 0);
+    return refCat.get(prevMonth)?.get(key) ?? 0;
   };
 
   const prvCats = monthCat.get(prevMonth) ?? new Map<string, number>();
@@ -218,20 +264,23 @@ export function buildMonthComparison(
   const movingAvgCents = movingAvgMonths > 0 ? Math.round(windowSum / movingAvgMonths) : 0;
 
   const currentTotalCents = monthTotals.get(currentMonth) ?? 0;
-  const previousTotalCents = monthTotals.get(prevMonth) ?? 0;
+  const previousTotalCents = refTotais.get(prevMonth) ?? 0;
 
   // Média dos meses anteriores (exclui o atual, para a comparação ser honesta).
-  const baseAvgCents = avgOf((m) => monthTotals.get(m) ?? 0);
-  const yoyTotalCents = monthTotals.get(yoyMonth) ?? 0;
+  const baseAvgCents = avgOf((m) => refTotais.get(m) ?? 0);
+  const yoyTotalCents = refTotais.get(yoyMonth) ?? 0;
 
   const baselineTotalCents =
     baseline === "yoy" ? yoyTotalCents : baseline === "average" ? baseAvgCents : previousTotalCents;
-  const baselineLabel =
+  const nomeDaBase =
     baseline === "yoy"
       ? monthLabel(yoyMonth)
       : baseline === "average"
         ? `média de ${avgWindow.length} ${avgWindow.length === 1 ? "mês" : "meses"}`
         : monthLabel(prevMonth);
+  // O rótulo tem de dizer que está cortado, senão os 200 € ao lado dos 800 € do
+  // mês inteiro continuam a ler-se como o mês inteiro.
+  const baselineLabel = partial ? `${nomeDaBase} até ao dia ${throughDay}` : nomeDaBase;
 
   const series: MonthPoint[] = monthsWithData.map((ym) => ({
     ym,
@@ -240,6 +289,8 @@ export function buildMonthComparison(
   }));
 
   return {
+    partial,
+    throughDay: partial ? throughDay : null,
     currentMonth,
     previousMonth: prevMonth,
     currentLabel: monthLabel(currentMonth),

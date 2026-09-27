@@ -22,12 +22,12 @@ function parseNum(v: string): number | null {
 }
 
 function fmt(n: number | null, digits = 2): string {
-  if (n === null || !Number.isFinite(n)) return "—";
+  if (n === null || !Number.isFinite(n)) return "-";
   return n.toLocaleString("pt-PT", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 function fmtPct(n: number | null, digits = 1): string {
-  if (n === null || !Number.isFinite(n)) return "—";
+  if (n === null || !Number.isFinite(n)) return "-";
   return `${n > 0 ? "+" : ""}${fmt(n, digits)}%`;
 }
 
@@ -107,7 +107,7 @@ export function ValuationCalculator() {
         <div>
           <h2 className="label">Empresa</h2>
           <p className="text-sm text-fg-muted">
-            Escreve o símbolo e carrega em Obter dados — o resto preenche-se
+            Escreve o símbolo e carrega em Obter dados: o resto preenche-se
             sozinho. Podes corrigir qualquer campo à mão.
           </p>
         </div>
@@ -166,7 +166,7 @@ export function ValuationCalculator() {
             </p>
             {data.missing.length > 0 ? (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                A fonte não trouxe: {data.missing.join(", ")}. Preenche à mão — ficaram
+                A fonte não trouxe: {data.missing.join(", ")}. Preenche à mão: ficaram
                 por preencher em vez de serem inventados.
               </p>
             ) : null}
@@ -232,7 +232,7 @@ export function ValuationCalculator() {
           />
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[32rem] text-sm">
             <thead>
               <tr className="text-left text-fg-faint">
@@ -325,7 +325,7 @@ export function ValuationCalculator() {
       {ready ? (
         <section className="card space-y-4 p-6">
           <h2 className="label">Resultado</h2>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full min-w-[34rem] text-sm">
               <thead>
                 <tr className="text-left text-fg-faint">
@@ -390,7 +390,7 @@ export function ValuationCalculator() {
                 </p>
               ) : (
                 <p className="text-sm text-fg-muted">
-                  Sem preço atual não há veredicto — escreve-o acima.
+                  Sem preço atual não há veredicto: escreve-o acima.
                 </p>
               )}
             </div>
@@ -461,7 +461,7 @@ export function ValuationCalculator() {
               de retorno sobre o capital diz mais do que o retrato de um ano.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="text-left text-fg-faint">
@@ -508,7 +508,7 @@ export function ValuationCalculator() {
           placeholder="O que te fez escolher estes pressupostos, o que rever na próxima apresentação de resultados…"
         />
         <p className="text-xs text-fg-faint">
-          As notas ficam só neste ecrã — sair da página apaga-as.
+          As notas ficam só neste ecrã: sair da página apaga-as.
         </p>
       </section>
     </div>

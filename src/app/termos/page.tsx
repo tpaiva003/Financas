@@ -4,6 +4,7 @@ import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 export const metadata = {
   title: "Termos · Rachar",
   description: "As regras de utilização da Rachar, em português corrente.",
+  alternates: { canonical: "/termos" },
 };
 
 export default function TermosPage() {

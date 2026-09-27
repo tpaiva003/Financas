@@ -166,7 +166,7 @@ function BarRow({
           <span className="truncate">{row.label}</span>
         </p>
         <p className="flex shrink-0 items-baseline gap-3 font-mono text-sm tnum">
-          <span className="text-fg">{formatCents(row.currentCents)}</span>
+          <span className="text-fg"><span className="dinheiro">{formatCents(row.currentCents)}</span></span>
           <YoyDelta row={row} />
         </p>
       </div>
@@ -198,21 +198,21 @@ function BarRow({
         <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] tnum text-fg-faint">
           {averages.monthsCounted > 0 ? (
             <span>
-              média <span className="text-fg-muted">{formatCents(row.averageCents)}</span>
+              média <span className="text-fg-muted"><span className="dinheiro">{formatCents(row.averageCents)}</span></span>
               {averages.partial && row.averageToDayCents !== row.averageCents ? (
                 <span>
                   {" "}
                   (até {dayLabel(averages.currentMonth!, averages.throughDay)}:{" "}
-                  {formatCents(row.averageToDayCents)})
+                  <span className="dinheiro">{formatCents(row.averageToDayCents)}</span>)
                 </span>
               ) : null}
             </span>
           ) : null}
           {row.yoyToDayCents !== null ? (
             <span>
-              homólogo <span className="text-fg-muted">{formatCents(row.yoyToDayCents)}</span>
+              homólogo <span className="text-fg-muted"><span className="dinheiro">{formatCents(row.yoyToDayCents)}</span></span>
               {averages.partial && row.yoyCents !== row.yoyToDayCents ? (
-                <span> (mês inteiro: {formatCents(row.yoyCents ?? 0)})</span>
+                <span> (mês inteiro: <span className="dinheiro">{formatCents(row.yoyCents ?? 0)}</span>)</span>
               ) : null}
             </span>
           ) : null}
@@ -222,9 +222,18 @@ function BarRow({
       {/* Meta: só aparece a barra quando existe; definir fica recolhido. */}
       {row.goalCents !== null ? (
         <p className={`mt-1.5 text-xs ${GOAL_STYLE[row.goalState]}`}>
-          {row.goalState === "over"
-            ? `Passou a meta de ${formatCents(row.goalCents)} em ${formatCents(-row.goalRemainingCents!)}.`
-            : `${Math.round(row.goalPct ?? 0)}% da meta de ${formatCents(row.goalCents)} · faltam ${formatCents(row.goalRemainingCents ?? 0)}.`}
+          {row.goalState === "over" ? (
+            <>
+              Passou a meta de <span className="dinheiro">{formatCents(row.goalCents)}</span> em{" "}
+              <span className="dinheiro">{formatCents(-row.goalRemainingCents!)}</span>.
+            </>
+          ) : (
+            <>
+              {Math.round(row.goalPct ?? 0)}% da meta de{" "}
+              <span className="dinheiro">{formatCents(row.goalCents)}</span> · faltam{" "}
+              <span className="dinheiro">{formatCents(row.goalRemainingCents ?? 0)}</span>.
+            </>
+          )}
         </p>
       ) : null}
 

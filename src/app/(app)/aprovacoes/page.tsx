@@ -23,7 +23,7 @@ export default async function AprovacoesPage() {
     .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
 
   const nameOf = (id?: string | null) =>
-    id ? ctx.members.find((m) => m.id === id)?.name ?? id : "—";
+    id ? ctx.members.find((m) => m.id === id)?.name ?? id : "-";
   const catName = (id?: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Sem categoria";
 
@@ -59,7 +59,7 @@ export default async function AprovacoesPage() {
                   </p>
                 </div>
                 <div className="shrink-0 font-mono text-[15px] tnum text-fg">
-                  {formatCents(e.amountCents, e.currency)}
+                  <span className="dinheiro">{formatCents(e.amountCents, e.currency)}</span>
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2">

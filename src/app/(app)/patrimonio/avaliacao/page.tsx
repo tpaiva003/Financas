@@ -11,7 +11,7 @@ export default function Page() {
         <h1 className="text-2xl">Avaliação</h1>
         <p className="max-w-2xl text-sm text-fg-muted">
           Quanto vale uma empresa pelos fluxos de caixa que gera. Os números não
-          ficam guardados — é uma folha de rascunho.
+          ficam guardados: é uma folha de rascunho.
         </p>
       </header>
 

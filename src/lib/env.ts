@@ -18,11 +18,6 @@ export function isEmailAllowed(email: string | null | undefined): boolean {
   return allowedEmails().includes(email.toLowerCase());
 }
 
-/** Login de desenvolvimento (sem SSO real). NUNCA ligar em produção. */
-export function isDevLoginEnabled(): boolean {
-  return process.env.AUTH_DEV_LOGIN === "true";
-}
-
 /**
  * Registo aberto: qualquer pessoa com conta Google/Microsoft se pode registar
  * sozinha. Desligado por omissão, porque abrir o registo é uma decisão de

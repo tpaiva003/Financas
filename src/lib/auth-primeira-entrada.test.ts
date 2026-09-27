@@ -1,0 +1,95 @@
+/**
+ * Uma conta sem palavra-chave definida não se entra: define-se.
+ *
+ * **O que isto fecha.** A entrada com credenciais definia a palavra-chave na
+ * primeira vez. Enquanto a app era de duas pessoas conhecidas, passava; com
+ * contas convidadas deixa de passar — entre o convite ser criado e a pessoa
+ * entrar, quem soubesse o email era a primeira entrada, escrevia uma
+ * palavra-chave qualquer, e ficava com a conta e com o ambiente que tinha sido
+ * criado para outra pessoa. Não era preciso adivinhar nada: a janela era a
+ * espera de quem foi convidado.
+ *
+ * A primeira palavra-chave passa a ir pelo mesmo caminho da reposição — uma
+ * ligação com prazo, enviada para aquele endereço.
+ *
+ * **Este teste lê o código.** A entrada com credenciais vive dentro do Auth.js e
+ * não se instancia sem meia app à volta; o que se pode afirmar sem isso é que o
+ * caminho que gravava a palavra-chave deixou de existir naquele ficheiro. É uma
+ * afirmação mais fraca do que exercitar o `authorize`, e é a que se consegue
+ * fazer valer — melhor do que não ter nenhuma sobre uma porta que já esteve
+ * aberta.
+ */
+
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const auth = readFileSync("src/lib/auth.ts", "utf8");
+
+describe("entrada com credenciais", () => {
+  it("não grava uma palavra-chave nova a quem ainda não tem nenhuma", () => {
+    /**
+     * O invariante exato, e não a proibição cega. "Nenhum `setUserPasswordHash`
+     * no ficheiro" era mais forte do que o necessário e ficou falso quando a
+     * promoção do hash no login apareceu (600 mil iterações): essa escrita é
+     * legítima porque só acontece DEPOIS de a palavra-chave certa abrir o hash
+     * que já existia. O que não pode voltar é escrever um hash a quem não tem
+     * nenhum — o ramo `!existing` tem de recusar sem escrever nada.
+     */
+    const ramoSemConta = auth.slice(
+      auth.indexOf("if (!existing)"),
+      auth.indexOf("}", auth.indexOf("if (!existing)")),
+    );
+    expect(ramoSemConta).not.toContain("setUserPasswordHash");
+    expect(ramoSemConta).toContain("return null");
+
+    // E a única escrita permitida vem depois da verificação bem-sucedida:
+    // guarda-se atrás do needsRehash, nunca antes do `if (!ok) return null`.
+    const escritas = auth.split("setUserPasswordHash").length - 1;
+    expect(escritas).toBe(1);
+    expect(auth.indexOf("setUserPasswordHash")).toBeGreaterThan(
+      auth.indexOf("if (!ok) return null"),
+    );
+    expect(auth).toContain("needsRehash(existing)");
+  });
+
+  it("o tecto de tentativas vem antes de qualquer PBKDF2", () => {
+    // Com o tecto batido não se queima CPU nenhuma: o `tentativaCabe` tem de
+    // aparecer antes do primeiro uso da palavra-chave. Sem isto, o limitador
+    // limitava o sucesso mas não o custo.
+    const authorize = auth.slice(auth.indexOf("authorize:"));
+    const tecto = authorize.indexOf("tentativaCabe(");
+    expect(tecto).toBeGreaterThan(-1);
+    expect(tecto).toBeLessThan(authorize.indexOf("verifyPassword("));
+    expect(tecto).toBeLessThan(authorize.indexOf("getUserPasswordHash("));
+  });
+
+  it("recusa a conta sem palavra-chave em vez de a adotar", () => {
+    // O `return null` vem depois de queimar o mesmo PBKDF2 de uma conta real
+    // (hash fantasma), senão o tempo de resposta era um oráculo de emails.
+    expect(auth).toMatch(
+      /if \(!existing\) \{\s*\n(?:.*\n)*?\s*await verifyPassword\(password, HASH_FANTASMA\);\s*\n\s*return null;/,
+    );
+  });
+});
+
+describe("o convite", () => {
+  const acoes = readFileSync("src/app/(app)/actions.ts", "utf8");
+  const email = readFileSync("src/lib/email/send.ts", "utf8");
+
+  it("cria uma ligação com prazo em vez de mandar entrar à vontade", () => {
+    expect(acoes).toContain("createPasswordResetToken");
+    expect(email).not.toContain("fica a ser a tua");
+  });
+
+  /**
+   * O hash do token vive num sítio só. Duas cópias divergiam, e nesse dia um
+   * dos caminhos gravava um hash que o outro não reconhece — a ligação enviada
+   * por email deixava de funcionar sem nada se queixar.
+   */
+  it("guarda o token com o mesmo hash nos dois caminhos", () => {
+    const recuperar = readFileSync("src/app/recuperar/actions.ts", "utf8");
+    expect(recuperar).toContain('from "@/lib/tokens"');
+    expect(acoes).toContain('from "@/lib/tokens"');
+    expect(recuperar).not.toContain('createHash("sha256")');
+  });
+});

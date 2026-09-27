@@ -173,6 +173,22 @@ export async function getSpaceReport(
     }))
     .sort((a, b) => b.amountCents - a.amountCents);
 
+  /**
+   * Se o mês em análise é o mês corrente, ainda vai a meio: corta-se no dia de
+   * hoje para a referência comparar os mesmos dias. Meses passados contam
+   * inteiros — um mês onde se deixou de gastar ao dia 20 está completo, e
+   * cortá-lo encolhia a referência sem razão nenhuma.
+   *
+   * Vale para as médias **e** para a comparação mês-a-mês. Ia só às médias, e
+   * por isso o ecrã do "este mês vs o anterior" anunciava quedas de 75% que
+   * eram só calendário.
+   */
+  const today = new Date();
+  const todayYm = today.toISOString().slice(0, 7);
+  const analysedMonth =
+    [...new Set(allExpenses.map((e) => e.transactionDate.slice(0, 7)))].sort().at(-1) ?? null;
+  const throughDay = analysedMonth === todayYm ? today.getUTCDate() : null;
+
   // A comparação usa TODO o histórico (o homólogo precisa do ano anterior),
   // mesmo quando os totais mostrados são só do período escolhido.
   const comparison = buildMonthComparison(
@@ -184,6 +200,7 @@ export async function getSpaceReport(
     categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
     3,
     baseline,
+    throughDay,
   );
 
   const byMerchant: Slice[] = [...merchantTotals.entries()]
@@ -220,15 +237,6 @@ export async function getSpaceReport(
     amountCents: e.amountCents,
     };
   });
-
-  // Se o mês em análise é o mês corrente, ainda vai a meio: corta-se no dia de
-  // hoje para o homólogo comparar os mesmos dias. Meses passados contam
-  // inteiros.
-  const today = new Date();
-  const todayYm = today.toISOString().slice(0, 7);
-  const analysedMonth =
-    [...new Set(allExpenses.map((e) => e.transactionDate.slice(0, 7)))].sort().at(-1) ?? null;
-  const throughDay = analysedMonth === todayYm ? today.getUTCDate() : null;
 
   const categoryAverages = buildAverages(monthlyByCategory, {
     windowMonths: averageWindow,

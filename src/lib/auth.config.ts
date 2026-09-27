@@ -1,29 +1,19 @@
 /**
  * Configuração base de autenticação, segura para o edge (usada pelo middleware).
  *
- * Só inclui o que corre no edge: providers OAuth e callbacks sem acesso a DB
- * nem a crypto de Node. Os providers de credenciais (palavra-chave, dev-login),
- * que precisam de DB/crypto, são adicionados em `auth.ts` (runtime Node).
+ * Só inclui o que o MIDDLEWARE precisa: callbacks sem acesso a DB nem a
+ * crypto de Node. Os providers vivem todos em `auth.ts` (runtime Node) — os
+ * OAuth também: o middleware corre em TODOS os pedidos e só decifra a sessão,
+ * nunca inicia um login, por isso carregá-los aqui era peso morto no bundle
+ * edge de cada pedido.
  */
 
 import type { NextAuthConfig } from "next-auth";
-import Google from "next-auth/providers/google";
-import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { isEmailAllowed } from "./env";
 import { userByEmail } from "./users";
 
 export const authConfig: NextAuthConfig = {
-  providers: [
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
-    }),
-    MicrosoftEntraID({
-      clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
-      clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
-      issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
-    }),
-  ],
+  providers: [],
   trustHost: true,
   pages: {
     signIn: "/login",

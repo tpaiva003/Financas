@@ -75,7 +75,7 @@ export function FireCalculator({
                 onClick={() => setAnnual(euros(suggestedAnnualExpensesCents))}
                 className="underline underline-offset-2 hover:text-fg-muted"
               >
-                {formatCents(suggestedAnnualExpensesCents)}
+                <span className="dinheiro">{formatCents(suggestedAnnualExpensesCents)}</span>
               </button>
             </p>
           ) : null}
@@ -124,7 +124,7 @@ export function FireCalculator({
       <div className="rounded-xl border border-hair bg-panel2/40 p-5">
         <p className="eyebrow">Precisas de</p>
         <p className="mt-1 font-display text-4xl font-semibold tracking-tight tnum">
-          {formatCents(result.fireNumberCents)}
+          <span className="dinheiro">{formatCents(result.fireNumberCents)}</span>
         </p>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-panel2">
           <div
@@ -133,10 +133,12 @@ export function FireCalculator({
           />
         </div>
         <p className="mt-2 text-sm text-fg-muted">
-          Tens {formatCents(netWorthCents)},{" "}
+          Tens <span className="dinheiro">{formatCents(netWorthCents)}</span>,{" "}
           <span className="text-fg">{Math.max(0, Math.round(result.progressPct))}%</span> do
           caminho.
-          {result.remainingCents > 0 ? ` Faltam ${formatCents(result.remainingCents)}.` : " Chegaste lá."}
+          {result.remainingCents > 0
+            ? [" Faltam ", <span key="v" className="dinheiro">{formatCents(result.remainingCents)}</span>, "."]
+            : " Chegaste lá."}
         </p>
       </div>
 
@@ -160,11 +162,13 @@ export function FireCalculator({
         />
         <Box
           label="Rendimento hoje"
+          dinheiro
           value={`${formatCents(result.currentMonthlyIncomeCents)}/mês`}
           hint={`Cobre ${Math.round(result.expensesCoveredPct)}% do que gastas`}
         />
         <Box
           label="Coast FIRE"
+          dinheiro
           value={formatCents(result.coastNumberCents)}
           hint={
             result.coastReached
@@ -216,11 +220,24 @@ function Slider({
   );
 }
 
-function Box({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Box({
+  label,
+  value,
+  hint,
+  /** O valor é um montante em euros? Se sim, o modo privacidade tapa-o. */
+  dinheiro,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  dinheiro?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-hair p-4">
       <p className="eyebrow">{label}</p>
-      <p className="mt-1 font-display text-xl font-semibold tracking-tight tnum">{value}</p>
+      <p className="mt-1 font-display text-xl font-semibold tracking-tight tnum">
+        {dinheiro ? <span className="dinheiro">{value}</span> : value}
+      </p>
       {hint ? <p className="mt-1 text-xs text-fg-faint">{hint}</p> : null}
     </div>
   );

@@ -93,23 +93,15 @@ export function AppNav({
         </button>
 
         {open ? (
-          <div
-            role="menu"
-            className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-xl border border-hair bg-panel shadow-glow"
-          >
-            <p className="flex items-center gap-2 border-b border-hair2 px-4 py-3 text-sm text-fg-muted">
-              <span className="grid h-7 w-7 place-items-center rounded-full border border-hair font-mono text-[11px] text-fg">
+          <div role="menu" className="menu absolute right-0 top-full z-30 mt-1.5 w-52">
+            <p className="menu-head">
+              <span className="grid h-7 w-7 place-items-center rounded-full bg-panel2 font-mono text-[11px] text-fg">
                 {userName.charAt(0)}
               </span>
               {userName}
             </p>
             {extra.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                role="menuitem"
-                className="flex items-center justify-between px-4 py-2.5 text-sm text-fg-muted transition-colors hover:bg-panel2 hover:text-fg"
-              >
+              <Link key={l.href} href={l.href} role="menuitem" className="menu-item">
                 {l.label}
                 {l.href === "/mensagens" && unreadMessages > 0 ? (
                   <span className="grid h-5 min-w-5 place-items-center rounded-full bg-credit px-1 text-[11px] font-semibold leading-none text-bg">
@@ -118,11 +110,12 @@ export function AppNav({
                 ) : null}
               </Link>
             ))}
+            {/* "Sair" separa-se por um espaço, não por um fio. */}
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/login" })}
               role="menuitem"
-              className="w-full border-t border-hair2 px-4 py-2.5 text-left text-sm text-fg-muted transition-colors hover:bg-panel2 hover:text-fg"
+              className="menu-item mt-1"
             >
               Sair
             </button>

@@ -62,3 +62,58 @@ export async function fetchReferenceRate(
     clearTimeout(timer);
   }
 }
+
+/**
+ * As taxas de um intervalo, de uma vez só.
+ *
+ * A `fetchReferenceRate` serve para uma data. Converter uma série histórica de
+ * cotações precisa de uma taxa por dia de movimento, e fazer uma chamada por
+ * dia é lento e mal-educado para com uma API gratuita. O Frankfurter tem um
+ * endpoint de intervalo que devolve tudo num pedido.
+ *
+ * Devolve as fixações que existem, por data ("AAAA-MM-DD" → unidades por euro).
+ * Fins de semana e feriados não vêm — quem chama trata disso procurando a
+ * fixação anterior, como qualquer corretora faz. Devolve `null` se a chamada
+ * falhar: **sem taxa não se converte nada**, e um valor por converter é melhor
+ * do que um valor convertido a uma taxa inventada.
+ */
+export async function fetchReferenceRateSeries(
+  currency: string,
+  from: string,
+  to: string,
+): Promise<Record<string, number> | null> {
+  const code = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code) || code === "EUR") return null;
+
+  const inicio = from.slice(0, 10);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const fim = (to.slice(0, 10) > hoje ? hoje : to.slice(0, 10));
+  if (inicio > fim) return null;
+
+  const url = `${BASE}/${inicio}..${fim}?base=EUR&symbols=${code}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+      next: { revalidate: 3_600 },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { rates?: Record<string, Record<string, number>> };
+    const rates = body.rates;
+    if (!rates || typeof rates !== "object") return null;
+
+    const out: Record<string, number> = {};
+    for (const [dia, valores] of Object.entries(rates)) {
+      const taxa = valores?.[code];
+      if (typeof taxa === "number" && Number.isFinite(taxa) && taxa > 0) out[dia] = taxa;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

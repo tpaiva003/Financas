@@ -3,6 +3,11 @@ import {
   buildPosition,
   buildPositionReturn,
   derivePosition,
+  ficaVazio,
+  incoerenciaEntreMovimentosECotacoes,
+  lucroDoMovimento,
+  movimentosImplausiveis,
+  primeiroMovimento,
   tradeAmountCents,
   type Trade,
 } from "./positions";
@@ -220,5 +225,309 @@ describe("buildPositionReturn", () => {
   it("sem movimentos não há taxa", () => {
     const r = buildPositionReturn(buildPosition([]), 12_000, "2026-01-01");
     expect(r.annualPct).toBeNull();
+  });
+});
+
+describe("lucroDoMovimento", () => {
+  const compra = { kind: "compra" as const, quantity: 10, amountCents: 1_000_00 };
+  const venda = { kind: "venda" as const, quantity: 10, amountCents: 1_500_00 };
+
+  it("uma compra ganha quando hoje vale mais do que se pagou", () => {
+    const l = lucroDoMovimento(compra, 150_00);
+
+    expect(l?.nowCents).toBe(1_500_00);
+    expect(l?.gainCents).toBe(500_00);
+    expect(l?.gainPct).toBeCloseTo(50, 5);
+  });
+
+  it("uma compra perde quando hoje vale menos", () => {
+    expect(lucroDoMovimento(compra, 80_00)?.gainCents).toBe(-200_00);
+  });
+
+  /**
+   * Vender antes de uma descida é ganhar, e o sinal tem de dizer isso: recebeu
+   * 1500 por unidades que hoje valeriam 1000.
+   */
+  it("uma venda ganha quando se recebeu mais do que valeria hoje", () => {
+    const l = lucroDoMovimento(venda, 100_00);
+
+    expect(l?.gainCents).toBe(500_00);
+  });
+
+  it("uma venda perde quando se vendeu antes de subir", () => {
+    expect(lucroDoMovimento(venda, 200_00)?.gainCents).toBe(-500_00);
+  });
+
+  /**
+   * Sem preço atual não há lucro nenhum para mostrar. Assumir o preço de compra
+   * dava sempre zero, que se leria como "não subiu nem desceu".
+   */
+  it("não inventa nada sem preço atual", () => {
+    expect(lucroDoMovimento(compra, null)).toBeNull();
+    expect(lucroDoMovimento(compra, 0)).toBeNull();
+  });
+
+  it("ignora os movimentos que não são compra nem venda", () => {
+    expect(
+      lucroDoMovimento({ kind: "dividendo", quantity: 10, amountCents: 50_00 }, 100_00),
+    ).toBeNull();
+    expect(lucroDoMovimento({ kind: "custo", quantity: 0, amountCents: 5_00 }, 100_00)).toBeNull();
+  });
+
+  it("ignora um movimento sem unidades", () => {
+    expect(lucroDoMovimento({ ...compra, quantity: 0 }, 100_00)).toBeNull();
+  });
+});
+
+describe("incoerenciaEntreMovimentosECotacoes", () => {
+  const precos = { "2022-02-09": 141_00, "2022-07-18": 111_00, "2025-04-07": 140_00 };
+
+  it("não se queixa quando os movimentos batem certo com as cotações", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 1_410_00 },
+      { id: "2", date: "2025-04-07", kind: "compra", quantity: 5, amountCents: 700_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  /**
+   * O caso real: 1 unidade pré-split comprada por 2466,55 EUR, com a série já
+   * ajustada ao split e a mostrar 141 EUR nesse dia. É a incoerência que faz o
+   * troço da TWR valer ×20 exactos.
+   */
+  it("apanha uma unidade pré-split contra uma série pós-split", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 1, amountCents: 2_466_55 },
+    ];
+
+    const p = incoerenciaEntreMovimentosECotacoes(trades, precos);
+    expect(p).toContain("2022-02-09");
+    expect(p).toContain("split");
+  });
+
+  it("apanha também o sentido contrário", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 20, amountCents: 141_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toContain("split");
+  });
+
+  /**
+   * Uma execução longe do fecho e as comissões embutidas andam nos poucos por
+   * cento. Recusar a rentabilidade a quem comprou com um limite mal colocado
+   * era pior do que o problema.
+   */
+  it("aguenta uma execução 25% longe do fecho sem se queixar", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 1_762_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  it("apanha um split de 3 para 2", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "compra", quantity: 10, amountCents: 2_115_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toContain("split");
+  });
+
+  it("ignora dividendos e custos, que não têm unidades", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2022-02-09", kind: "dividendo", quantity: null, amountCents: 50_00 },
+      { id: "2", date: "2022-02-09", kind: "custo", quantity: null, amountCents: 5_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, precos)).toBeNull();
+  });
+
+  it("ignora os dias sem cotação, que já são recusados noutro sítio", () => {
+    const trades: Trade[] = [
+      { id: "1", date: "2019-01-01", kind: "compra", quantity: 1, amountCents: 9_999_00 },
+    ];
+
+    expect(incoerenciaEntreMovimentosECotacoes(trades, {})).toBeNull();
+  });
+});
+
+/**
+ * O caso real: uma importação leu `493.975` como 493 975,00 € quando eram
+ * 493,98 €, porque na mesma coluna havia `500.00` a parecer um milhar. O
+ * parser está corrigido; as linhas que já entraram continuam lá, e um total
+ * errado tem exactamente o mesmo aspecto de um total certo.
+ */
+describe("movimentosImplausiveis", () => {
+  const carteira = (): Trade[] => [
+    trade({ id: "a", date: "2024-09-09", kind: "compra", quantity: 6, amountCents: 55_536 }),
+    trade({ id: "b", date: "2025-03-10", kind: "compra", quantity: 5, amountCents: 50_000 }),
+    trade({ id: "mau", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 }),
+  ];
+
+  it("apanha o movimento com o separador decimal trocado", () => {
+    const r = movimentosImplausiveis(carteira());
+    expect(r.map((x) => x.tradeId)).toEqual(["mau"]);
+    // ~98 795 € por unidade contra ~100 €: perto de mil vezes.
+    expect(r[0]!.vezes).toBeGreaterThan(500);
+    expect(r[0]!.porque).toContain("separador decimal");
+  });
+
+  it("não acusa uma carteira sã", () => {
+    const sa = carteira().slice(0, 2);
+    expect(movimentosImplausiveis(sa)).toEqual([]);
+  });
+
+  /**
+   * A referência tem de ser um valor típico que um único movimento não mexa.
+   * Com uma média — ou com o ponto médio de dois — o disparate entra na conta,
+   * e o que acontecia era acusar os dois movimentos certos e ilibar o errado.
+   */
+  it("a referência é típica, não é arrastada pelo disparate", () => {
+    const r = movimentosImplausiveis(carteira());
+    expect(r[0]!.referenciaCents).toBeLessThan(20_000);
+  });
+
+  it("um par de movimentos não chega para acusar nenhum", () => {
+    // Com dois, não há maioria: qualquer um pode ser o errado, e escolher um
+    // seria decidir a moeda ao ar sobre o dinheiro de alguém.
+    const t = [
+      trade({ id: "a", date: "2025-03-10", kind: "compra", quantity: 5, amountCents: 50_000 }),
+      trade({ id: "b", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 }),
+    ];
+    expect(movimentosImplausiveis(t)).toEqual([]);
+  });
+
+  it("uma subida grande de preço não é um erro", () => {
+    // Comprou a 10 €, depois a 30 €: triplicou, e isso acontece.
+    const t = [
+      trade({ id: "a", date: "2024-01-02", kind: "compra", quantity: 10, amountCents: 10_000 }),
+      trade({ id: "b", date: "2024-06-02", kind: "compra", quantity: 10, amountCents: 10_000 }),
+      trade({ id: "c", date: "2025-06-02", kind: "compra", quantity: 10, amountCents: 30_000 }),
+    ];
+    expect(movimentosImplausiveis(t)).toEqual([]);
+  });
+
+  it("com um movimento só, o preço atual serve de referência", () => {
+    const t = [trade({ id: "a", date: "2025-06-02", kind: "compra", quantity: 5, amountCents: 49_397_500 })];
+    // Sem preço não há com que comparar, e inventar uma referência seria pior.
+    expect(movimentosImplausiveis(t)).toEqual([]);
+    // Com preço atual de 100 €/un., o disparate fica à vista.
+    expect(movimentosImplausiveis(t, 10_000).map((x) => x.tradeId)).toEqual(["a"]);
+  });
+
+  it("um dividendo não tem preço por unidade e não é julgado", () => {
+    const t = [
+      ...carteira().slice(0, 2),
+      trade({ id: "d", date: "2025-07-01", kind: "dividendo", amountCents: 1_200 }),
+    ];
+    expect(movimentosImplausiveis(t).map((x) => x.tradeId)).toEqual([]);
+  });
+});
+
+describe("primeiroMovimento", () => {
+  /**
+   * Registar "100 unidades a 12 €" é dizer que se comprou 100 unidades a 12 €.
+   * Sem este movimento, o investimento nascia com uma posição escrita à mão e
+   * um histórico vazio: sem TIR, sem TWR, sem comparação com o índice, e com a
+   * ficha a dizer "ainda não há movimentos" a quem acabou de registar a compra.
+   */
+  it("transforma o que se escreveu no formulário numa compra", () => {
+    expect(
+      primeiroMovimento({
+        quantity: 100,
+        unitCostCents: 1_200,
+        purchasedAt: "2026-03-04",
+        hoje: "2026-08-24",
+      }),
+    ).toEqual({
+      date: "2026-03-04",
+      quantity: 100,
+      unitPriceCents: 1_200,
+      amountCents: 120_000,
+    });
+  });
+
+  it("sem data escrita, o movimento é de hoje", () => {
+    const m = primeiroMovimento({
+      quantity: 10,
+      unitCostCents: 5_000,
+      purchasedAt: "",
+      hoje: "2026-08-24",
+    });
+    expect(m?.date).toBe("2026-08-24");
+  });
+
+  /** Uma data mal escrita não pode virar silenciosamente uma data errada. */
+  it("uma data que não é data vale como não escrita", () => {
+    const m = primeiroMovimento({
+      quantity: 10,
+      unitCostCents: 5_000,
+      purchasedAt: "4 de março",
+      hoje: "2026-08-24",
+    });
+    expect(m?.date).toBe("2026-08-24");
+  });
+
+  it("as casas decimais das unidades contam", () => {
+    // ETF fracionado: 2,5 unidades a 130,35 € são 325,88 € e não 325,00 €.
+    const m = primeiroMovimento({
+      quantity: 2.5,
+      unitCostCents: 13_035,
+      purchasedAt: "2026-01-02",
+      hoje: "2026-08-24",
+    });
+    expect(m?.amountCents).toBe(32_588);
+  });
+
+  /**
+   * Um movimento de zero euros não é um movimento. Nesses casos a posição
+   * escrita à mão continua a valer, que é o que a app fazia antes disto.
+   */
+  it("não inventa negócio nenhum sem unidades ou sem preço", () => {
+    const hoje = "2026-08-24";
+    expect(primeiroMovimento({ quantity: null, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 0, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: -5, unitCostCents: 1_200, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 100, unitCostCents: null, hoje })).toBeNull();
+    expect(primeiroMovimento({ quantity: 100, unitCostCents: 0, hoje })).toBeNull();
+  });
+
+  /** A posição que sai do movimento tem de ser a que se escreveu, sem desvio. */
+  it("a posição derivada do movimento é a que se registou", () => {
+    const m = primeiroMovimento({
+      quantity: 100,
+      unitCostCents: 1_200,
+      purchasedAt: "2026-03-04",
+      hoje: "2026-08-24",
+    })!;
+    const d = derivePosition({ quantity: null, unitCostCents: null }, [
+      { id: "t1", date: m.date, kind: "compra", quantity: m.quantity, amountCents: m.amountCents },
+    ]);
+    expect(d.derived).toBe(true);
+    expect(d.quantity).toBe(100);
+    expect(d.unitCostCents).toBe(1_200);
+  });
+});
+
+describe("ficaVazio", () => {
+  /**
+   * O investimento que nasceu de uma compra e a quem se apaga essa compra não
+   * fica "a zero": fica uma linha sem nada, que continua na carteira a dizer
+   * que vale zero e que ninguém percebe de onde veio.
+   */
+  it("um investimento sem movimentos e sem posição escrita fica vazio", () => {
+    expect(ficaVazio({ quantity: null, unitCostCents: null }, [])).toBe(true);
+    expect(ficaVazio({ quantity: 0, unitCostCents: 0 }, [])).toBe(true);
+  });
+
+  /** O invariante das entradas manuais: o que alguém escreveu sobrevive. */
+  it("uma posição escrita à mão nunca é vazio", () => {
+    expect(ficaVazio({ quantity: 100, unitCostCents: 1_200 }, [])).toBe(false);
+  });
+
+  it("com movimentos a mais não fica vazio nenhum", () => {
+    expect(ficaVazio({ quantity: null, unitCostCents: null }, [{}])).toBe(false);
   });
 });
