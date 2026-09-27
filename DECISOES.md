@@ -3133,3 +3133,37 @@ que ninguém tinha reportado:
 
 Fica a app inteira dentro do ecrã até 26 px de raiz (~160% de escala). Acima
 disso ainda há coisas a passar, e isso está por resolver.
+
+### Uma caixa por cima, para o que não tem volta
+O aviso de que aquele era o único movimento vivia ao lado do botão que o
+apagava. Um aviso nesse sítio lê-se depois de se ter carregado — e às vezes nem
+isso. O que ali está prestes a acontecer não é apagar uma linha: é o
+investimento inteiro a sair da carteira. Passa a ser uma caixa por cima de tudo,
+que se fecha com o Escape ou a carregar fora, e cujo foco entra nela ao abrir.
+
+Fica reservada para as duas ou três coisas que mudam alguma coisa a sério.
+Interromper por hábito ensina a fechar sem ler, e a app continua a resolver
+quase tudo em painéis na própria página.
+
+### Os investimentos que ficaram sem a compra que lhes deu origem
+Antes de registar um investimento passar a criar o movimento, o formulário
+gravava só a posição no bem. Esses continuam lá, com o histórico vazio: sem TIR,
+sem TWR e sem comparação com o índice. Em produção eram **dois**, os dois com
+data de compra e custo — não é um caso de massa.
+
+**Não se arranjam sozinhos, e é essa a decisão.** Um movimento precisa de uma
+data, e a data não é um detalhe: é ela que diz quanto tempo o dinheiro esteve a
+render. Pôr "hoje" numa posição comprada há três anos daria uma TIR absurda com
+ar de conta feita, e um número errado com ar de resposta é pior do que não ter
+número nenhum. Uma migração que os convertesse em bloco teria de inventar essa
+data em todos os ambientes ao mesmo tempo.
+
+Em vez disso, a app **pergunta**: ao entrar no Saldo, quem tiver investimentos
+nessas condições vê uma caixa com a lista, a data de compra já preenchida a
+partir do que está no bem, e um botão para registar as compras. Quem não
+escrever data nenhuma fica como está — de propósito. Fecha-se e não volta a
+aparecer nessa visita.
+
+A leitura que responde a "quais é que não têm movimentos" traz **só os ids dos
+bens que têm**, e não os movimentos todos: a pergunta faz-se na página mais
+visitada da app e a resposta é quase sempre "nenhum".

@@ -9,7 +9,8 @@ import {
   type ReciboPreviewState,
 } from "@/app/(app)/actions";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
-import { formatCents } from "@/lib/domain";
+import { ehEntrada, palavrasDoMontante } from "@/lib/domain";
+import { QuotaLida } from "@/components/QuotaLida";
 import { parseMoneyToCents } from "@/lib/money-input";
 import type { Category } from "@/lib/data";
 
@@ -83,6 +84,15 @@ export function AddExpenseForm({
   const amountCents = parseMoneyToCents(amountStr);
   const shareA = Math.round((amountCents * percentA) / 100);
   const shareB = amountCents - shareA;
+  /**
+   * Um valor negativo é dinheiro que entra, e a app passa a dizê-lo.
+   *
+   * A conta já era esta: a divisão aplica-se ao sinal que lá está, e quem
+   * recebeu fica a dever a parte do outro. O que mudava era só o ecrã, que
+   * continuava a chamar-lhe despesa e a perguntar quem pagou.
+   */
+  const palavras = palavrasDoMontante(amountCents);
+  const entrada = ehEntrada(amountCents);
 
   const isPair = members.length === 2;
   const a = members[0];
@@ -113,8 +123,14 @@ export function AddExpenseForm({
             className="w-full border-0 bg-transparent p-0 font-display text-5xl font-semibold tracking-tight tnum text-fg placeholder:text-fg-faint/40 focus:outline-none focus:ring-0"
           />
         </div>
-        <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
-          Valor negativo = reembolso / estorno
+        <p
+          className={`mt-2 font-mono text-[11px] uppercase tracking-[0.04em] ${
+            entrada ? "text-credit" : "text-fg-faint"
+          }`}
+        >
+          {entrada
+            ? "Rendimento a dividir — reparte-se pela regra abaixo"
+            : "Valor negativo = rendimento a dividir ou estorno"}
         </p>
       </div>
 
@@ -166,7 +182,7 @@ export function AddExpenseForm({
         </div>
 
         <div>
-          <span className="label">Quem pagou</span>
+          <span className="label">{palavras.quemMoveu}</span>
           <div className={`grid gap-2 ${members.length > 2 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
             {members.map((m) => (
               <label
@@ -266,8 +282,8 @@ export function AddExpenseForm({
             {splitType === "PERCENT" && a && b ? (
               <div className="mt-4">
                 <div className="flex items-center justify-between font-mono text-xs text-fg-muted">
-                  <span>{a.name}: {percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareA)}</span></> : ""}</span>
-                  <span>{b.name}: {100 - percentA}%{amountCents ? <> · <span className="dinheiro">{formatCents(shareB)}</span></> : ""}</span>
+                  <QuotaLida nome={a.name} pct={percentA} cents={shareA} verbo={palavras.verboDaQuota} />
+                  <QuotaLida nome={b.name} pct={100 - percentA} cents={shareB} verbo={palavras.verboDaQuota} />
                 </div>
                 <input type="range" min={0} max={100} step={5} value={percentA} onChange={(e) => setPercentA(Number(e.target.value))} className="mt-2 w-full accent-fg" aria-label={`Percentagem de ${a.name}`} />
                 <input type="hidden" name="percentA" value={percentA} />
@@ -308,7 +324,7 @@ export function AddExpenseForm({
         ) : null}
       </div>
 
-      <SubmitButton />
+      <SubmitButton texto={palavras.guardar} />
     </form>
   );
 }
@@ -335,11 +351,11 @@ function ToggleButton({
   );
 }
 
-function SubmitButton() {
+function SubmitButton({ texto }: { texto: string }) {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} className="btn-primary w-full py-3.5 text-base">
-      {pending ? "A guardar…" : "Guardar despesa"}
+      {pending ? "A guardar…" : texto}
     </button>
   );
 }

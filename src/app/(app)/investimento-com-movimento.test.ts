@@ -274,6 +274,93 @@ describe("registar um investimento", () => {
     expect(await repo.listAssets("outra-casa")).toHaveLength(1);
   });
 
+  /**
+   * Os investimentos que ficaram para trás.
+   *
+   * Antes de registar um investimento passar a criar o movimento, o formulário
+   * gravava só a posição no bem. Esses ficaram com o histórico vazio — sem TIR,
+   * sem TWR, sem comparação com o índice — e nada na app lhes tocava.
+   */
+  it("cria a compra que falta a um investimento antigo, com a data que lhe deram", async () => {
+    const { criarMovimentosEmFaltaAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const bem = await repo.createAsset({
+      spaceId: ESPACO,
+      name: "Dos tempos antigos",
+      kind: "investimento",
+      quantity: 30,
+      unitCostCents: 4_000,
+      purchasedAt: "2024-05-06",
+    });
+
+    const r = await criarMovimentosEmFaltaAction({}, form({ [`data-${bem.id}`]: "2024-05-06" }));
+
+    expect(r.error).toBeUndefined();
+    const movs = await repo.listAssetTrades(ESPACO, bem.id);
+    expect(movs).toHaveLength(1);
+    expect(movs[0]).toMatchObject({
+      kind: "compra",
+      date: "2024-05-06",
+      quantity: 30,
+      amountCents: 120_000,
+    });
+
+    // E a posição passa para o movimento: duas versões da mesma verdade
+    // divergem à primeira correção.
+    const depois = (await repo.listAssets(ESPACO))[0]!;
+    expect(depois.quantity ?? null).toBeNull();
+    expect(depois.unitCostCents ?? null).toBeNull();
+  });
+
+  /**
+   * A data diz quanto tempo o dinheiro esteve a render. Pôr a de hoje numa
+   * posição de há três anos daria uma TIR absurda com ar de conta feita — e um
+   * número errado com ar de resposta é pior do que não ter número nenhum.
+   */
+  it("não inventa data nenhuma: sem data escolhida, não cria movimento", async () => {
+    const { criarMovimentosEmFaltaAction } = await import("./actions");
+    const repo = await repositorio();
+
+    const bem = await repo.createAsset({
+      spaceId: ESPACO,
+      name: "Sem data",
+      kind: "investimento",
+      quantity: 10,
+      unitCostCents: 1_000,
+    });
+
+    const r = await criarMovimentosEmFaltaAction({}, form({ [`data-${bem.id}`]: "" }));
+
+    expect(r.error).toBe("Indica a data de compra de pelo menos um.");
+    expect(await repo.listAssetTrades(ESPACO, bem.id)).toHaveLength(0);
+    // E a posição escrita à mão fica intacta.
+    expect((await repo.listAssets(ESPACO))[0]!.quantity).toBe(10);
+  });
+
+  /** Quem já tem movimentos não entra na lista, nem recebe uma segunda compra. */
+  it("não oferece compra a quem já tem movimentos", async () => {
+    const { saveAssetAction } = await import("./actions");
+    const { investimentosSemMovimentos } = await import("@/lib/services/movimentos-em-falta");
+    const repo = await repositorio();
+
+    await saveAssetAction(
+      {},
+      form({ name: "Já tem", kind: "investimento", quantity: "10", unitCost: "20,00" }),
+    );
+    const antigo = await repo.createAsset({
+      spaceId: ESPACO,
+      name: "Não tem",
+      kind: "investimento",
+      quantity: 5,
+      unitCostCents: 1_000,
+    });
+
+    const emFalta = await investimentosSemMovimentos(ESPACO);
+
+    expect(emFalta.map((b) => b.id)).toEqual([antigo.id]);
+  });
+
   /** Sem o pedido explícito de quem foi avisado, o ativo fica sempre. */
   it("sem aviso não apaga o ativo", async () => {
     const { saveAssetAction, deleteAssetTradeAction } = await import("./actions");

@@ -13,7 +13,7 @@
  * para o que já lá está.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { criarAvaliacaoAction, type ActionState } from "@/app/(app)/actions";
 import { ETAPAS, ETAPA_LABEL } from "@/lib/domain";
@@ -33,6 +33,20 @@ export function NovaAvaliacao({ hoje }: { hoje: string }) {
   const [state, criar] = useFormState(criarAvaliacaoAction, vazio);
   const [aberto, setAberto] = useState(false);
 
+  /**
+   * Gravou: o formulário fecha-se, e a confirmação fica onde ele estava.
+   *
+   * **Sem isto, apontar uma empresa não parecia fazer nada.** O formulário
+   * ficava aberto com o nome ainda escrito, a confirmação só existe no estado
+   * fechado — nunca chegava a ser desenhada — e o cartão novo nasce por baixo
+   * do formulário, que num portátil já é fora do que cabe no ecrã. A empresa
+   * entrava no funil e nada mudava onde a pessoa estava a olhar. O gesto
+   * seguinte é carregar outra vez, e ficar com ela duas vezes.
+   */
+  useEffect(() => {
+    if (state.ok) setAberto(false);
+  }, [state]);
+
   if (!aberto) {
     return (
       <div className="flex flex-wrap items-center gap-3">
@@ -40,7 +54,9 @@ export function NovaAvaliacao({ hoje }: { hoje: string }) {
           Apontar uma empresa
         </button>
         {state.ok ? (
-          <span className="text-xs text-credit">{state.message}</span>
+          <span role="status" className="text-xs text-credit">
+            {state.message}
+          </span>
         ) : (
           <span className="text-xs text-fg-faint">
             Sem estudo nenhum: só o nome, a data e o que te chamou a atenção.

@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./money";
 export * from "./split";
 export * from "./balance";
+export * from "./entrada-partilhada";
 export * from "./normalize";
 export * from "./dedup";
 export * from "./classify";

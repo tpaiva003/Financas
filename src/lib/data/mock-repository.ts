@@ -988,6 +988,16 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
+  async assetIdsComMovimentos(spaceId: string): Promise<string[]> {
+    return [
+      ...new Set(
+        getStore()
+          .assetTrades.filter((t) => t.spaceId === spaceId)
+          .map((t) => t.assetId),
+      ),
+    ];
+  }
+
   async createAssetTrade(input: CreateAssetTradeInput): Promise<AssetTrade> {
     const trade: AssetTrade = {
       ...input,

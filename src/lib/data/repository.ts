@@ -1169,6 +1169,15 @@ export interface Repository {
   deleteAssetAttachment(id: string, spaceId: string): Promise<void>;
   /** Movimentos de todos os investimentos do ambiente, ou só de um. */
   listAssetTrades(spaceId: string, assetId?: string): Promise<AssetTrade[]>;
+  /**
+   * Só os ids dos bens que TÊM movimentos.
+   *
+   * Existe para se poder perguntar "quais é que não têm?" sem trazer os
+   * movimentos todos. A pergunta faz-se numa página muito visitada, e a
+   * resposta é quase sempre "nenhum": pagar por ela o histórico inteiro da
+   * carteira seria pagar caro por um "não".
+   */
+  assetIdsComMovimentos(spaceId: string): Promise<string[]>;
   /** Cotações guardadas de um símbolo, da mais antiga para a mais recente. */
   listQuotes(symbol: string, fromDate?: string): Promise<StoredQuote[]>;
   /**
