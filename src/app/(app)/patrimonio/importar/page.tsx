@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { BrokerImport } from "@/components/BrokerImport";
@@ -12,7 +13,20 @@ export default async function ImportarCarteiraPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="eyebrow">{ctx.space.name}</p>
+        {/*
+          O caminho de volta, porque esta página deixou de ter separador.
+          Era um separador fixo no topo do Património e passou a ser um link
+          nos Ativos: a ida está resolvida, e sem isto o regresso ficava no
+          botão do browser — que numa PWA instalada pode não existir.
+        */}
+        <Link
+          href="/patrimonio/ativos"
+          className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg"
+        >
+          <span aria-hidden>←</span>
+          Ativos
+        </Link>
+        <p className="eyebrow mt-4">{ctx.space.name}</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
           Importar da corretora
         </h1>

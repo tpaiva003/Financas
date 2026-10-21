@@ -481,6 +481,22 @@ export async function PatrimonioContent({
                 ? "Quanto precisas e quando lá chegas."
                 : "O que tens menos o que deves, para saberes onde estás."}
         </p>
+        {/*
+          A importação da corretora era um separador fixo no topo do Património.
+          Não é um sítio onde se esteja: é uma coisa que se faz de vez em quando
+          e que acaba aqui, nesta lista. Como separador permanente pesava o
+          mesmo que o Resumo, que se vê todos os dias — passa a ser um link onde
+          o trabalho começa e para onde volta.
+        */}
+        {view === "ativos" ? (
+          <Link
+            href="/patrimonio/importar"
+            className="mt-3 inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg"
+          >
+            Importar da corretora
+            <span aria-hidden>→</span>
+          </Link>
+        ) : null}
       </div>
 
       {view === "resumo" ? (

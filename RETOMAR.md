@@ -17,7 +17,7 @@
 
 ---
 
-## 0-hoje. Sessão de 2026-10-21 — revisão da plataforma: isolamento, velocidade, varrimento
+## 0-hoje. Sessão de 2026-10-21 — revisão da plataforma: isolamento, velocidade, varrimento, navegação
 
 Pedido do Tiago: *"revê de forma completa a plataforma, assegura que tudo está
 a funcionar bem e rápido… confirma que nunca há dados a serem registados no
@@ -72,11 +72,52 @@ Todas a 200, sem erros de JavaScript, sem ecrãs de erro, sem transbordo
 horizontal — também com **letra base a 20 e 24 px** e **modo privacidade
 ligado**, que foi onde a app já partiu no passado.
 
+### Navegação: os dois "Avaliação", e o menu que já eram 24 entradas
+
+O Tiago: *"resolve os dois separadores Avaliação. Quero também assegurar que a
+aplicação tem uma navegação simples e intuitiva, pois agora vejo muitas tabs"*.
+Depois, às três propostas: *"faz a (a) e a (b) e (c)"*. Tudo feito, no mesmo
+branch (PR #56).
+
+**Os dois "Avaliação".** Eram `/patrimonio/dcf` (grava o estudo) e
+`/patrimonio/avaliacao` (folha de rascunho que se perdia ao fechar o
+separador). Ficou o que grava. A rota antiga **redireciona** em vez de
+desaparecer — quem tiver o link guardado continua a chegar a algum lado — e o
+`ValuationCalculator.tsx`, que ficou órfão, saiu.
+
+O teste que havia listava os nomes à mão e **tinha o duplicado lá escrito**:
+passava a verde com o problema à vista. Passou a ser uma regra (`nav.test.ts`),
+e há uma segunda para nomes repetidos em secções diferentes.
+
+**(a) Nomes que dizem o que são.** Havia dois "Importar" e dois "Despesas", em
+secções diferentes. Agora: "Importar extrato" (banco), "Em que gasto" (análise
+de despesa) e "Carteira" (análise de património).
+
+**(b) Um mapa só, no telemóvel e no computador.** A barra de baixo tinha cinco
+botões, e o quinto — "Acertos" — no computador estava escondido dentro do
+"Mais". O comentário no código já jurava que eram "as mesmas secções do topo".
+Os acertos passaram para dentro do **Saldo**, que é onde a pergunta nasce, e a
+barra voltou a ser quatro. Há um teste que lê o `layout.tsx` e falha se
+aparecer um destino que não seja uma secção.
+
+**(c) O Património em dois blocos.** Eram sete separadores em fila. Passam a
+seis, com um cabeçalho pequeno à frente de cada bloco: **O QUE TENHO** (Resumo,
+Ativos, Dívidas) e **DECIDIR** (Avaliação, Funil, FIRE). O sétimo, "Importar da
+corretora", saiu dos separadores: não é um sítio onde se esteja, é uma coisa
+que se faz — passou a link nos Ativos, e a página ganhou um "← Ativos" porque
+deixou de ter separador aceso.
+
+De 24 entradas de menu para 21, e as quatro secções do topo intactas.
+
 ### Por decidir pelo Tiago (continua de pé)
 
-O menu do Património tem **dois separadores chamados "Avaliação"**
-(`/patrimonio/dcf` e `/patrimonio/avaliacao`), os dois a avaliar empresas por
-fluxos de caixa. Qual fica.
+Do rendimento partilhado (PR #54), duas perguntas que ficaram em aberto:
+
+- Um **estorno** de uma despesa partilhada aparece como "Rendimento", tal como
+  um ordenado dividido. São a mesma coisa para a app. Dizer-lhes nomes
+  diferentes obrigava a guardar qual é qual.
+- O **total do mês** continua a abater os rendimentos ao que se gastou. Quem
+  registar um ordenado partilhado vê o mês "a gastar menos".
 
 ---
 

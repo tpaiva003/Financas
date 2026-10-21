@@ -120,12 +120,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <BottomLink href="/despesas" label="Despesas" icon={<IconList />} />
           ) : (
             <>
-              {/* As mesmas secções do topo, para o mapa mental ser um só. */}
+              {/*
+                As mesmas quatro secções do topo, e agora é verdade.
+                O comentário já dizia isto quando havia aqui um quinto botão
+                ("Acertos") que no computador estava escondido dentro do menu
+                "Mais": quem usava os dois aparelhos aprendia dois mapas da
+                mesma app. Os acertos passaram a viver dentro do Saldo, que é
+                onde a pergunta nasce, e esta barra voltou a ser o espelho do
+                topo. Se aqui aparecer um quinto botão, há um mapa a mais.
+              */}
               <BottomLink href="/dashboard" label="Saldo" icon={<IconBalance />} />
               <BottomLink href="/despesas" label="Movimentos" icon={<IconList />} />
               <BottomLink href="/relatorios" label="Análise" icon={<IconChart />} />
               <BottomLink href="/patrimonio" label="Património" icon={<IconWallet />} />
-              <BottomLink href="/acertos" label="Acertos" icon={<IconHandshake />} />
             </>
           )}
         </div>
@@ -166,13 +173,6 @@ function IconChart() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
       <path d="M3 3v18h18M8 16v-5M13 16V7M18 16v-8" />
-    </svg>
-  );
-}
-function IconHandshake() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="m11 17 2 2a1 1 0 0 0 3-3M3 14l3-3 5 5M14 10l3-3 4 4-3 3M7 11l-4 4" />
     </svg>
   );
 }

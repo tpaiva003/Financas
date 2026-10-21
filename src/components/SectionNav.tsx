@@ -17,9 +17,37 @@ export function SectionNav() {
   const children = section?.children;
   if (!children || children.length < 2) return null;
 
+  /**
+   * Os separadores em blocos, pela ordem em que aparecem.
+   *
+   * Sete separadores seguidos lêem-se como uma lista de funcionalidades. Com um
+   * cabeçalho pequeno à frente de cada bloco, lêem-se como duas perguntas — "o
+   * que tenho" e "o que estou a decidir" — e são três de cada vez em vez de
+   * sete. Onde não há `grupo` nenhum, nada muda: continua a ser uma fila só.
+   */
+  const blocos: { grupo: string | null; itens: typeof children }[] = [];
+  for (const c of children) {
+    const ultimo = blocos[blocos.length - 1];
+    if (ultimo && ultimo.grupo === (c.grupo ?? null)) ultimo.itens.push(c);
+    else blocos.push({ grupo: c.grupo ?? null, itens: [c] });
+  }
+
   return (
-    <nav className="scroll-x flex gap-1">
-      {children.map((c) => {
+    <nav className="scroll-x flex items-center gap-1">
+      {blocos.map((b, i) => (
+        <div key={b.grupo ?? `solto-${i}`} className="flex shrink-0 items-center gap-1">
+          {b.grupo ? (
+            <span
+              // Cabeçalho e não separador: não se carrega nele, e por isso não
+              // se parece com nada em que se possa carregar.
+              className={`shrink-0 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint ${
+                i > 0 ? "ml-3" : ""
+              }`}
+            >
+              {b.grupo}
+            </span>
+          ) : null}
+          {b.itens.map((c) => {
         /**
          * O separador raiz da secção só está ativo na correspondência exacta.
          *
@@ -53,7 +81,9 @@ export function SectionNav() {
             {c.label}
           </Link>
         );
-      })}
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
