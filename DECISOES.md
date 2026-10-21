@@ -3203,3 +3203,22 @@ O `/patrimonio/avaliacao` era o segundo "Avaliação" do Património e saiu do
 menu. A página ficou, a reencaminhar para `/patrimonio/dcf`: quem tiver o link
 nos favoritos chega ao sítio certo em vez de a um ecrã de erro, e o custo é um
 ficheiro de três linhas. O componente que só ela usava saiu.
+
+### O estorno e o ordenado chamam-se os dois "Rendimento"
+
+Desde que um montante negativo passou a ser um rendimento a dividir, duas
+coisas diferentes para quem lê partilham o mesmo rótulo: um **estorno** (uma
+despesa partilhada que foi devolvida) e um **rendimento a sério** (um ordenado,
+uma renda recebida). Para a app são a mesma coisa — dinheiro que entra e se
+reparte pela percentagem acordada — e distingui-las obrigava a guardar qual é
+qual, ou seja, uma coluna nova e uma pergunta a mais no formulário.
+
+**Fica como está** (decisão do Tiago, 2026-10-21). Pelo mesmo motivo, o **total
+do mês** continua a abater os rendimentos ao que se gastou: quem registar um
+ordenado partilhado vê o mês "a gastar menos". É aritmética correta sobre o
+mesmo saco, e separar os dois sentidos pedia duas somas e dois números no ecrã
+onde hoje está um.
+
+As duas ficam registadas aqui para não voltarem como perguntas novas numa
+sessão seguinte. Se um dia incomodarem na prática, é o uso que o diz — não a
+simetria do modelo.
