@@ -1055,6 +1055,14 @@ export class MockRepository implements Repository {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
+  async latestQuoteHeader(
+    symbol: string,
+  ): Promise<{ date: string; currency: string | null } | null> {
+    const ultima = await this.latestQuote(symbol);
+    if (!ultima) return null;
+    return { date: ultima.date, currency: getStore().quoteCurrencies[symbol] ?? null };
+  }
+
   async latestQuote(symbol: string): Promise<StoredQuote | null> {
     const all = await this.listQuotes(symbol);
     return all.length > 0 ? all[all.length - 1]! : null;

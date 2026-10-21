@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSpaceContext } from "@/lib/space";
 import { getSpaceBalance } from "@/lib/services/balance-service";
 import { getRepository } from "@/lib/data";
+import { lerImportacoes } from "@/lib/data/leituras";
 import { generateDueRecurring } from "@/lib/services/recurring-service";
 import { getAllReminders, pendingReminders } from "@/lib/services/reminder-service";
 import { formatCents, streakDeRegistos } from "@/lib/domain";
@@ -43,7 +44,7 @@ export default async function DashboardPage() {
           repo.listCategories(ctx.space.id),
         ]);
       })(),
-      repo.listImportBatches(ctx.space.id).catch(() => []),
+      lerImportacoes(ctx.space.id).catch(() => []),
       repo.listIncome(ctx.space.id).catch(() => []),
       getAllReminders(ctx.spaces.map((s) => ({ id: s.id, name: s.name }))),
       /**

@@ -33,6 +33,18 @@ export const lerAcertos = memoPorPedido((spaceId: string) =>
 );
 
 /**
+ * As importações já feitas num ambiente.
+ *
+ * O Saldo lia-as duas vezes no mesmo render: uma para a lista de lotes, outra
+ * dentro dos lembretes de importação, que precisam de saber até quando é que
+ * cada ambiente já está coberto. Mesma pergunta, mesma resposta, paga duas
+ * vezes — e no ecrã mais visitado da app.
+ */
+export const lerImportacoes = memoPorPedido((spaceId: string) =>
+  getRepository().listImportBatches(spaceId),
+);
+
+/**
  * As despesas partilhadas de um ambiente — a leitura que o saldo e as páginas
  * pedem em duplicado. A chave é (ambiente, leitor): filtros mais finos ficam
  * de fora de propósito, para a cache não esconder respostas diferentes.

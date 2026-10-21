@@ -8,6 +8,7 @@
  */
 
 import { getRepository } from "@/lib/data";
+import { lerImportacoes } from "@/lib/data/leituras";
 import { reminderStatus, sortByUrgency, type ReminderStatus } from "@/lib/domain";
 import { IMPORT_SOURCES } from "@/lib/import/types";
 
@@ -32,7 +33,7 @@ export async function getSpaceReminders(
   const repo = getRepository();
   const [configured, batches] = await Promise.all([
     repo.listImportReminders(spaceId).catch(() => []),
-    repo.listImportBatches(spaceId).catch(() => []),
+    lerImportacoes(spaceId).catch(() => []),
   ]);
 
   // Último lote de cada banco (os lotes vêm do mais recente para o mais antigo,

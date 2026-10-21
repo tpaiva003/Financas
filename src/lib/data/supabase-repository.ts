@@ -1832,6 +1832,25 @@ export class SupabaseRepository implements Repository {
    * Existe para quem quer o preço de agora e não a série: atualizar o valor de um
    * investimento não precisa de dez anos de histórico a atravessar a rede.
    */
+  async latestQuoteHeader(
+    symbol: string,
+  ): Promise<{ date: string; currency: string | null } | null> {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db
+      .from("quotes")
+      .select("quote_date, currency")
+      .eq("symbol", symbol)
+      .order("quote_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      date: String((data as any).quote_date).slice(0, 10),
+      currency: ((data as any).currency as string | null) ?? null,
+    };
+  }
+
   async latestQuote(symbol: string): Promise<StoredQuote | null> {
     const db = getSupabaseAdmin();
     const { data, error } = await db

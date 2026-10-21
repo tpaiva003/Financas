@@ -252,9 +252,20 @@ async function getQuoteSeriesFresh(
   const repo = getRepository();
   const today = new Date().toISOString().slice(0, 10);
 
+  /**
+   * A data e a moeda do que está guardado, numa ida só.
+   *
+   * Eram duas leituras à mesma tabela e ao mesmo símbolo — a data aqui, a
+   * moeda lá em baixo — e corriam em série. Por cada símbolo do ecrã. Numa
+   * carteira de seis posições, seis idas à rede que não traziam nada que não
+   * estivesse já na mesma linha.
+   */
   let lastDate: string | null = null;
+  let moedaGuardada: string | null = null;
   try {
-    lastDate = await repo.latestQuoteDate(symbol);
+    const cabecalho = await repo.latestQuoteHeader(symbol);
+    lastDate = cabecalho?.date ?? null;
+    moedaGuardada = cabecalho?.currency ?? null;
   } catch {
     // Tabela ainda não existe (migração 0017 por correr): segue-se sem cache.
   }
@@ -305,8 +316,14 @@ async function getQuoteSeriesFresh(
     problem = problem ?? "Não consegui ler as cotações guardadas.";
   }
 
-  const currency =
-    (await repo.quoteCurrency(symbol).catch(() => null)) ?? fetchedCurrency ?? "EUR";
+  /**
+   * A moeda acabada de trazer só ganha se os fechos dela tiverem mesmo ficado
+   * gravados: se a fonte mudou de moeda, foi nessa que vieram os preços que
+   * agora estão guardados, e é nessa que eles têm de ser lidos. Uma ida à fonte
+   * que não trouxe fechos nenhuns não muda moeda nenhuma — e sem qualquer das
+   * duas, euro, como antes.
+   */
+  const currency = (refreshed ? fetchedCurrency : null) ?? moedaGuardada ?? "EUR";
 
   const last = quotes.length > 0 ? quotes[quotes.length - 1]! : null;
   return {
