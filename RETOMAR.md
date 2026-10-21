@@ -14,8 +14,11 @@
 > migrações novas nesta sessão — as últimas aplicadas continuam a ser a **0044
 > e a 0045**.
 >
-> Quem abrir a sessão seguinte começa por um repositório limpo: nada em
-> rascunho, nada por decidir, nenhuma verificação agendada.
+> Quem abrir a sessão seguinte começa por um repositório limpo: nada por
+> decidir e nenhuma verificação agendada. O único rascunho que pode estar
+> aberto é o **PR #58**, que traz esta própria atualização — se ainda lá
+> estiver, é só documentação e não espera por mais nada senão a palavra do
+> Tiago.
 
 ---
 
