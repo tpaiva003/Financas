@@ -3,17 +3,22 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-10-21. **Começa pela secção 0-hoje.**
+> Última atualização: 2026-10-21, no fim da sessão. **Começa pela secção
+> 0-hoje.**
 >
-> Antes disso: Os **PRs #45 e #43 estão integrados e
-> em produção** (www.rachar.pt): janelas contra os índices, correções de cálculo
-> com vendas, mês parcial, revisão da landing, modo demo self-serve e revisão do
-> backend. O trabalho em curso vive no branch
-> `claude/rachar-landing-page-zdliyf` (**PR #46, rascunho**) — ver a secção
-> 0-novo: capturas novas, endurecimento (PBKDF2 600k, tectos de tentativas,
-> convites opt-in — migrações **0044 e 0045 já aplicadas** no Supabase), SEO,
-> recibo→despesa e streak. Autorizado pelo Tiago com «Avança com todos, exceto
-> os SSO par ajá».
+> **Não há trabalho por publicar nem nada à espera do Tiago.** Tudo o que se
+> fez nesta sessão está fundido e em produção (www.rachar.pt): os **PRs #54,
+> #55, #56 e #57** (os #52 e #53 são da sessão anterior). O `main` e o branch
+> de trabalho `claude/rachar-landing-page-zdliyf` estão os dois em
+> **`6bd66c1`**. Sem
+> migrações novas nesta sessão — as últimas aplicadas continuam a ser a **0044
+> e a 0045**.
+>
+> Quem abrir a sessão seguinte começa por um repositório limpo: nada por
+> decidir e nenhuma verificação agendada. O único rascunho que pode estar
+> aberto é o **PR #58**, que traz esta própria atualização — se ainda lá
+> estiver, é só documentação e não espera por mais nada senão a palavra do
+> Tiago.
 
 ---
 
@@ -76,8 +81,8 @@ ligado**, que foi onde a app já partiu no passado.
 
 O Tiago: *"resolve os dois separadores Avaliação. Quero também assegurar que a
 aplicação tem uma navegação simples e intuitiva, pois agora vejo muitas tabs"*.
-Depois, às três propostas: *"faz a (a) e a (b) e (c)"*. Tudo feito, no mesmo
-branch (PR #56).
+Depois, às três propostas: *"faz a (a) e a (b) e (c)"*. Tudo feito e fundido
+(**PR #56**, em produção).
 
 **Os dois "Avaliação".** Eram `/patrimonio/dcf` (grava o estudo) e
 `/patrimonio/avaliacao` (folha de rascunho que se perdia ao fechar o
@@ -119,7 +124,23 @@ As duas perguntas que tinham ficado em aberto do rendimento partilhado (PR #54)
   dividido.
 - O **total do mês** continua a abater os rendimentos ao que se gastou.
 
-Não voltar a levantá-las sem o Tiago pedir. Ver o `DECISOES.md`.
+Não voltar a levantá-las sem o Tiago pedir. Ver o `DECISOES.md` (**PR #57**).
+
+### Como fica a app no fim desta sessão
+
+- **Fronteira entre ambientes:** auditada consulta a consulta, e agora com um
+  teste que falha se um método novo tocar numa tabela de ambiente sem nomear o
+  `space_id`.
+- **Velocidade:** Património de 29 para 14 idas à base de dados por visita.
+- **Navegação:** 21 destinos, quatro secções no topo, e o telemóvel a dizer o
+  mesmo que o computador.
+- **Porta de qualidade:** 1289 testes, typecheck, lint e build, todos verdes no
+  commit que está em produção.
+
+Nada ficou por fazer do que foi pedido. O que continua em aberto é antigo e
+está escrito nas secções mais abaixo — nomeadamente **a UI dos fornecedores
+Google e Microsoft**, que estão configurados no Auth.js e não têm botão nenhum
+no ecrã, e a app a **passar do ecrã acima de 26 px de letra de raiz** (~160%).
 
 ---
 
