@@ -1210,6 +1210,22 @@ export interface Repository {
   quoteCurrency(symbol: string): Promise<string | null>;
   /** A data da cotação mais recente que temos, para saber se vale a pena ir buscar. */
   latestQuoteDate(symbol: string): Promise<string | null>;
+
+  /**
+   * A data e a moeda da cotação mais recente, numa ida só.
+   *
+   * Existiam duas leituras para isto — `latestQuoteDate` e `quoteCurrency` —
+   * e corriam em série por cada símbolo do ecrã. Numa carteira de seis
+   * posições eram doze idas à base de dados só para saber o que já estava na
+   * mesma linha.
+   *
+   * E a moeda vinha de uma linha ao acaso: o `quoteCurrency` fazia `limit(1)`
+   * **sem ordenar**. Se a fonte tiver mudado de moeda a meio da série, o preço
+   * aparecia convertido pela moeda errada sem nada que o denunciasse. Aqui a
+   * moeda é a da cotação mais recente, que é a que corresponde ao preço que se
+   * está a mostrar.
+   */
+  latestQuoteHeader(symbol: string): Promise<{ date: string; currency: string | null } | null>;
   /** Todos os símbolos registados, de todos os ambientes. Só para diagnóstico. */
   listAllAssetSymbols(): Promise<string[]>;
   /**

@@ -3,7 +3,7 @@
 > **Lê isto primeiro.** É o ponto de situação da última sessão, verificado contra
 > o repositório, a base de dados e o GitHub — não de memória.
 >
-> Última atualização: 2026-08-20. **Começa pela secção 0-hoje.**
+> Última atualização: 2026-10-21. **Começa pela secção 0-hoje.**
 >
 > Antes disso: Os **PRs #45 e #43 estão integrados e
 > em produção** (www.rachar.pt): janelas contra os índices, correções de cálculo
@@ -14,6 +14,69 @@
 > convites opt-in — migrações **0044 e 0045 já aplicadas** no Supabase), SEO,
 > recibo→despesa e streak. Autorizado pelo Tiago com «Avança com todos, exceto
 > os SSO par ajá».
+
+---
+
+## 0-hoje. Sessão de 2026-10-21 — revisão da plataforma: isolamento, velocidade, varrimento
+
+Pedido do Tiago: *"revê de forma completa a plataforma, assegura que tudo está
+a funcionar bem e rápido… confirma que nunca há dados a serem registados no
+utilizador ou ambiente errado"*. Em produção já estão os PRs **#52, #53 e #54**
+(pop-ups do património, a compra que falta, o funil, o rendimento a dividir).
+
+### O isolamento entre ambientes: auditado, e agora com guarda
+
+Auditadas **as 158 consultas** do `SupabaseRepository`, uma a uma, contra o
+esquema real (as 18 tabelas com `space_id`). **Nenhuma escreve ou lê fora do
+ambiente.** 90 filtram explicitamente; as 19 que não filtram atravessam
+ambientes de propósito e estão todas justificadas — consola de admin atrás de
+`isAdmin`, cron das cotações, convites por token, e duas leituras de logo que
+procuram o bem pelo id só para depois **confirmarem a pertença** antes de
+responder.
+
+Também confirmado o caminho de cima: o cookie `fin_space` **só escolhe de entre
+os ambientes do próprio** (`spaces.find(...) ?? spaces[0]`), e todas as 25
+actions que recebem um id do formulário passam `ctx.space.id` ao repositório.
+
+Fica um teste a guardar isto: `src/lib/data/fronteira-de-ambiente.test.ts`.
+Percorre todos os métodos e exige que quem toca numa tabela de ambiente nomeie
+o `space_id` — ou esteja numa lista de exceções **com o motivo escrito**.
+Verificado a apanhar a falha histórica (tirei o filtro do `softDeleteExpense` e
+o teste nomeou-o).
+
+### Velocidade: medida, não estimada
+
+Instrumentei o repositório (temporariamente) para registar cada ida à base de
+dados por visita. O que estava caro:
+
+- **Cotações: três idas por símbolo**, em série (`latestQuoteDate` →
+  `listQuotes` → `quoteCurrency`). No Património, com seis posições, eram **18
+  viagens só para isso** — de 29 no total.
+- **Importações lidas duas vezes** no mesmo render do Saldo (a lista de lotes e
+  os lembretes perguntavam o mesmo).
+
+Corrigido:
+
+- `latestQuoteHeader` traz a data e a moeda **numa ida só** — três passam a
+  duas, em todos os ecrãs com preços. De caminho, corrige uma mentira pequena:
+  o `quoteCurrency` fazia `limit(1)` **sem ordenar** e podia devolver a moeda de
+  uma linha ao acaso; passa a ser a da cotação mais recente, a mesma linha de
+  onde sai o preço.
+- `lerImportacoes` memoizado por pedido, como já estavam os ativos.
+
+Medido depois: Património de **29 → 14** idas por visita.
+
+### Varrimento: 26 rotas, desktop e telemóvel
+
+Todas a 200, sem erros de JavaScript, sem ecrãs de erro, sem transbordo
+horizontal — também com **letra base a 20 e 24 px** e **modo privacidade
+ligado**, que foi onde a app já partiu no passado.
+
+### Por decidir pelo Tiago (continua de pé)
+
+O menu do Património tem **dois separadores chamados "Avaliação"**
+(`/patrimonio/dcf` e `/patrimonio/avaliacao`), os dois a avaliar empresas por
+fluxos de caixa. Qual fica.
 
 ---
 
