@@ -1,28 +1,18 @@
-import { ValuationCalculator } from "@/components/ValuationCalculator";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Avaliação · Rachar" };
-export const dynamic = "force-dynamic";
-
+/**
+ * O endereço antigo da avaliação, que agora aponta para a que ficou.
+ *
+ * **Havia duas páginas chamadas "Avaliação" no mesmo menu**, as duas a avaliar
+ * empresas por fluxos de caixa. Esta era a primeira: uma folha de rascunho que
+ * não guardava nada. A outra (`/patrimonio/dcf`) faz a mesma conta, guarda o
+ * estudo com os pressupostos do dia, e liga-se ao funil — quem avalia uma
+ * empresa quer quase sempre voltar ao número, e aqui o número morria ao fechar
+ * o separador.
+ *
+ * Fica o redirecionamento e não um 404: quem tiver isto nos favoritos ou num
+ * link antigo aterra no sítio certo em vez de numa parede.
+ */
 export default function Page() {
-  return (
-    <div className="space-y-6">
-      <header className="space-y-2">
-        <p className="label">Património</p>
-        <h1 className="text-2xl">Avaliação</h1>
-        <p className="max-w-2xl text-sm text-fg-muted">
-          Quanto vale uma empresa pelos fluxos de caixa que gera. Os números não
-          ficam guardados: é uma folha de rascunho.
-        </p>
-      </header>
-
-      <p className="max-w-2xl rounded-lg border border-line bg-bg-subtle p-4 text-sm text-fg-muted">
-        Isto não é aconselhamento financeiro e não substitui ler o relatório da
-        empresa. O resultado depende inteiramente do que escreveres: mudar a taxa
-        de desconto em um ponto percentual muda o valor por ação em dezenas de por
-        cento. É por isso que aparecem três cenários e não um número.
-      </p>
-
-      <ValuationCalculator />
-    </div>
-  );
+  redirect("/patrimonio/dcf");
 }

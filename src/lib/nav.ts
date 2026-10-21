@@ -70,7 +70,6 @@ export const SECTIONS: NavSection[] = [
       { href: "/patrimonio/dcf", label: "Avaliação" },
       { href: "/patrimonio/avaliacoes", label: "Funil" },
       { href: "/patrimonio/fire", label: "FIRE" },
-      { href: "/patrimonio/avaliacao", label: "Avaliação" },
       { href: "/patrimonio/importar", label: "Importar" },
     ],
   },

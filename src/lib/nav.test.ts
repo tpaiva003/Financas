@@ -53,9 +53,44 @@ describe("Património", () => {
       "Avaliação",
       "Funil",
       "FIRE",
-      "Avaliação",
       "Importar",
     ]);
+  });
+});
+
+describe("dois separadores com o mesmo nome", () => {
+  /**
+   * O Património teve durante meses **dois separadores chamados "Avaliação"**,
+   * lado a lado, os dois a avaliar empresas por fluxos de caixa — um guardava o
+   * estudo, o outro era uma folha de rascunho. De fora não havia como saber
+   * qual era qual, e carregar no errado perdia o trabalho ao fechar o separador.
+   *
+   * O teste que havia listava os nomes à mão, e por isso **tinha o duplicado lá
+   * escrito**: passava a verde com o problema à vista. A regra é esta, e é ela
+   * que falha sozinha da próxima vez.
+   */
+  it("não existem, dentro da mesma secção", () => {
+    const repetidos: string[] = [];
+    for (const s of SECTIONS) {
+      const vistos = new Set<string>();
+      for (const c of s.children ?? []) {
+        if (vistos.has(c.label)) repetidos.push(`${s.label} → ${c.label}`);
+        vistos.add(c.label);
+      }
+    }
+    expect(repetidos, `separadores repetidos: ${repetidos.join(", ")}`).toEqual([]);
+  });
+
+  it("nem dois separadores a apontar para o mesmo sítio", () => {
+    const repetidos: string[] = [];
+    for (const s of SECTIONS) {
+      const vistos = new Set<string>();
+      for (const c of s.children ?? []) {
+        if (vistos.has(c.href)) repetidos.push(`${s.label} → ${c.href}`);
+        vistos.add(c.href);
+      }
+    }
+    expect(repetidos).toEqual([]);
   });
 });
 
