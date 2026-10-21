@@ -109,15 +109,17 @@ deixou de ter separador aceso.
 
 De 24 entradas de menu para 21, e as quatro secções do topo intactas.
 
-### Por decidir pelo Tiago (continua de pé)
+### Nada por decidir
 
-Do rendimento partilhado (PR #54), duas perguntas que ficaram em aberto:
+As duas perguntas que tinham ficado em aberto do rendimento partilhado (PR #54)
+**estão fechadas, com a resposta "fica como está"**, dada pelo Tiago a
+2026-10-21: *"não vejo a necessidade"*.
 
-- Um **estorno** de uma despesa partilhada aparece como "Rendimento", tal como
-  um ordenado dividido. São a mesma coisa para a app. Dizer-lhes nomes
-  diferentes obrigava a guardar qual é qual.
-- O **total do mês** continua a abater os rendimentos ao que se gastou. Quem
-  registar um ordenado partilhado vê o mês "a gastar menos".
+- Um **estorno** continua a aparecer como "Rendimento", tal como um ordenado
+  dividido.
+- O **total do mês** continua a abater os rendimentos ao que se gastou.
+
+Não voltar a levantá-las sem o Tiago pedir. Ver o `DECISOES.md`.
 
 ---
 
