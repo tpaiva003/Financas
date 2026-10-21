@@ -3167,3 +3167,39 @@ aparecer nessa visita.
 A leitura que responde a "quais é que não têm movimentos" traz **só os ids dos
 bens que têm**, e não os movimentos todos: a pergunta faz-se na página mais
 visitada da app e a resposta é quase sempre "nenhum".
+
+### O menu: nomes que se explicam, e um mapa só
+
+Eram 24 entradas de menu para 21 destinos, com dois "Importar", dois "Despesas"
+e dois "Avaliação". Três decisões, e o que cada uma troca.
+
+**O nome é a única coisa que se lê.** Quem está a procurar lê o separador, não a
+secção onde está — e "Importar" (banco) e "Importar" (corretora) estavam a dois
+cliques um do outro. Ficam "Importar extrato", "Em que gasto" e "Carteira": mais
+compridos, e é esse o preço. Há duas regras em `nav.test.ts` a guardar isto,
+dentro da secção e entre secções.
+
+**Um separador fixo custa o mesmo que o Resumo.** A importação da corretora
+ocupava, todos os dias, o peso visual de uma página que se abre duas vezes por
+ano. Passou a link nos Ativos — onde o trabalho acaba — e a página ganhou um
+"← Ativos", porque sem separador aceso o regresso ficava dependente do botão do
+browser, que numa PWA instalada pode não existir. A rota não mudou.
+
+**Blocos em vez de fila.** Sete separadores seguidos lêem-se como uma lista de
+funcionalidades. O `grupo` do `NavItem` junta-os em blocos com um cabeçalho
+pequeno — "O que tenho", "Decidir" — e são três de cada vez em vez de sete. É
+opcional: sem `grupo`, a secção continua a ser uma fila só, que é o que querem
+as que têm três ou quatro páginas.
+
+**E o telemóvel passou a dizer o mesmo que o computador.** A barra de baixo
+tinha um quinto botão ("Acertos") que no computador vivia dentro do "Mais" —
+com um comentário por cima a garantir que eram "as mesmas secções do topo". Um
+comentário não verifica nada: agora há um teste que lê o `layout.tsx` e falha se
+algum botão da barra não for uma secção, ou se forem mais do que elas. Fechar
+contas é a conclusão do saldo, e é lá que passou a viver.
+
+### Uma rota que morre deixa um reencaminhamento, não um 404
+O `/patrimonio/avaliacao` era o segundo "Avaliação" do Património e saiu do
+menu. A página ficou, a reencaminhar para `/patrimonio/dcf`: quem tiver o link
+nos favoritos chega ao sítio certo em vez de a um ecrã de erro, e o custo é um
+ficheiro de três linhas. O componente que só ela usava saiu.

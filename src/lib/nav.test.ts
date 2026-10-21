@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { SECTIONS, isSectionActive, moreLinks, sectionOf } from "./nav";
 
 describe("estrutura do menu", () => {
@@ -13,6 +15,19 @@ describe("estrutura do menu", () => {
       "Análise",
       "Património",
     ]);
+  });
+
+  it("os acertos vivem dentro do Saldo, e não no menu Mais", () => {
+    /**
+     * Fechar contas é a conclusão do saldo, não uma tarefa administrativa — e
+     * estava em dois sítios diferentes conforme o aparelho: um botão na barra
+     * de baixo do telemóvel, escondido dentro do "Mais" no computador. Quem
+     * usava os dois aprendia dois mapas da mesma app.
+     */
+    const saldo = SECTIONS.find((s) => s.label === "Saldo")!;
+    expect(saldo.children?.map((c) => c.href)).toEqual(["/dashboard", "/acertos"]);
+    expect(isSectionActive(saldo, "/acertos")).toBe(true);
+    expect(moreLinks({ isAdmin: false }).map((l) => l.href)).not.toContain("/acertos");
   });
 
   it("despesas e rendimentos vivem juntos, nos movimentos", () => {
@@ -32,13 +47,16 @@ describe("Análise", () => {
   it("está dividida em vistas, em vez de um rolo só", () => {
     const analise = SECTIONS.find((s) => s.label === "Análise")!;
     expect(analise.children?.map((c) => c.label)).toEqual([
-      "Despesas",
+      // "Em que gasto" e não "Despesas": havia um separador "Despesas" aqui e
+      // outro nos Movimentos, e a diferença entre eles — a lista e a análise —
+      // não estava em nenhum dos dois nomes.
+      "Em que gasto",
       "Categorias",
       "Evolução",
       // As despesas e o património respondem a perguntas diferentes, e antes
       // estavam todas debaixo de Análise sem distinção — o que fazia a segunda
       // não existir: quem entrava via só despesas e concluía que era isso.
-      "Património",
+      "Carteira",
     ]);
   });
 });
@@ -53,8 +71,45 @@ describe("Património", () => {
       "Avaliação",
       "Funil",
       "FIRE",
-      "Importar",
     ]);
+  });
+
+  it("os separadores vêm em dois blocos, e não numa fila de sete", () => {
+    /**
+     * Sete separadores seguidos lêem-se como uma lista de funcionalidades. São
+     * duas perguntas diferentes — o que tenho hoje, e o que estou a decidir —
+     * e é isso que o `grupo` diz, com um cabeçalho pequeno à frente de cada
+     * bloco.
+     */
+    const pat = SECTIONS.find((s) => s.label === "Património")!;
+    expect(pat.children?.map((c) => c.grupo)).toEqual([
+      "O que tenho",
+      "O que tenho",
+      "O que tenho",
+      "Decidir",
+      "Decidir",
+      "Decidir",
+    ]);
+  });
+
+  it("os separadores de um bloco estão todos seguidos", () => {
+    // O `SectionNav` desenha um cabeçalho a cada mudança de grupo: um grupo
+    // interrompido e retomado aparecia duas vezes, com o mesmo nome.
+    for (const s of SECTIONS) {
+      const grupos = (s.children ?? []).map((c) => c.grupo ?? null);
+      const blocos = grupos.filter((g, i) => g !== grupos[i - 1]);
+      const nomeados = blocos.filter((g): g is string => g !== null);
+      expect(new Set(nomeados).size, `${s.label}: grupo interrompido`).toBe(nomeados.length);
+    }
+  });
+
+  it("'Importar da corretora' sai dos separadores", () => {
+    // Não é um sítio onde se esteja: é uma coisa que se faz de vez em quando e
+    // que acaba na lista de ativos. Passou a ser um link lá, e como separador
+    // permanente pesava o mesmo que o Resumo, ao lado do qual se vê todos os
+    // dias. A página continua a existir — o que sai é o separador.
+    const hrefs = SECTIONS.flatMap((s) => s.children ?? []).map((c) => c.href);
+    expect(hrefs).not.toContain("/patrimonio/importar");
   });
 });
 
@@ -79,6 +134,30 @@ describe("dois separadores com o mesmo nome", () => {
       }
     }
     expect(repetidos, `separadores repetidos: ${repetidos.join(", ")}`).toEqual([]);
+  });
+
+  it("nem em secções diferentes", () => {
+    /**
+     * Havia dois "Importar" (extratos do banco, ficheiros da corretora) e dois
+     * "Despesas" (a lista, e a análise de onde foi o dinheiro), em secções
+     * diferentes. Quem só lê o separador — que é quem está a procurar — tinha
+     * de adivinhar pela secção onde estava, e as duas estão a um clique uma da
+     * outra. O nome tem de dizer o que é, sozinho.
+     */
+    const porLabel = new Map<string, string[]>();
+    for (const s of SECTIONS) {
+      for (const c of s.children ?? []) {
+        // O separador raiz repete o nome da secção de propósito ("Saldo" dentro
+        // de "Saldo"): é a mesma página, não duas coisas com o mesmo nome.
+        if (c.href === s.href) continue;
+        porLabel.set(c.label, [...(porLabel.get(c.label) ?? []), s.label]);
+      }
+    }
+    const repetidos = [...porLabel].filter(([, onde]) => onde.length > 1);
+    expect(
+      repetidos.map(([label, onde]) => `${label} (${onde.join(", ")})`),
+      "o mesmo nome em secções diferentes",
+    ).toEqual([]);
   });
 
   it("nem dois separadores a apontar para o mesmo sítio", () => {
@@ -127,9 +206,13 @@ describe("sectionOf", () => {
     expect(sectionOf("/patrimonio")?.label).toBe("Património");
   });
 
+  it("encontra os acertos dentro do Saldo", () => {
+    expect(sectionOf("/acertos")?.label).toBe("Saldo");
+  });
+
   it("devolve nada para páginas fora das secções", () => {
     expect(sectionOf("/mensagens")).toBeUndefined();
-    expect(sectionOf("/acertos")).toBeUndefined();
+    expect(sectionOf("/ambiente")).toBeUndefined();
   });
 });
 
@@ -138,7 +221,7 @@ describe("moreLinks", () => {
     const links = moreLinks({ isAdmin: false }).map((l) => l.href);
     expect(links).not.toContain("/plataforma");
     expect(links).not.toContain("/mensagens");
-    expect(links).toContain("/acertos");
+    expect(links).toContain("/ajuda");
   });
 
   it("mostra-as ao admin", () => {
@@ -178,5 +261,40 @@ describe("separador raiz de uma secção", () => {
       const acesos = filhos.filter((f) => ativo(f, "/patrimonio", pathname));
       expect(acesos).toHaveLength(1);
     }
+  });
+});
+
+/**
+ * A barra de baixo do telemóvel e o topo do computador dizem o mesmo.
+ *
+ * O comentário no `layout.tsx` já afirmava isto — "as mesmas secções do topo,
+ * para o mapa mental ser um só" — e por baixo dele havia um quinto botão
+ * ("Acertos") que no computador estava escondido dentro do menu "Mais". Quem
+ * usava os dois aparelhos aprendia dois mapas da mesma app, e o comentário
+ * garantia que ninguém ia conferir.
+ *
+ * É um teste de código-fonte porque o layout é um componente de servidor que
+ * lê a sessão e o ambiente: renderizá-lo aqui custava mais do que o que
+ * protege, e o que se quer verificar é a lista, não o HTML.
+ */
+describe("a barra do telemóvel espelha as secções do topo", () => {
+  const layout = readFileSync(join(process.cwd(), "src", "app", "(app)", "layout.tsx"), "utf8");
+  /** Os botões da barra, sem o caso do submitter (que só vê despesas). */
+  const hrefs = [...layout.matchAll(/<BottomLink\s+href="([^"]+)"/g)].map((m) => m[1]!);
+
+  it("encontra os botões (senão isto não testa nada)", () => {
+    expect(hrefs.length).toBeGreaterThan(4);
+  });
+
+  it("não tem destinos fora das secções", () => {
+    const seccoes = new Set(SECTIONS.map((s) => s.href));
+    const fora = [...new Set(hrefs)].filter((h) => !seccoes.has(h));
+    expect(fora, `na barra de baixo e em secção nenhuma: ${fora.join(", ")}`).toEqual([]);
+  });
+
+  it("não tem mais botões do que secções", () => {
+    // Cinco não cabem a 360 px sem o texto encavalitar, e o quinto era sempre
+    // o que não existia no computador.
+    expect(new Set(hrefs).size).toBeLessThanOrEqual(SECTIONS.length);
   });
 });
