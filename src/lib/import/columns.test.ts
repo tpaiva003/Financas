@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  detectDecimalSeparator,
   parseAmountCents,
   parseDate,
   detectMapping,
@@ -219,5 +220,56 @@ describe("headerFingerprint", () => {
   it("devolve null quando o cabeçalho é pobre demais para identificar", () => {
     expect(headerFingerprint([["Data", "Valor"]], 0)).toBeNull();
     expect(headerFingerprint([], 0)).toBeNull();
+  });
+});
+
+describe("detectDecimalSeparator", () => {
+  /**
+   * O caso que custou dinheiro: uma compra de 493,98 EUR importada como
+   * 493 975,00 EUR, com o "500.00" da linha ao lado a ser lido bem.
+   */
+  it("um único 500.00 na coluna prova que o ponto é decimal", () => {
+    expect(detectDecimalSeparator(["500.00", "555.36", "493.975"])).toBe(".");
+  });
+
+  it("um único 1234,56 prova que a vírgula é decimal", () => {
+    expect(detectDecimalSeparator(["1.234,56", "2235,55"])).toBe(",");
+  });
+
+  it("não decide quando a coluna não diz nada", () => {
+    expect(detectDecimalSeparator(["1000", "2000"])).toBeNull();
+    expect(detectDecimalSeparator([])).toBeNull();
+    // Os dois usados como decimal: o ficheiro é incoerente e não se adivinha.
+    expect(detectDecimalSeparator(["1.50", "2,50"])).toBeNull();
+  });
+});
+
+describe("parseAmountCents com o separador da coluna", () => {
+  it("lê 493.975 como 493,975 quando o ponto é decimal", () => {
+    expect(parseAmountCents("493.975", ".")).toBe(49398);
+  });
+
+  it("lê 493.975 como 493 975 quando a vírgula é decimal", () => {
+    expect(parseAmountCents("493.975", ",")).toBe(49397500);
+  });
+
+  /**
+   * Sem o separador da coluna, um número sozinho continua a ser lido pela regra
+   * portuguesa — que é a certa quando não se sabe mais nada, e é exatamente a
+   * que engana num ficheiro de decimais com ponto.
+   */
+  it("sem separador vale a regra de sempre", () => {
+    expect(parseAmountCents("493.975")).toBe(49397500);
+  });
+
+  it("os milhares do outro sinal são ignorados", () => {
+    expect(parseAmountCents("1,234.56", ".")).toBe(123456);
+    expect(parseAmountCents("1.234,56", ",")).toBe(123456);
+  });
+
+  it("não estraga o que já estava certo", () => {
+    expect(parseAmountCents("500.00", ".")).toBe(50000);
+    expect(parseAmountCents("2235,55", ",")).toBe(223555);
+    expect(parseAmountCents("-45,20", ",")).toBe(-4520);
   });
 });

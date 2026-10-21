@@ -22,7 +22,7 @@ export function TransferBalanceForm({
         </p>
       ) : null}
       <p className="text-sm text-fg-muted">
-        Em vez de pagar, move o saldo atual ({balanceLabel}) para outro ambiente
+        Em vez de pagar, move o saldo atual (<span className="dinheiro">{balanceLabel}</span>) para outro ambiente
         com os mesmos participantes. Aqui fica acertado; lá passa a constar como
         despesa.
       </p>

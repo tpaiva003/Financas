@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { THEME_SCRIPT } from "@/components/ThemeToggle";
+import { PRIVACY_SCRIPT } from "@/components/PrivacyToggle";
 
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const display = Space_Grotesk({
@@ -22,7 +23,25 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://rachar.pt";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Rachar · Contas à Moda do Porto",
-  description: "Rachar, dividir contas partilhadas sem dramas. Nascido no Porto.",
+  description:
+    "Rachar, as contas partilhadas e o património no mesmo sítio: dividir despesas, importar extratos, rendimentos, investimentos e FIRE. Nascido no Porto.",
+  // O que as partilhas e os motores de busca mostram. O `og:image` vem do
+  // `opengraph-image.tsx` ao lado, gerado no build — não é preciso listá-lo.
+  openGraph: {
+    type: "website",
+    siteName: "Rachar",
+    locale: "pt_PT",
+    url: "/",
+    title: "Rachar · Contas à Moda do Porto",
+    description:
+      "Divide as contas da casa, importa extratos, acompanha o património e sabe em que ano trabalhar passa a ser opcional. Privado, sem anúncios, nascido no Porto.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Rachar · Contas à Moda do Porto",
+    description:
+      "Divide as contas da casa, importa extratos, acompanha o património e sabe em que ano trabalhar passa a ser opcional.",
+  },
   manifest: "/manifest.webmanifest",
   // O iOS ignora os ícones do manifest: usa o apple-touch-icon, e só em PNG.
   // Sem ele, "Adicionar ao ecrã principal" mete uma miniatura da página em vez
@@ -40,7 +59,10 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Rachar",
   },
-  robots: { index: false, follow: false },
+  // Sem regra global de robots: houve uma, a dizer "não indexar", e escondia o
+  // site INTEIRO dos motores de busca — landing incluída. O que é privado
+  // esconde-se no layout do grupo `(app)` e nas páginas de token; o resto é
+  // para ser encontrado. O teste em `seo.test.ts` guarda isto.
 };
 
 export const viewport: Viewport = {
@@ -55,8 +77,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt">
       <head>
-        {/* Aplica o tema guardado antes de pintar (evita flash ao mudar de página). */}
+        {/* Aplica o tema e o modo privacidade guardados antes de pintar: sem
+            isto, cada navegação mostrava um instante o tema errado — ou, pior,
+            os valores que o modo privacidade existe para tapar. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: PRIVACY_SCRIPT }} />
       </head>
       <body className={`${sans.variable} ${display.variable} ${mono.variable} font-sans`}>
         {children}

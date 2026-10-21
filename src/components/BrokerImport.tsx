@@ -159,7 +159,7 @@ function ColumnPanel({ file }: { file: BrokerFilePreview }) {
         </p>
       </div>
 
-      <div className="-mx-1 overflow-x-auto px-1">
+      <div className="scroll-x">
         <table className="w-full min-w-[32rem] border-collapse text-left text-xs">
           <tbody>
             {file.sample.map((row, r) => (
@@ -382,7 +382,7 @@ function FileCard({
                       {" · "}
                       {compras > 0 ? `${compras} compra(s)` : ""}
                       {vendas > 0 ? `${compras > 0 ? ", " : ""}${vendas} venda(s)` : ""}
-                      {investido > 0 ? ` · ${formatCents(investido)}` : ""}
+                      {investido > 0 ? <> · <span className="dinheiro">{formatCents(investido)}</span></> : ""}
                       {g.duplicates > 0 ? ` · ${g.duplicates} repetido(s)` : ""}
                     </span>
                     <span className="text-fg-faint">
@@ -401,8 +401,8 @@ function FileCard({
                   <span className="text-fg">{h.name}</span>
                   <span className="font-mono text-fg-faint">
                     {" · "}
-                    {h.quantity} un.
-                    {h.unitPriceCents !== null ? `, hoje a ${formatCents(h.unitPriceCents)}` : ""}
+                    <span className="so-aberto">{h.quantity} un.</span>
+                    {h.unitPriceCents !== null ? <><span className="so-aberto">, </span>hoje a <span className="preco-un">{formatCents(h.unitPriceCents)}</span></> : ""}
                   </span>
                 </li>
               ))}

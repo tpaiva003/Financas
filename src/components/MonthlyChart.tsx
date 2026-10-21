@@ -36,7 +36,7 @@ export function MonthlyChart({
         {baselineCents > 0 ? (
           <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
             <span className="mr-1 inline-block h-[2px] w-4 align-middle bg-fg-faint" />
-            {baselineLabel}: {formatCents(baselineCents)}
+            {baselineLabel}: <span className="dinheiro">{formatCents(baselineCents)}</span>
           </p>
         ) : null}
       </div>

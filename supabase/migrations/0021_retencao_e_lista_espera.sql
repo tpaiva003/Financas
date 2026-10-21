@@ -42,11 +42,27 @@ comment on column waitlist.invited_at is
   'Quando se enviou o convite. Null = ainda na fila.';
 
 -- Um email só entra uma vez na fila: insistir não faz subir.
--- Cria-se em índice único sobre lower(email) para "A@x.pt" e "a@x.pt" serem o
--- mesmo. Se já houver duplicados, isto falha — e é bom que falhe agora, em vez
--- de deixar a mesma pessoa receber dois convites.
-create unique index if not exists waitlist_email_key on waitlist (lower(email));
+-- Índice único sobre lower(email), para "A@x.pt" e "a@x.pt" serem o mesmo.
+--
+-- ATENÇÃO AO NOME. Isto dizia `waitlist_email_key`, que é precisamente o nome
+-- que o Postgres já deu ao índice da restrição `email text not null unique` da
+-- 0001_init. O `if not exists` encontrava esse, emitia um NOTICE e nunca criava
+-- o índice sobre lower(email) — enquanto o comentário aqui prometia que falharia
+-- em voz alta se houvesse duplicados. É o mesmo modo de falha silenciosa que
+-- esta migração foi reescrita para evitar, reintroduzido duas instruções
+-- abaixo. Daí o nome próprio.
+create unique index if not exists waitlist_email_lower_key on waitlist (lower(email));
+
+-- A restrição original continua a existir e é sensível a maiúsculas, o que a
+-- torna redundante face à de cima. Fica, porque removê-la não acrescenta nada.
 
 alter table waitlist enable row level security;
--- Sem políticas: só o service role lhe toca. Uma lista de emails de pessoas
--- interessadas não tem razão nenhuma para ser legível pelo cliente.
+
+-- A 0001_init já tinha ligado o RLS nesta tabela e criado DUAS políticas que
+-- continuavam de pé: uma a deixar qualquer cliente inserir desde que pusesse
+-- `consent = true`, e outra a deixar qualquer utilizador da app ler a lista
+-- toda. O comentário que estava aqui — "sem políticas: só o service role lhe
+-- toca" — descrevia uma coisa que não era verdade. Agora é: as políticas caem,
+-- e a fila passa a ser mesmo só do service role.
+drop policy if exists waitlist_insert on waitlist;
+drop policy if exists waitlist_select on waitlist;

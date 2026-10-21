@@ -70,7 +70,8 @@ function TemplateRow({
             {t.status === "paused" ? <span className="ml-2 chip border-hair text-fg-faint">Em pausa</span> : null}
           </p>
           <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">
-            {t.amountLabel} · {t.frequencyLabel} · próxima {new Date(t.nextDate).toLocaleDateString("pt-PT")}
+            <span className="dinheiro">{t.amountLabel}</span> · {t.frequencyLabel} · próxima{" "}
+            {new Date(t.nextDate).toLocaleDateString("pt-PT")}
             {t.endDate ? ` · até ${new Date(t.endDate).toLocaleDateString("pt-PT")}` : ""}
           </p>
           <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-faint">

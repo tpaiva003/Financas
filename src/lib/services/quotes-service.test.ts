@@ -132,6 +132,65 @@ describe("refreshStalePrices", () => {
   });
 });
 
+/**
+ * O caso do Tiago: um investimento com o símbolo certo ("googl.us"), a fonte a
+ * recusar o pedido, e a app a dizer que estava tudo em dia.
+ */
+describe("refreshStalePrices quando a fonte recusa", () => {
+  async function comGoogl() {
+    const repo = new MockRepository();
+    const space = await repo.createSpace({ name: "Teste", createdBy: "u1", members: [] });
+    await repo.createAsset({
+      spaceId: space.id,
+      name: "Alphabet Inc Class A",
+      kind: "investimento",
+      quantity: 63,
+      unitCostCents: 157_10,
+      unitPriceCents: null,
+      valueCents: null,
+      purchasedAt: null,
+      notes: null,
+      symbol: "googl.us",
+    });
+    return space;
+  }
+
+  /**
+   * O buraco: `series` só era atribuída quando vinham cotações, e por isso o
+   * `problem` saía SEMPRE nulo. O botão respondia "1 já estava em dia" a um
+   * investimento que não tem preço nenhum — a mensagem mais tranquilizadora
+   * possível, exactamente onde devia estar um erro.
+   */
+  it("diz porque é que não há cotação, em vez de ficar calado", async () => {
+    const space = await comGoogl();
+    vi.stubGlobal("fetch", async () => new Response(BLOQUEIO, { status: 200 }));
+
+    const [f] = await refreshStalePrices(space.id, { force: true });
+
+    expect(f!.refreshed).toBe(false);
+    expect(f!.problem).not.toBeNull();
+    expect(f!.problem).toMatch(/recusou|não conhece|responde/i);
+  });
+
+  it("distingue a fonte a recusar de um símbolo que não existe", async () => {
+    const space = await comGoogl();
+    vi.stubGlobal("fetch", async () => new Response("No data", { status: 200 }));
+
+    const [f] = await refreshStalePrices(space.id, { force: true });
+
+    expect(f!.problem).toContain("não conhece este símbolo");
+  });
+
+  it("diz quando a fonte responde com um erro, e com que código", async () => {
+    const space = await comGoogl();
+    vi.stubGlobal("fetch", async () => new Response("erro", { status: 429 }));
+
+    const [f] = await refreshStalePrices(space.id, { force: true });
+
+    expect(f!.problem).toContain("429");
+  });
+});
+
 describe("refreshAssetPrice", () => {
   /** Uma resposta do Yahoo com muitos dias, o último a 495,29 USD. */
   function serieLonga(): string {

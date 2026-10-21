@@ -5,6 +5,8 @@ import { isAdmin } from "@/lib/users";
 import { getRepository } from "@/lib/data";
 import type { ContactMessage } from "@/lib/data";
 import { InviteUserForm } from "@/components/InviteUserForm";
+import { AtualizaSozinho } from "@/components/AtualizaSozinho";
+import { TICKET_STATUS_LABELS, ticketAberto } from "@/lib/domain";
 import {
   markMessageReadAction,
   archiveMessageAction,
@@ -17,24 +19,49 @@ export const dynamic = "force-dynamic";
 export default async function MensagensPage({
   searchParams,
 }: {
-  searchParams: { arquivadas?: string };
+  searchParams: { arquivadas?: string; pedidos?: string };
 }) {
   const user = await requireUser();
   if (!isAdmin(user.id)) redirect("/dashboard");
 
   const showArchived = searchParams.arquivadas === "1";
-  const all = await getRepository().listContactMessages();
+  const showPedidos = searchParams.pedidos === "1";
+  // As duas listas juntas: mensagens e pedidos não dependem um do outro.
+  const [all, pedidos] = await Promise.all([
+    getRepository().listContactMessages(),
+    getRepository().listTicketsTodos().catch(() => null),
+  ]);
   const active = all.filter((m) => !m.archivedAt);
   const archived = all.filter((m) => m.archivedAt);
   const unread = active.filter((m) => !m.readAt).length;
   const list = showArchived ? archived : active;
 
+  /**
+   * Os pedidos de ajuda dos utilizadores, ao lado das mensagens da landing.
+   *
+   * Ficam no mesmo sítio porque são a mesma coisa do ponto de vista de quem
+   * atende: alguém escreveu e está à espera. A diferença é que um pedido é uma
+   * conversa com estado, e uma mensagem da landing é um recado.
+   *
+   * Uma leitura falhada vira `null` e nunca lista vazia — a migração dos
+   * pedidos pode não ter corrido, e "não há pedidos" seria mentira.
+   */
+  const pedidosAbertos = (pedidos ?? []).filter((p) => ticketAberto(p.status));
+
   return (
     <div className="space-y-7">
+      {/* Chegam de outro lado enquanto esta página está aberta. */}
+      <AtualizaSozinho segundos={45} />
+
       <div>
-        <p className="eyebrow">Da landing pública</p>
+        <p className="eyebrow">Quem escreveu</p>
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
-          Mensagens {unread > 0 ? <span className="text-fg-muted">· {unread} por ler</span> : null}
+          Mensagens{" "}
+          {unread + pedidosAbertos.length > 0 ? (
+            <span className="text-fg-muted">
+              · {unread + pedidosAbertos.length} por tratar
+            </span>
+          ) : null}
         </h1>
       </div>
 
@@ -47,12 +74,73 @@ export default async function MensagensPage({
         <InviteUserForm />
       </section>
 
-      <div className="flex items-center gap-1 rounded-full border border-hair p-1 text-sm">
-        <Tab href="/mensagens" active={!showArchived} label={`Ativas (${active.length})`} />
-        <Tab href="/mensagens?arquivadas=1" active={showArchived} label={`Arquivadas (${archived.length})`} />
+      <div className="flex flex-wrap items-center gap-1 rounded-full border border-hair p-1 text-sm">
+        <Tab
+          href="/mensagens"
+          active={!showArchived && !showPedidos}
+          label={`Ativas (${active.length})`}
+        />
+        <Tab
+          href="/mensagens?arquivadas=1"
+          active={showArchived}
+          label={`Arquivadas (${archived.length})`}
+        />
+        <Tab
+          href="/mensagens?pedidos=1"
+          active={showPedidos}
+          label={
+            pedidos === null
+              ? "Pedidos (?)"
+              : `Pedidos (${pedidosAbertos.length}${
+                  pedidos.length > pedidosAbertos.length ? ` de ${pedidos.length}` : ""
+                })`
+          }
+        />
       </div>
 
-      {list.length === 0 ? (
+      {showPedidos ? (
+        pedidos === null ? (
+          <p role="alert" className="card p-6 text-sm text-fg-muted">
+            Não consegui ler os pedidos. Falta correr a migração 0032. Não é que
+            não haja nenhum: é que ainda não sei.
+          </p>
+        ) : pedidos.length === 0 ? (
+          <p className="card p-10 text-center text-sm text-fg-muted">
+            Ainda ninguém abriu um pedido de ajuda.
+          </p>
+        ) : (
+          <ul className="card divide-y divide-hair2 p-0">
+            {pedidos.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/mensagens/pedidos/${p.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-panel2/40"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-fg">
+                      {p.subject}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-[11px] text-fg-faint">
+                      {p.createdBy} · {new Date(p.updatedAt).toLocaleDateString("pt-PT")}
+                    </span>
+                  </span>
+                  <span
+                    className={`chip shrink-0 ${
+                      p.status === "novo"
+                        ? "border-warn/50 text-warn"
+                        : p.status === "resolvido"
+                          ? "border-credit/40 text-credit"
+                          : "border-hair text-fg-muted"
+                    }`}
+                  >
+                    {TICKET_STATUS_LABELS[p.status]}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : list.length === 0 ? (
         <p className="card p-10 text-center text-sm text-fg-muted">
           {showArchived ? "Não há mensagens arquivadas." : "Ainda não há mensagens de contacto."}
         </p>

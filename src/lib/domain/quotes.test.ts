@@ -11,6 +11,7 @@ import {
   parseYahooChart,
   quotesToPrices,
   symbolCandidates,
+  moedaDeSubunidade,
 } from "./quotes";
 
 const CSV = `Date,Open,High,Low,Close,Volume
@@ -146,7 +147,7 @@ describe("symbolCandidates", () => {
   it("um ticker sem sufixo tenta primeiro as praças explícitas", () => {
     // "MSFT" sem sufixo é ambíguo para a fonte, que indexa várias bolsas. As
     // formas explícitas vão à frente para não vir o instrumento errado.
-    expect(symbolCandidates("MSFT")).toEqual(["msft.us", "msft.de", "msft"]);
+    expect(symbolCandidates("MSFT")).toEqual(["msft.us", "msft.de", "msft.pt", "msft"]);
   });
 
   it("um símbolo com sufixo é usado tal e qual", () => {
@@ -247,8 +248,97 @@ describe("forSource", () => {
     expect(forSource("sxr8.de", "yahoo")).toBe("SXR8.DE");
   });
 
+  /**
+   * O caso que denunciou o buraco: a EDP. Só o `.uk` e o `.us` estavam
+   * traduzidos, e tudo o resto passava em maiúsculas — o que acerta na
+   * Alemanha por acaso e falha em todas as outras praças. `EDP.PT` não existe
+   * no Yahoo, e o ecrã dizia "nenhum dos símbolos sugeridos tem cotações",
+   * que se lê como "o símbolo está errado" quando o símbolo estava certo.
+   */
+  it("sabe onde fica Lisboa, que numa app portuguesa não é opcional", () => {
+    expect(forSource("edp.pt", "yahoo")).toBe("EDP.LS");
+    expect(forSource("edpr.pt", "yahoo")).toBe("EDPR.LS");
+    expect(forSource("galp.pt", "yahoo")).toBe("GALP.LS");
+  });
+
+  it("traduz as outras praças europeias em vez de as deixar passar em maiúsculas", () => {
+    expect(forSource("air.fr", "yahoo")).toBe("AIR.PA");
+    expect(forSource("asml.nl", "yahoo")).toBe("ASML.AS");
+    expect(forSource("san.es", "yahoo")).toBe("SAN.MC");
+    expect(forSource("eni.it", "yahoo")).toBe("ENI.MI");
+    expect(forSource("nesn.ch", "yahoo")).toBe("NESN.SW");
+  });
+
+  it("uma praça que não conhece passa como está, sem inventar", () => {
+    // Melhor falhar de forma visível do que traduzir para um sítio errado, que
+    // devolveria a cotação de outra empresa com ar de estar tudo bem.
+    expect(forSource("xpto.zz", "yahoo")).toBe("XPTO.ZZ");
+  });
+
   it("para a Stooq fica como está, que é a forma nativa", () => {
     expect(forSource("iwda.uk", "stooq")).toBe("iwda.uk");
     expect(forSource("^spx", "stooq")).toBe("^spx");
+    expect(forSource("edp.pt", "stooq")).toBe("edp.pt");
+  });
+});
+
+/**
+ * O caso real: um ETF de Londres a 9150 pence (91,50 £) apareceu como 9150
+ * libras, e uma posição de mil e quinhentos euros como cento e quarenta e nove
+ * mil. A única coisa que distinguia as duas moedas era a caixa de uma letra —
+ * `GBp` contra `GBP` — e o parser fazia `.toUpperCase()` antes de olhar.
+ */
+describe("cotações em subunidade (pence, cêntimos, agorot)", () => {
+  function chart(currency: string, close: number): string {
+    return JSON.stringify({
+      chart: {
+        result: [
+          {
+            meta: { currency },
+            timestamp: [1754784000],
+            indicators: { quote: [{ close: [close] }] },
+          },
+        ],
+      },
+    });
+  }
+
+  it("lê GBp como libras, dividindo por cem", () => {
+    const r = parseYahooChart(chart("GBp", 9150));
+    expect(r.currency).toBe("GBP");
+    // 9150 pence = 91,50 £ = 9150 cêntimos de libra.
+    expect(r.quotes[0]!.closeCents).toBe(9150);
+  });
+
+  it("não mexe no que já vem em libras", () => {
+    const r = parseYahooChart(chart("GBP", 91.5));
+    expect(r.currency).toBe("GBP");
+    expect(r.quotes[0]!.closeCents).toBe(9150);
+  });
+
+  it("os dois dão o mesmo dinheiro, que é o ponto todo", () => {
+    const pence = parseYahooChart(chart("GBp", 9150));
+    const libras = parseYahooChart(chart("GBP", 91.5));
+    expect(pence.quotes[0]!.closeCents).toBe(libras.quotes[0]!.closeCents);
+    expect(pence.currency).toBe(libras.currency);
+  });
+
+  it("conhece as outras praças que cotam em subunidade", () => {
+    expect(parseYahooChart(chart("ZAc", 12_345)).currency).toBe("ZAR");
+    expect(parseYahooChart(chart("ZAc", 12_345)).quotes[0]!.closeCents).toBe(12_345);
+    expect(parseYahooChart(chart("ILA", 500)).currency).toBe("ILS");
+  });
+
+  it("uma moeda normal continua a passar como sempre", () => {
+    const r = parseYahooChart(chart("usd", 250.5));
+    expect(r.currency).toBe("USD");
+    expect(r.quotes[0]!.closeCents).toBe(25_050);
+  });
+
+  it("a distinção é a caixa da letra, e tem de sobreviver", () => {
+    // Se alguém voltar a normalizar antes de comparar, isto parte-se — que é
+    // exactamente o que se quer que aconteça.
+    expect(moedaDeSubunidade("GBp")).not.toBeNull();
+    expect(moedaDeSubunidade("GBP")).toBeNull();
   });
 });

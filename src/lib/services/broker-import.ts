@@ -29,6 +29,7 @@ import {
   type HoldingRow,
 } from "@/lib/import/holdings";
 import { headerColumns, headerFingerprint, type Grid } from "@/lib/import/columns";
+import { storedHoldingMapping, storedTradeMapping } from "@/lib/import/stored-mapping";
 import {
   renderSample,
   sampleForModel,
@@ -150,11 +151,10 @@ export async function buildBrokerPreview(params: {
         if (!fp) continue;
         const tpl = await repo.findImportTemplate(fp).catch(() => null);
         if (!tpl) continue;
-        if (typeof tpl.mapping.dateCol === "number") {
-          tradeMapping = tpl.mapping as unknown as TradeMapping;
-        } else if (typeof tpl.mapping.nameCol === "number") {
-          holdingMapping = tpl.mapping as unknown as HoldingMapping;
-        }
+        // Um template guardado é validado antes de valer. Em falta ou
+        // incompleto, cai para a deteção — ver `stored-mapping.ts`.
+        tradeMapping = storedTradeMapping(tpl.mapping, grid);
+        if (!tradeMapping) holdingMapping = storedHoldingMapping(tpl.mapping, grid);
         if (tradeMapping || holdingMapping) break;
       }
     }

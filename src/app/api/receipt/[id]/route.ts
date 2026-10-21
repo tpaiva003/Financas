@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const ctx = await getSpaceContext();
-  const expense = await getRepository().getExpense(params.id, ctx.viewerMemberId);
+  const expense = await getRepository().getExpense(params.id, ctx.space.id, ctx.viewerMemberId);
   if (!expense?.receiptPath) {
     return new Response("Sem recibo.", { status: 404 });
   }

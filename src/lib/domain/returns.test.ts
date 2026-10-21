@@ -144,6 +144,54 @@ describe("simulateBenchmark, a comparação justa", () => {
     expect(c.differenceCents).toBe(-5000);
   });
 
+  it("uma posição vendida com lucro não põe o índice em valores negativos", () => {
+    /**
+     * O caso que a carteira do Tiago tem e os testes não tinham: **vendas**.
+     *
+     * Compra de 10 000 € com o índice a 100, venda de tudo por 20 000 € com o
+     * índice a 110. A carteira duplicou; o índice subiu 10%.
+     *
+     * A simulação tira do índice o mesmo dinheiro que saiu da carteira — e
+     * 20 000 € a 110 são mais unidades do que as 100 que lá estavam. O índice
+     * fica com **menos 81,8 unidades**, e o "valor no índice" saía a −9 000 €.
+     * Um saldo negativo num sítio onde só se pode ter dinheiro ou não ter.
+     *
+     * O dinheiro que saiu não desapareceu: está na conta. Contá-lo dos dois
+     * lados — a carteira também o recebeu — devolve os dois números ao mundo
+     * real sem mexer na diferença entre eles.
+     */
+    const flows: CashFlow[] = [
+      { date: "2025-01-01", amountCents: 1_000_000 },
+      { date: "2026-01-01", amountCents: -2_000_000 },
+    ];
+    const c = simulateBenchmark(flows, precos, 0, "2026-01-01")!;
+
+    // 10 000 € no índice a subir 10% valem 11 000 €. Não −9 000 €.
+    expect(c.benchmarkValueCents).toBe(1_100_000);
+    // A carteira não tem posições abertas, mas tem os 20 000 € que voltaram.
+    expect(c.portfolioValueCents).toBe(2_000_000);
+    expect(c.differenceCents).toBe(900_000);
+    // O investido é o que se pôs, e não o que se pôs menos o que se tirou.
+    expect(c.investedCents).toBe(1_000_000);
+    expect(c.portfolioReturnPct).toBeCloseTo(100, 6);
+    expect(c.benchmarkReturnPct).toBeCloseTo(10, 6);
+  });
+
+  it("um dividendo não apaga as percentagens", () => {
+    // O dividendo é dinheiro que saiu do investimento para a conta. Antes
+    // entrava no "investido" com sinal negativo e encolhia o denominador.
+    const flows: CashFlow[] = [
+      { date: "2025-01-01", amountCents: 1_000_000 },
+      { date: "2026-01-01", amountCents: -50_000 },
+    ];
+    const c = simulateBenchmark(flows, precos, 1_100_000, "2026-01-01")!;
+
+    expect(c.investedCents).toBe(1_000_000);
+    // 1 100 000 em carteira + 50 000 recebidos = 1 150 000 sobre 1 000 000.
+    expect(c.portfolioReturnPct).toBeCloseTo(15, 6);
+    expect(c.benchmarkReturnPct).toBeCloseTo(10, 6);
+  });
+
   it("devolve nulo sem cotação na data de referência", () => {
     expect(simulateBenchmark([], {}, 1000, "2026-01-01")).toBeNull();
   });

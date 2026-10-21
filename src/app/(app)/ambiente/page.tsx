@@ -15,9 +15,10 @@ export const dynamic = "force-dynamic";
 export default async function AmbientePage() {
   const ctx = await getSpaceContext();
   if (ctx.viewerRole === "submitter") redirect("/despesas");
-  const [categories, accounts] = await Promise.all([
+  const [categories, accounts, convites] = await Promise.all([
     getRepository().listCategories(ctx.space.id),
     listKnownAccounts(),
+    getRepository().listMemberInvites(ctx.space.id).catch(() => []),
   ]);
   const custom = categories.filter((c) => c.spaceId);
   const defaults = categories.filter((c) => !c.spaceId);
@@ -57,6 +58,7 @@ export default async function AmbientePage() {
             role: m.role,
           }))}
           accounts={accounts}
+          pendingInvites={Object.fromEntries(convites.map((c) => [c.memberId, c.email]))}
         />
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
           Participantes com despesas ou acertos não podem ser eliminados.
@@ -70,7 +72,7 @@ export default async function AmbientePage() {
           para <span className="text-fg">submeter despesas</span> (com aprovação),
           marcando a opção e indicando o email com que vai entrar.
         </p>
-        <AddMemberForm spaceId={ctx.space.id} />
+        <AddMemberForm />
       </section>
 
       <section>

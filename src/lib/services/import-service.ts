@@ -70,6 +70,14 @@ export async function buildImportPreview(params: {
   }
 
   const transactions: NormalizedTransaction[] = [];
+  /**
+   * O UID de cada transação, na mesma ordem do array acima.
+   *
+   * É calculado aqui, e não mais à frente, porque depende de **em que ficheiro**
+   * a linha veio — e depois deste ciclo os ficheiros já estão todos misturados.
+   * Ver `uidPorFicheiro`.
+   */
+  const uids: string[] = [];
   const failed: string[] = [];
   let mappingLabel = "";
   let fingerprint: string | null = null;
@@ -134,6 +142,23 @@ export async function buildImportPreview(params: {
       failed.push(file.name);
       continue;
     }
+
+    /**
+     * Repetições DENTRO deste ficheiro contam como transações distintas.
+     *
+     * Dois cafés iguais no mesmo dia no mesmo sítio dão a mesma chave canónica,
+     * e antes o segundo desaparecia: o UID já existia, e uma transação a menos
+     * é um saldo errado. Entre ficheiros a regra é a oposta — o mesmo movimento
+     * em dois extratos que se sobrepõem é o mesmo movimento — e é por isso que
+     * a contagem recomeça a cada ficheiro em vez de ser do lote inteiro.
+     */
+    const uidPorFicheiro = new Map<string, number>();
+    for (const tx of txs) {
+      const base = stableUid(tx);
+      const ocorrencia = uidPorFicheiro.get(base) ?? 0;
+      uidPorFicheiro.set(base, ocorrencia + 1);
+      uids.push(stableUid(tx, ocorrencia));
+    }
     transactions.push(...txs);
     if (!mappingLabel) mappingLabel = describeMapping(grid, mapping);
   }
@@ -155,7 +180,7 @@ export async function buildImportPreview(params: {
   // Recolhe o estado de TODOS os ambientes do utilizador: como cada linha pode
   // ir para um ambiente diferente, o dedup e o aviso de período têm de ser
   // avaliados por ambiente.
-  const uidsInFile = new Set(transactions.map((t) => stableUid(t)));
+  const uidsInFile = new Set(uids);
   const spaces: ImportSpaceInfo[] = await Promise.all(
     targets.map(async (t) => {
       const [uids, cats, expenses] = await Promise.all([
@@ -191,14 +216,15 @@ export async function buildImportPreview(params: {
   const byUid = new Map(reconciliations.map((r) => [r.uid, r.candidateExpenseId]));
   const expenseById = new Map(defaultExpenses.map((e) => [e.id, e]));
 
-  // Repetições DENTRO do próprio lote (o mesmo movimento em dois ficheiros que
-  // se sobrepõem). Só a primeira ocorrência conta como nova.
-  const seen = new Set<string>();
+  // O mesmo UID visto outra vez só pode vir de OUTRO ficheiro do lote — dentro
+  // de cada ficheiro as ocorrências já foram numeradas e são todas distintas.
+  // Aí sim é o mesmo movimento em dois extratos que se sobrepõem.
+  const jaVisto = new Set<string>();
 
-  const rows: ImportPreviewRow[] = transactions.map((tx) => {
-    const uid = stableUid(tx);
-    const repeatedInFile = seen.has(uid);
-    seen.add(uid);
+  const rows: ImportPreviewRow[] = transactions.map((tx, i) => {
+    const uid = uids[i]!;
+    const repeatedInFile = jaVisto.has(uid);
+    jaVisto.add(uid);
     const hintExpense = expenseById.get(byUid.get(uid) ?? "");
     return {
       uid,

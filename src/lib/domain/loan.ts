@@ -23,6 +23,7 @@
  */
 
 import { assetValueCents, type AssetInput } from "./networth";
+import { buildCreditoPlano, parseCreditTerms } from "./credito";
 
 /** Teto da simulação: 100 anos. Nenhum crédito real lá chega. */
 const MAX_MONTHS = 1200;
@@ -138,6 +139,30 @@ export function buildLoan(input: LoanInput): LoanPlan {
     months++;
   }
 
+  /**
+   * O tecto foi atingido: isto não é um prazo, é o fim do ciclo.
+   *
+   * Devolver `months` aqui apresentava `MAX_MONTHS` como se fosse uma resposta —
+   * "100 anos" e uma soma de juros com seis dígitos, indistinguíveis de um
+   * empréstimo que salda mesmo. O `neverPaysOff` só apanha o caso extremo em que
+   * a prestação nem cobre o juro do PRIMEIRO mês; uma prestação um cêntimo acima
+   * disso passa por ele e amortiza tão devagar que na prática nunca acaba.
+   *
+   * Sem número é melhor do que com um número inventado: `null` diz "não sei", e
+   * o `neverPaysOff` diz porquê.
+   */
+  if (balance > 0) {
+    return {
+      monthlyPaymentCents: payment,
+      paymentIsEstimated: given === null,
+      monthsToPayOff: null,
+      totalInterestCents: null,
+      nextInterestCents,
+      nextPrincipalCents: Math.min(payment, principal + nextInterestCents) - nextInterestCents,
+      neverPaysOff: true,
+    };
+  }
+
   return {
     monthlyPaymentCents: payment,
     paymentIsEstimated: given === null,
@@ -204,8 +229,14 @@ export interface RateSummary {
  * Junta as duas metades: o que o dinheiro parado rende e o que o dinheiro
  * emprestado custa. Ver as duas ao lado uma da outra é metade da decisão de
  * amortizar ou investir.
+ *
+ * Um crédito com períodos de taxa entra pelo plano dele, não por esta conta de
+ * taxa única. Sem isso, o crédito à habitação — que é quase sempre a maior
+ * dívida — não tem `monthlyPaymentCents` nenhum escrito e desaparecia do total
+ * das prestações sem dizer nada, deixando lá uma soma que parecia certa.
  */
-export function summariseRates(assets: AssetInput[]): RateSummary {
+export function summariseRates(assets: AssetInput[], today?: string): RateSummary {
+  const hoje = today ?? new Date().toISOString().slice(0, 10);
   let annual = 0;
   let earningCount = 0;
   let monthlyPaymentsCents = 0;
@@ -216,6 +247,28 @@ export function summariseRates(assets: AssetInput[]): RateSummary {
   for (const a of assets) {
     const value = assetValueCents(a);
     if (a.kind === "divida") {
+      const terms = parseCreditTerms(a.creditTerms);
+      if (terms) {
+        const credito = buildCreditoPlano({
+          balanceCents: value,
+          startDate: hoje,
+          maturityDate: a.maturityDate,
+          periods: terms.periods,
+          indexanteRates: terms.indexanteRates,
+        });
+        // Sem plano não se soma nada: um crédito a que falta o valor da Euribor
+        // não tem prestação nenhuma que se possa afirmar, e pôr aqui a conta de
+        // taxa única era responder à pergunta errada em silêncio.
+        if (!credito.problem) {
+          const atual = credito.tramos[0]!;
+          monthlyPaymentsCents += atual.monthlyPaymentCents;
+          amortisingCount++;
+          const meses = credito.tramos.reduce((s, t) => s + t.months, 0);
+          lastPayoffMonths = Math.max(lastPayoffMonths ?? 0, meses);
+          annualDebtInterestCents += annualInterestCents(value, atual.annualRatePct);
+        }
+        continue;
+      }
       const plan = buildLoan({
         principalCents: value,
         annualRatePct: a.interestRatePct,

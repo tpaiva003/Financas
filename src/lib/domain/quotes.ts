@@ -170,6 +170,43 @@ export function looksBlocked(text: string): boolean {
  * (feriados, suspensões) vêm a `null` e saltam-se: um buraco no meio da série
  * não é um preço de zero.
  */
+/**
+ * Bolsas que cotam em subunidade: pence, cêntimos, agorot.
+ *
+ * **Londres cota em pence, e a maiúscula apagava a diferença.** O Yahoo devolve
+ * `GBp` — com o `p` minúsculo — para os instrumentos cotados em pence, e `GBP`
+ * para os cotados em libras. São duas moedas com um fator de cem entre elas, e
+ * a única coisa que as distingue é a caixa de uma letra. O parser fazia
+ * `.toUpperCase()` antes de olhar, o que transformava uma na outra: um ETF a
+ * 9150 pence (91,50 £) passava a 9150 libras, e uma posição de mil e
+ * quinhentos euros aparecia com cento e quarenta e nove mil.
+ *
+ * O que torna isto pior do que um erro de conversão qualquer é que o número
+ * resultante **é plausível na sua ordem de grandeza** para quem não conhece o
+ * produto — e a app mostrava-o com a data do fecho ao lado, que é a marca de
+ * um número em que se confia.
+ *
+ * A comparação é feita sobre o texto **em cru**, e é por isso que ela existe
+ * numa função: uma normalização inocente noutro sítio volta a apagá-la.
+ */
+const SUBUNIDADE: Record<string, { moeda: string; divisor: number }> = {
+  GBp: { moeda: "GBP", divisor: 100 }, // pence, Londres
+  GBX: { moeda: "GBP", divisor: 100 }, // o mesmo, como outras fontes lhe chamam
+  ZAc: { moeda: "ZAR", divisor: 100 }, // cêntimos, Joanesburgo
+  ILA: { moeda: "ILS", divisor: 100 }, // agorot, Telavive
+};
+
+export function moedaDeSubunidade(bruto: string): { moeda: string; divisor: number } | null {
+  const exato = SUBUNIDADE[bruto];
+  if (exato) return exato;
+  // `GBX` e `ILA` aparecem em maiúsculas em fontes diferentes; `GBp` não, e é
+  // exactamente por isso que a procura exata vem primeiro.
+  const alto = bruto.toUpperCase();
+  if (alto === "GBX") return SUBUNIDADE.GBX!;
+  if (alto === "ILA") return SUBUNIDADE.ILA!;
+  return null;
+}
+
 export function parseYahooChart(text: string): QuoteSeriesData {
   let body: any;
   try {
@@ -179,8 +216,11 @@ export function parseYahooChart(text: string): QuoteSeriesData {
   }
 
   const result = body?.chart?.result?.[0];
-  const currency =
-    typeof result?.meta?.currency === "string" ? result.meta.currency.toUpperCase() : "EUR";
+  const bruta = typeof result?.meta?.currency === "string" ? result.meta.currency : "";
+  // Olha-se para o texto ANTES de qualquer maiúscula. Ver `SUBUNIDADE`.
+  const sub = bruta ? moedaDeSubunidade(bruta) : null;
+  const currency = sub ? sub.moeda : bruta ? bruta.toUpperCase() : "EUR";
+  const divisor = sub?.divisor ?? 1;
   const stamps: unknown = result?.timestamp;
   const closes: unknown = result?.indicators?.quote?.[0]?.close;
   if (!Array.isArray(stamps) || !Array.isArray(closes)) return { quotes: [], currency };
@@ -192,7 +232,7 @@ export function parseYahooChart(text: string): QuoteSeriesData {
     if (typeof t !== "number" || typeof c !== "number" || !Number.isFinite(c) || c <= 0) continue;
     quotes.push({
       date: new Date(t * 1000).toISOString().slice(0, 10),
-      closeCents: Math.round(c * 100),
+      closeCents: Math.round((c / divisor) * 100),
     });
   }
   // Um dia pode vir repetido em respostas intradiárias: fica o último.
@@ -236,14 +276,58 @@ export function normalizeSymbol(raw: string): string | null {
  * na outra. E um ticker americano precisa de `.us` na Stooq mas dispensa
  * sufixo no Yahoo. Traduzir aqui evita espalhar essa tabela pelo código.
  */
+/**
+ * Sufixo de praça: o nosso (o da Stooq) para o do Yahoo.
+ *
+ * **Isto faltava quase todo, e num sítio que não dava sinal.** Só o `.uk` e o
+ * `.us` estavam traduzidos; tudo o resto passava em maiúsculas, o que por acaso
+ * acerta na Alemanha (`.DE` nas duas) e falha em todas as outras. A EDP virava
+ * `EDP.PT`, que no Yahoo não existe — e o ecrã dizia "nenhum dos símbolos
+ * sugeridos tem cotações", uma frase que se lê como "o símbolo está errado"
+ * quando o símbolo estava certo e o tradutor é que não sabia Lisboa.
+ *
+ * Numa app portuguesa, ter a Euronext Lisboa por traduzir é a falha mais cara
+ * da lista: são as ações que mais gente daqui tem.
+ */
+const SUFIXO_YAHOO: Record<string, string> = {
+  pt: "LS", // Euronext Lisboa
+  fr: "PA", // Euronext Paris
+  nl: "AS", // Euronext Amesterdão
+  be: "BR", // Euronext Bruxelas
+  ie: "IR", // Euronext Dublin
+  es: "MC", // Madrid
+  it: "MI", // Milão
+  ch: "SW", // Six, Zurique
+  at: "VI", // Viena
+  se: "ST", // Estocolmo
+  dk: "CO", // Copenhaga
+  no: "OL", // Oslo
+  fi: "HE", // Helsínquia
+  pl: "WA", // Varsóvia
+  ca: "TO", // Toronto
+  au: "AX", // Sidney
+  jp: "T", // Tóquio
+  hk: "HK", // Hong Kong
+  uk: "L", // Londres
+  de: "DE", // Xetra — igual nas duas, e escrito à mesma para não ser por acaso
+};
+
 export function forSource(symbol: string, source: QuoteSourceId): string {
   const s = symbol.trim().toLowerCase();
   if (source === "stooq") return s;
 
   // Yahoo.
   if (s === "^spx") return "^GSPC";
-  if (s.endsWith(".uk")) return `${s.slice(0, -3).toUpperCase()}.L`;
+  // Um índice vai como está: os nomes não seguem sufixos de praça nenhuns.
+  if (s.startsWith("^")) return s.toUpperCase();
   if (s.endsWith(".us")) return s.slice(0, -3).toUpperCase();
+
+  const ponto = s.lastIndexOf(".");
+  if (ponto > 0) {
+    const praca = s.slice(ponto + 1);
+    const traduzido = SUFIXO_YAHOO[praca];
+    if (traduzido) return `${s.slice(0, ponto).toUpperCase()}.${traduzido}`;
+  }
   return s.toUpperCase();
 }
 
@@ -265,8 +349,11 @@ export function symbolCandidates(raw: string): string[] {
   if (!s) return [];
   if (s.includes(".") || s.startsWith("^")) return [s];
   // Ticker simples: o mercado americano é de longe o caso mais comum, a seguir
-  // a Xetra para quem compra ETFs europeus.
-  return [`${s}.us`, `${s}.de`, s];
+  // a Xetra para quem compra ETFs europeus, e depois Lisboa — esta app é
+  // portuguesa e quem escreve "EDP" à mão não está a pensar em Nova Iorque.
+  // A forma sem praça fica no fim: é ambígua, e uma fonte que indexa várias
+  // bolsas tanto pode não dar nada como dar o instrumento errado.
+  return [`${s}.us`, `${s}.de`, `${s}.pt`, s];
 }
 
 /**

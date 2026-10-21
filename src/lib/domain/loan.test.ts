@@ -197,4 +197,67 @@ describe("summariseRates", () => {
     expect(s.annualInterestCents).toBe(0);
     expect(s.lastPayoffMonths).toBeNull();
   });
+
+  /**
+   * Um crédito à habitação com períodos de taxa não escreve prestação nenhuma:
+   * ela sai do plano. Sem passar por aí, a maior dívida da casa desaparecia do
+   * total das prestações sem dizer nada, e ficava lá uma soma com ar de certa.
+   */
+  it("conta a prestação de um crédito com períodos de taxa", () => {
+    const credito: AssetInput = {
+      id: "5",
+      name: "Crédito à habitação",
+      kind: "divida",
+      valueCents: 15_000_000,
+      maturityDate: "2056-01-01",
+      creditTerms: {
+        periods: [
+          { startsOn: "2026-01-01", kind: "fixa", ratePct: 3.3 },
+          { startsOn: "2029-01-01", kind: "variavel", indexante: "euribor6m", spreadPct: 0.9 },
+        ],
+        indexanteRates: { euribor6m: 2.1 },
+      },
+    };
+    const s = summariseRates([credito], "2026-01-01");
+    expect(s.amortisingCount).toBe(1);
+    // A anuidade de 150 000 € a 3,3% em 360 meses anda pelos 656 €.
+    expect(s.monthlyPaymentsCents).toBeGreaterThan(60_000);
+    expect(s.monthlyPaymentsCents).toBeLessThan(70_000);
+    expect(s.lastPayoffMonths).toBe(360);
+    // O juro do próximo ano é à taxa que vigora HOJE (3,3%), não à do troço
+    // variável que só começa daqui a três anos.
+    expect(s.annualDebtInterestCents).toBe(495_000);
+  });
+
+  /**
+   * Sem o valor da Euribor não há plano — e o que se soma é nada, não a conta
+   * de taxa única. Responder à pergunta errada em silêncio é pior do que não
+   * responder: um total que ignora um crédito é visivelmente estranho, um total
+   * feito à taxa errada não é.
+   */
+  it("não inventa prestação num crédito sem plano possível", () => {
+    const s = summariseRates(
+      [
+        {
+          id: "6",
+          name: "Crédito à habitação",
+          kind: "divida",
+          valueCents: 15_000_000,
+          interestRatePct: 3,
+          monthlyPaymentCents: 63_240,
+          maturityDate: "2056-01-01",
+          creditTerms: {
+            periods: [
+              { startsOn: "2026-01-01", kind: "variavel", indexante: "euribor6m", spreadPct: 0.9 },
+            ],
+            indexanteRates: {},
+          },
+        },
+      ],
+      "2026-01-01",
+    );
+    expect(s.monthlyPaymentsCents).toBe(0);
+    expect(s.amortisingCount).toBe(0);
+    expect(s.lastPayoffMonths).toBeNull();
+  });
 });
